@@ -113,16 +113,42 @@ def init_db() -> None:
             );
             """
         )
-        # 기존 DB 마이그레이션: users에 name/role, transfers에 sender_memo 컬럼 없으면 추가
+        # 기존 DB 마이그레이션: users에 name/role, transfers에 sender_memo,
+        # transactions에 balance_after 컬럼 없으면 추가
         for col, ddl in (
             ("name", "ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT ''"),
             ("role", "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"),
             ("sender_memo", "ALTER TABLE transfers ADD COLUMN sender_memo TEXT"),
+            ("balance_after", "ALTER TABLE transactions ADD COLUMN balance_after INTEGER"),
         ):
             try:
                 conn.execute(ddl)
             except Exception:
                 pass  # 이미 존재
+
+        _backfill_balance_after(conn)
+
+
+def _backfill_balance_after(conn: sqlite3.Connection) -> None:
+    """balance_after가 비어있는 기존 거래내역을, 계좌 현재 잔액에서 최신순으로 거슬러 올라가며 채운다.
+    이미 다 채워져 있으면(balance_after가 NULL인 행이 없으면) 아무 일도 하지 않는다."""
+    accounts = conn.execute("SELECT id, balance FROM accounts").fetchall()
+    for acc in accounts:
+        rows = conn.execute(
+            "SELECT id, type, amount FROM transactions "
+            "WHERE account_id = ? AND balance_after IS NULL "
+            "ORDER BY created_at DESC, id DESC",
+            (acc["id"],),
+        ).fetchall()
+        if not rows:
+            continue
+        running = acc["balance"]
+        for row in rows:
+            conn.execute(
+                "UPDATE transactions SET balance_after = ? WHERE id = ?", (running, row["id"]),
+            )
+            signed = row["amount"] if row["type"] == "in" else -row["amount"]
+            running -= signed
 
 
 # ── 계좌 조회 ────────────────────────────────────────────────────────
@@ -161,7 +187,7 @@ def lookup_account(account_no: str) -> dict | None:
 def list_transactions(account_id: int, limit: int = 50) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT type, amount, counterparty, created_at FROM transactions "
+            "SELECT type, amount, counterparty, balance_after, created_at FROM transactions "
             "WHERE account_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
             (account_id, limit),
         ).fetchall()
@@ -298,21 +324,22 @@ def process_transfer(transfer_id: int) -> str:
             "UPDATE accounts SET balance = balance - ? WHERE id = ?",
             (total, src["id"]),
         )
+        balance_after_amount = src["balance"] - amount
         conn.execute(
-            "INSERT INTO transactions(account_id, type, amount, counterparty, created_at) "
-            "VALUES (?, 'out', ?, ?, ?)",
-            (src["id"], amount, out_counterparty, now),
+            "INSERT INTO transactions(account_id, type, amount, counterparty, balance_after, created_at) "
+            "VALUES (?, 'out', ?, ?, ?, ?)",
+            (src["id"], amount, out_counterparty, balance_after_amount, now),
         )
         # 수수료가 있으면 별도 출금 내역
         if fee > 0:
             conn.execute(
-                "INSERT INTO transactions(account_id, type, amount, counterparty, created_at) "
-                "VALUES (?, 'out', ?, '이체수수료', ?)",
-                (src["id"], fee, now),
+                "INSERT INTO transactions(account_id, type, amount, counterparty, balance_after, created_at) "
+                "VALUES (?, 'out', ?, '이체수수료', ?, ?)",
+                (src["id"], fee, balance_after_amount - fee, now),
             )
         # 입금(내부 계좌인 경우)
         dst = conn.execute(
-            "SELECT id FROM accounts WHERE account_no = ?", (to_no,)
+            "SELECT id, balance FROM accounts WHERE account_no = ?", (to_no,)
         ).fetchone()
         if dst is not None:
             conn.execute(
@@ -320,9 +347,9 @@ def process_transfer(transfer_id: int) -> str:
                 (amount, dst["id"]),
             )
             conn.execute(
-                "INSERT INTO transactions(account_id, type, amount, counterparty, created_at) "
-                "VALUES (?, 'in', ?, ?, ?)",
-                (dst["id"], amount, in_counterparty, now),
+                "INSERT INTO transactions(account_id, type, amount, counterparty, balance_after, created_at) "
+                "VALUES (?, 'in', ?, ?, ?, ?)",
+                (dst["id"], amount, in_counterparty, dst["balance"] + amount, now),
             )
 
         conn.execute(

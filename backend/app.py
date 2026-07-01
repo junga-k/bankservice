@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -13,6 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import config
+import fss_fetcher
 from backend import auth, db, health, kafka_io
 
 SITE_DIR = Path(__file__).resolve().parent.parent / "site"
@@ -295,13 +298,44 @@ def track_search(req: SearchReq):
 
 # ── 이용 통계: 집계 ──────────────────────────────────────────────────
 @app.get("/api/stats/banks")
-def stats_banks():
-    return {"banks": db.stats_banks()}
+def stats_banks(limit: int = 10):
+    return {"banks": db.stats_banks(limit=limit)}
 
 
 @app.get("/api/stats/top-products")
 def stats_top_products():
     return {"categories": db.stats_top_products()}
+
+
+# ── 상품안내: FSS(금융감독원) 실시간 상품 데이터 ──────────────────────
+_PRODUCT_CACHE: dict[str, tuple[float, list]] = {}
+_PRODUCT_CACHE_TTL = 3600  # 1시간
+
+
+@app.get("/api/products")
+def get_products(category: str):
+    if category not in ("예금", "적금", "금리비교"):
+        raise HTTPException(400, "지원하지 않는 카테고리입니다.")
+    now = time.time()
+    cached = _PRODUCT_CACHE.get(category)
+    if cached and now - cached[0] < _PRODUCT_CACHE_TTL:
+        return {"products": cached[1]}
+
+    auth_key = config.load().get("fss_api_key", "")
+    if not auth_key:
+        raise HTTPException(503, "FSS API 키가 설정되지 않았습니다.")
+    try:
+        if category == "금리비교":
+            products = fss_fetcher.fetch_category_structured(auth_key, "예금") + \
+                fss_fetcher.fetch_category_structured(auth_key, "적금")
+        else:
+            products = fss_fetcher.fetch_category_structured(auth_key, category)
+    except Exception as e:
+        raise HTTPException(502, f"FSS API 조회 실패: {e}")
+
+    products.sort(key=lambda p: p["best_rate"] or 0, reverse=True)
+    _PRODUCT_CACHE[category] = (now, products)
+    return {"products": products}
 
 
 # ── 고객센터: 공지사항 / FAQ / 서식·약관·설명서 (공개) ────────────────

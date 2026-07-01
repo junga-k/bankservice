@@ -29,13 +29,13 @@
     </a>
     <nav class="nav">
       <a data-nav="home">홈</a>
-      <a data-nav="about">서비스 소개</a>
       <a data-nav="account">내 계좌</a>
       <a data-nav="products">상품안내</a>
       <a data-nav="chat">AI챗봇</a>
       <a data-nav="support">고객센터</a>
       <span class="nav-divider" id="nav-backoffice-sep" style="display:none">|</span>
       <a data-nav="backoffice" id="nav-backoffice-link" style="display:none">Backoffice</a>
+      <span class="nav-indicator" id="nav-indicator"></span>
       <span class="nav-auth-group" id="nav-auth-guest">
         <a data-nav="auth" data-auth="login" class="nav-auth nav-login">로그인</a>
         <a data-nav="auth" data-auth="signup" class="nav-auth nav-signup">회원가입</a>
@@ -59,27 +59,103 @@
         </div>
       </div>
       <div class="container">
-        <div class="card-grid">
-          <div class="card clickable" data-nav="products">
-            <div class="icon">🏦</div>
-            <h3>상품안내</h3>
-            <p>주요 은행의 예금·적금 상품과 바로가기를 확인하세요.</p>
+
+        <!-- 이벤트 배너 -->
+        <div class="event-banner">
+          <div class="banner-track" id="banner-track">
+            <div class="banner-slide" style="background:linear-gradient(135deg,#0FA968,#0B8457)">
+              <span class="banner-emoji">🎉</span>
+              <div><b>매치뱅크 오픈 기념</b><p>지금 가입하면 계좌 개설 바로 가능해요</p></div>
+            </div>
+            <div class="banner-slide" style="background:linear-gradient(135deg,#4C8DFF,#2F5FD6)">
+              <span class="banner-emoji">📢</span>
+              <div><b>AI챗봇 업데이트</b><p>더 정확해진 금융상품 비교를 경험해보세요</p></div>
+            </div>
+            <div class="banner-slide" style="background:linear-gradient(135deg,#FF8A3D,#F9AB00)">
+              <span class="banner-emoji">💰</span>
+              <div><b>청년미래적금</b><p>지금 가입 가능한 적금 상품을 확인해보세요</p></div>
+            </div>
           </div>
-          <div class="card clickable" data-nav="chat">
-            <div class="icon">💬</div>
-            <h3>AI챗봇</h3>
-            <p>금리 비교, 상품 추천, 업무 안내를 대화로 해결하세요.</p>
+          <div class="banner-dots" id="banner-dots">
+            <button class="banner-dot active" type="button" data-slide="0" aria-label="배너 1"></button>
+            <button class="banner-dot" type="button" data-slide="1" aria-label="배너 2"></button>
+            <button class="banner-dot" type="button" data-slide="2" aria-label="배너 3"></button>
           </div>
-          <div class="card clickable" data-nav="dashboard">
-            <div class="icon">📊</div>
-            <h3>이용 통계</h3>
-            <p>AI 응답 품질과 이용 현황을 데이터로 확인하세요.</p>
+        </div>
+
+        <!-- 기능 소개: 내 계좌 → 상품안내 → AI챗봇 순서대로 -->
+        <div class="feature-showcase">
+
+          <div class="showcase-row">
+            <div class="showcase-media">
+              <div class="mock-frame">
+                <div class="mock-frame-bar"><span></span><span></span><span></span></div>
+                <div class="mock-scroll">
+                  <div class="mock-screen">
+                    <div class="mock-acct-card"><span class="mock-bank">🏦 신한은행</span><span class="mock-balance">1,473,000원</span></div>
+                    <div class="mock-acct-card"><span class="mock-bank">🏦 카카오뱅크</span><span class="mock-balance">850,000원</span></div>
+                    <div class="mock-tx-row"><span>정기예금 이자</span><span class="mock-tx-in">+2,000,000원</span></div>
+                    <div class="mock-tx-row"><span>카드대금</span><span class="mock-tx-out">-130,000원</span></div>
+                  </div>
+                  <div class="mock-screen">
+                    <div class="mock-field-label">출금 계좌</div>
+                    <div class="mock-field">신한은행 110-123-456789</div>
+                    <div class="mock-field-label">받는 분 계좌</div>
+                    <div class="mock-field">우리은행 1002-333-444555</div>
+                    <div class="mock-field-label">이체 금액</div>
+                    <div class="mock-field mock-amount">50,000원</div>
+                  </div>
+                </div>
+              </div>
+              <p class="mock-hint">← 스와이프해서 이체 화면도 보기 →</p>
+            </div>
+            <div class="showcase-text">
+              <h3>내 계좌 조회부터 이체까지</h3>
+              <p>보유 계좌 잔액과 거래내역을 한눈에 확인하고, 몇 번의 클릭만으로 안전하게 이체할 수 있습니다.</p>
+              <button class="btn btn-ghost" data-nav="account">내 계좌 바로가기</button>
+            </div>
           </div>
-          <div class="card clickable" data-nav="support">
-            <div class="icon">📞</div>
-            <h3>고객센터</h3>
-            <p>자주 묻는 질문과 이용 안내를 확인하세요.</p>
+
+          <div class="showcase-row reverse">
+            <div class="showcase-media">
+              <div class="mock-frame">
+                <div class="mock-frame-bar"><span></span><span></span><span></span></div>
+                <div class="mock-products">
+                  <div class="mock-product-chip"><span>🏦 KB국민은행</span><b>정기예금 3.2%</b></div>
+                  <div class="mock-product-chip"><span>🏦 카카오뱅크</span><b>자유적금 3.5%</b></div>
+                  <div class="mock-product-chip"><span>🏦 토스뱅크</span><b>파킹통장 2.8%</b></div>
+                </div>
+              </div>
+            </div>
+            <div class="showcase-text">
+              <h3>주요 은행 상품을 한 곳에서 비교</h3>
+              <p>예금·적금 금리를 은행별로 비교하고, 공식 상품 페이지로 바로 이동할 수 있습니다.</p>
+              <button class="btn btn-ghost" data-nav="products">상품안내 바로가기</button>
+            </div>
           </div>
+
+          <div class="showcase-row">
+            <div class="showcase-media">
+              <div class="mock-frame">
+                <div class="mock-frame-bar"><span></span><span></span><span></span></div>
+                <div class="mock-chat">
+                  <div class="mock-bubble user">12개월 정기예금 금리 높은 상품 추천해줘</div>
+                  <div class="mock-bubble ai">카카오뱅크 정기예금이 연 3.5%로 가장 높아요. 국민은행(3.2%), 신한은행(3.1%)도 비교해 보세요.</div>
+                </div>
+              </div>
+            </div>
+            <div class="showcase-text">
+              <h3>AI에게 편하게 물어보세요</h3>
+              <p>"금리 높은 적금 알려줘"처럼 편하게 물어보면 AI가 찾아서 답해드립니다.</p>
+              <ul class="showcase-points">
+                <li>💬 편하게 질문하면 AI가 알아서 찾아드려요</li>
+                <li>📚 금융감독원 공식 데이터를 근거로 답변해요</li>
+                <li>⚡ 실시간으로 빠르게 답변해요</li>
+              </ul>
+              <button class="btn btn-ghost" data-nav="chat">AI챗봇 시작하기</button>
+            </div>
+          </div>
+
         </div>
       </div>
     </section>
@@ -93,7 +169,7 @@
         <!-- 인기 통계 (상품안내 클릭 + 챗봇 검색 병합) -->
         <div class="stat-block">
           <h3 class="stat-heading">📊 인기 통계</h3>
-          <p class="stat-sub">상품안내 조회와 AI챗봇 검색을 합산한 실시간 인기 순위입니다.</p>
+          <p class="stat-sub">상품안내 조회와 AI챗봇 검색을 합산한 실시간 인기 순위입니다.<span class="stat-note"> · 선정 기준: 조회수 상위 5개</span></p>
           <div class="stat-grid">
             <div class="panel">
               <h3>은행 순위</h3>
@@ -124,33 +200,13 @@
           </div>
         </div>
 
+        <div class="product-list-panel" id="product-list-panel" style="display:none">
+          <h3 id="product-list-title"></h3>
+          <div id="product-list"><!-- JS 렌더 --></div>
+        </div>
+
         <h3 style="margin-top:40px;">은행 바로가기</h3>
         <div id="bank-grid" class="bank-grid"><!-- JS 렌더 --></div>
-      </div>
-    </section>
-
-    <!-- ── 서비스 소개 ─────────────────────────────────────────── -->
-    <section id="about" class="section">
-      <div class="container">
-        <h2 class="section-title">서비스 소개</h2>
-        <p class="section-desc">AI 기반 금융상품·업무 검색 서비스입니다.</p>
-        <div class="card-grid">
-          <div class="card">
-            <div class="icon">🔍</div>
-            <h3>자연어 검색</h3>
-            <p>"12개월 정기예금 금리 높은 상품 추천해줘" 처럼 편하게 물어보면 됩니다.</p>
-          </div>
-          <div class="card">
-            <div class="icon">📚</div>
-            <h3>실데이터 기반(RAG)</h3>
-            <p>금융감독원(FSS) 금융상품 데이터를 인덱싱해 근거 있는 답변을 제공합니다.</p>
-          </div>
-          <div class="card">
-            <div class="icon">⚡</div>
-            <h3>빠른 응답</h3>
-            <p>스트리밍 응답과 시맨틱 캐시로 빠르고 일관된 답변을 드립니다.</p>
-          </div>
-        </div>
       </div>
     </section>
 
@@ -185,6 +241,11 @@
         <!-- 이체 -->
         <div class="account-panel" id="account-panel-transfer" style="display:none">
         <div class="panel transfer-panel">
+          <div class="tf-quick-accounts">
+            <span class="tf-quick-accounts-label">자주쓰는계좌</span>
+            <div class="tf-quick-accounts-list" id="tf-quick-accounts-list"></div>
+          </div>
+
           <div class="transfer-head">
             <h3>이체하기</h3>
             <div class="transfer-steps">

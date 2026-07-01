@@ -259,6 +259,76 @@ def fetch_category(
     return result
 
 
+def _clean_bank_name(name: str) -> str:
+    """'주식회사 케이뱅크' 같은 법인격 접두어를 제거해 배지·URL 매핑과 맞춘다."""
+    return name.replace("주식회사", "").strip()
+
+
+_JOIN_DENY_LABELS = {"1": "가입제한 없음", "2": "서민전용", "3": "일부제한"}
+
+
+def _format_dcls_day(raw: str | None) -> str | None:
+    """FSS의 'YYYYMMDD' 공시일 문자열을 'YYYY.MM.DD'로 변환한다."""
+    if not raw or len(raw) != 8:
+        return None
+    return f"{raw[:4]}.{raw[4:6]}.{raw[6:8]}"
+
+
+def fetch_category_structured(
+    auth: str,
+    category: str,
+    fin_groups: list[str] | None = None,
+) -> list[dict]:
+    """지정한 카테고리의 금융 상품을 구조화된 dict 목록으로 반환한다 (사이트 상품안내용)."""
+    if fin_groups is None:
+        fin_groups = _DEFAULT_GROUPS
+    endpoint = PRODUCT_TYPES[category]
+    base_all: list[dict] = []
+    opt_all: list[dict] = []
+    for grp in fin_groups:
+        try:
+            b, o = _fetch_pages(auth, endpoint, grp)
+            base_all.extend(b)
+            opt_all.extend(o)
+        except Exception:
+            pass  # 특정 권역이 해당 카테고리를 미지원하면 건너뜀
+    options_by_code = _group_options(opt_all)
+    result = []
+    for base in base_all:
+        code = base.get("fin_prdt_cd", "")
+        bank = _clean_bank_name(base.get("kor_co_nm", ""))
+        name = base.get("fin_prdt_nm", "")
+        sorted_opts = sorted(options_by_code.get(code, []), key=lambda o: int(o.get("save_trm") or 0))
+        options = [
+            {
+                "term_months": int(o.get("save_trm") or 0),
+                "base_rate": o.get("intr_rate"),
+                "max_rate": o.get("intr_rate2"),
+                "rate_type": o.get("intr_rate_type_nm", ""),
+                "save_type": o.get("rsrv_type_nm"),  # 적금만 존재 (정액적립식/자유적립식)
+            }
+            for o in sorted_opts
+        ]
+        rates = [o["max_rate"] if o["max_rate"] is not None else o["base_rate"] for o in options]
+        rates = [r for r in rates if r is not None]
+        result.append({
+            "bank": bank,
+            "product_name": name,
+            "category": category,
+            "join_way": (base.get("join_way") or "").strip(),
+            "join_member": (base.get("join_member") or "").strip(),
+            "spcl_cnd": (base.get("spcl_cnd") or "").strip(),
+            "etc_note": (base.get("etc_note") or "").strip(),
+            "mtrt_int": (base.get("mtrt_int") or "").strip(),
+            "join_deny_label": _JOIN_DENY_LABELS.get(str(base.get("join_deny") or ""), ""),
+            "dcls_date": _format_dcls_day(base.get("dcls_strt_day")),
+            "options": options,
+            "best_rate": max(rates) if rates else None,
+            "url": _BANK_PRODUCT_URLS.get(bank, {}).get(category),
+        })
+    return result
+
+
 def fetch_all(
     auth: str,
     fin_groups: list[str] | None = None,

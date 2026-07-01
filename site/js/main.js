@@ -6,7 +6,7 @@
  */
 
 const CHAT_URL = "http://localhost:8501/?embed=true&embedded=1";
-const SECTIONS = ["home", "about", "account", "products", "chat", "support", "auth", "backoffice"];
+const SECTIONS = ["home", "account", "products", "chat", "support", "auth", "backoffice"];
 
 /* ── 인증 상태 (localStorage) ───────────────────────────────────────
  * auth = { token, username, name, role }
@@ -96,6 +96,7 @@ function navigate(name) {
   document.querySelectorAll(".nav a").forEach((a) => {
     a.classList.toggle("active", a.dataset.nav === name);
   });
+  updateNavIndicator();
 
   if (name === "chat") ensureChatLoaded();
   if (name === "products") { ensureBanksLoaded(); loadProductStats(); }
@@ -123,6 +124,20 @@ function navigate(name) {
   window.scrollTo(0, 0);
 }
 
+/* 헤더 메뉴 하단 슬라이딩 인디케이터: 선택된 메뉴 아래로 부드럽게 이동 */
+function updateNavIndicator() {
+  const indicator = document.getElementById("nav-indicator");
+  const active = document.querySelector(".nav > a.active");
+  if (!indicator || !active || active.offsetParent === null) {
+    if (indicator) indicator.style.opacity = "0";
+    return;
+  }
+  indicator.style.left = `${active.offsetLeft}px`;
+  indicator.style.width = `${active.offsetWidth}px`;
+  indicator.style.opacity = "1";
+}
+window.addEventListener("resize", updateNavIndicator);
+
 /* 클릭 위임: data-nav 속성을 가진 모든 요소 (data-auth 있으면 로그인/회원가입 탭도 맞춤) */
 document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-nav]");
@@ -131,6 +146,42 @@ document.addEventListener("click", (e) => {
   navigate(el.dataset.nav);
   if (el.dataset.auth) setAuthTab(el.dataset.auth);
 });
+
+/* ── 홈: 이벤트 배너 자동 전환 ───────────────────────────────────── */
+const BANNER_INTERVAL = 4000;
+let bannerIndex = 0;
+let bannerTimer = null;
+
+function goBannerSlide(i) {
+  const track = document.getElementById("banner-track");
+  const dots = document.querySelectorAll(".banner-dot");
+  if (!track || !dots.length) return;
+  bannerIndex = (i + dots.length) % dots.length;
+  track.style.transform = `translateX(-${bannerIndex * 100}%)`;
+  dots.forEach((d, idx) => d.classList.toggle("active", idx === bannerIndex));
+}
+
+function startBannerAuto() {
+  stopBannerAuto();
+  bannerTimer = setInterval(() => goBannerSlide(bannerIndex + 1), BANNER_INTERVAL);
+}
+function stopBannerAuto() {
+  if (bannerTimer) clearInterval(bannerTimer);
+}
+
+document.addEventListener("click", (e) => {
+  const dot = e.target.closest(".banner-dot");
+  if (!dot) return;
+  goBannerSlide(Number(dot.dataset.slide));
+  startBannerAuto();
+});
+
+const bannerEl = document.querySelector(".event-banner");
+if (bannerEl) {
+  bannerEl.addEventListener("mouseenter", stopBannerAuto);
+  bannerEl.addEventListener("mouseleave", startBannerAuto);
+  startBannerAuto();
+}
 
 /* ── AI챗봇 iframe: 최초 1회만 생성 ─────────────────────────────── */
 let chatLoaded = false;
@@ -143,6 +194,42 @@ function ensureChatLoaded() {
   iframe.allow = "clipboard-write";
   wrap.appendChild(iframe);
   chatLoaded = true;
+}
+
+/* ── 은행 로고 배지 ──────────────────────────────────────────────── */
+/* 실제 로고 이미지 대신 은행 브랜드 컬러 기반 이니셜 배지로 대체(상표권 부담 없이 구분 가능) */
+const BANK_BRAND = {
+  "신한은행":    { label: "신한", color: "#0046FF" },
+  "국민은행":    { label: "KB",  color: "#FFB300" },
+  "KB국민은행":  { label: "KB",  color: "#FFB300" },
+  "우리은행":    { label: "우리", color: "#0067AC" },
+  "하나은행":    { label: "하나", color: "#00857C" },
+  "농협은행":    { label: "NH",  color: "#00A651" },
+  "NH농협은행":  { label: "NH",  color: "#00A651" },
+  "IBK기업은행": { label: "IBK", color: "#0072BC" },
+  "카카오뱅크":  { label: "카카오", color: "#FFCD00" },
+  "토스뱅크":    { label: "토스", color: "#0064FF" },
+  "케이뱅크":    { label: "케이", color: "#FF5F3B" },
+  "SC제일은행":  { label: "SC",  color: "#12A0D7" },
+  "부산은행":    { label: "부산", color: "#004EA2" },
+  "대구은행":    { label: "대구", color: "#EE7D1F" },
+  "경남은행":    { label: "경남", color: "#009944" },
+  "광주은행":    { label: "광주", color: "#F58220" },
+  "전북은행":    { label: "전북", color: "#EE3524" },
+  "제주은행":    { label: "제주", color: "#00AEEF" },
+};
+const BANK_FALLBACK_COLORS = ["#5F6368", "#7B61FF", "#00838F", "#8D6E63", "#546E7A"];
+
+function bankBadge(name) {
+  const brand = BANK_BRAND[name];
+  if (brand) {
+    return `<span class="bank-badge" style="background:${brand.color}">${escapeHtml(brand.label)}</span>`;
+  }
+  // 매핑에 없는 은행: 이름 기반 해시로 고정 색상 + 첫 글자
+  const hash = [...(name || "?")].reduce((h, c) => h + c.charCodeAt(0), 0);
+  const color = BANK_FALLBACK_COLORS[hash % BANK_FALLBACK_COLORS.length];
+  const label = (name || "?").slice(0, 2);
+  return `<span class="bank-badge" style="background:${color}">${escapeHtml(label)}</span>`;
 }
 
 /* ── 내 계좌 (계좌조회 + 이체) ──────────────────────────────────── */
@@ -199,7 +286,7 @@ function renderAccountCards(accounts) {
     .map(
       (a) =>
         `<div class="card clickable acct-card" data-acct-id="${a.id}" data-acct-no="${a.account_no}">
-           <div class="acct-bank">🏦 ${escapeHtml(a.bank_name)}</div>
+           <div class="acct-bank">${bankBadge(a.bank_name)} ${escapeHtml(a.bank_name)}</div>
            <div class="acct-no">${escapeHtml(a.account_no)}</div>
            <div class="acct-balance">${won(a.balance)}</div>
          </div>`
@@ -228,6 +315,33 @@ function fillTransferFrom(accounts) {
     toBank.dataset.filled = "1";
   }
   updateFromBalance();
+  renderTfQuickAccounts();
+}
+
+/* 자주쓰는계좌: 내 다른 계좌 + 미리 만들어둔 데모 수신 계좌 */
+const TF_FAVORITE_ACCOUNTS = [
+  { bank_name: "우리은행", account_no: "1002-333-444555", holder_name: "김철수" },
+  { bank_name: "하나은행", account_no: "218-910111-12345", holder_name: "이영희" },
+  { bank_name: "토스뱅크", account_no: "100-2345-6789", holder_name: "박민수" },
+];
+
+function renderTfQuickAccounts() {
+  const list = document.getElementById("tf-quick-accounts-list");
+  if (!list) return;
+  const fromNo = document.getElementById("tf-from").value;
+  const mine = tfAccounts
+    .filter((a) => a.account_no !== fromNo)
+    .map((a) => ({ bank_name: a.bank_name, account_no: a.account_no, holder_name: a.holder_name, mine: true }));
+  const items = [...mine, ...TF_FAVORITE_ACCOUNTS];
+  list.innerHTML = items
+    .map(
+      (a) => `<button type="button" class="tf-quick-acct" data-bank="${escapeHtml(a.bank_name)}" data-no="${escapeHtml(a.account_no)}">
+          ${bankBadge(a.bank_name)}
+          <span class="tf-quick-acct-name">${escapeHtml(a.holder_name)}</span>
+          ${a.mine ? '<em class="tf-quick-acct-tag">내계좌</em>' : ""}
+        </button>`
+    )
+    .join("");
 }
 
 function currentFromAccount() {
@@ -275,10 +389,16 @@ async function showTransactions(accountId, accountNo) {
             const sign = inflow ? "+" : "−";
             const cls = inflow ? "tx-in" : "tx-out";
             const d = new Date(t.created_at * 1000).toLocaleDateString("ko-KR");
+            const balText = t.balance_after == null ? "-" : won(t.balance_after);
             return `<div class="tx-row">
-                <span class="tx-cp">${escapeHtml(t.counterparty || "-")}</span>
-                <span class="tx-date">${d}</span>
-                <span class="tx-amt ${cls}">${sign}${won(t.amount)}</span>
+                <div class="tx-left">
+                  <span class="tx-date">${d}</span>
+                  <span class="tx-cp">${escapeHtml(t.counterparty || "-")}</span>
+                </div>
+                <div class="tx-right">
+                  <span class="tx-amt ${cls}">${sign}${won(t.amount)}</span>
+                  <span class="tx-balance">잔액 ${balText}</span>
+                </div>
               </div>`;
           })
           .join("")
@@ -317,7 +437,7 @@ function tfResetVerify() {
 
 /* 출금계좌 변경 / 금액 입력 / 받는은행 변경 → 미리보기 갱신 */
 document.addEventListener("change", (e) => {
-  if (e.target.id === "tf-from") updateFromBalance();
+  if (e.target.id === "tf-from") { updateFromBalance(); renderTfQuickAccounts(); }
   if (e.target.id === "tf-to-bank") { tfResetVerify(); updateAfterBalance(); }
 });
 document.addEventListener("input", (e) => {
@@ -346,11 +466,8 @@ document.addEventListener("click", (e) => {
   updateAfterBalance();
 });
 
-/* 예금주 확인 */
-document.addEventListener("click", async (e) => {
-  if (e.target.id !== "tf-lookup") return;
-  const from = document.getElementById("tf-from").value;
-  const to = document.getElementById("tf-to").value.trim();
+/* 예금주 확인 (확인 버튼 / 자주쓰는계좌 칩 공용) */
+async function runTfLookup(to, from) {
   const holderEl = document.getElementById("tf-holder");
   if (!to) {
     holderEl.className = "tf-holder err";
@@ -386,6 +503,25 @@ document.addEventListener("click", async (e) => {
     holderEl.className = "tf-holder err";
     holderEl.textContent = "❌ " + err.message;
   }
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.id !== "tf-lookup") return;
+  const from = document.getElementById("tf-from").value;
+  const to = document.getElementById("tf-to").value.trim();
+  runTfLookup(to, from);
+});
+
+/* 자주쓰는계좌 칩 클릭 → 받는 계좌 자동입력 + 예금주 확인 */
+document.addEventListener("click", (e) => {
+  const chip = e.target.closest(".tf-quick-acct");
+  if (!chip) return;
+  const bank = chip.dataset.bank;
+  const no = chip.dataset.no;
+  document.getElementById("tf-to-bank").value = bank;
+  document.getElementById("tf-to").value = no;
+  const from = document.getElementById("tf-from").value;
+  runTfLookup(no, from);
 });
 
 /* STEP1 → STEP2 (확인 화면) */
@@ -513,14 +649,14 @@ function renderReceipt(tr) {
 
 /* ── 인기 통계 (상품안내 상단: 은행 순위 + 카테고리별 Top 5) ──────── */
 async function loadProductStats() {
-  loadBankRanking();
-  loadTopProducts();
+  loadBankRanking("stat-banks", 5);
+  loadTopProductsCarousel();
 }
 
-async function loadBankRanking(targetId = "stat-banks") {
+async function loadBankRanking(targetId = "stat-banks", limit = 10) {
   const box = document.getElementById(targetId);
   try {
-    const res = await fetch("/api/stats/banks");
+    const res = await fetch(`/api/stats/banks?limit=${limit}`);
     const { banks } = await res.json();
     if (!banks.length) {
       box.innerHTML = statEmpty();
@@ -532,6 +668,7 @@ async function loadBankRanking(targetId = "stat-banks") {
         (b, i) =>
           `<div class="bar-row">` +
           `<span class="rank">${i + 1}</span>` +
+          bankBadge(b.name) +
           `<span class="name">${escapeHtml(b.name)}</span>` +
           `<div class="bar-track"><div class="bar-fill" style="width:${(b.count / max) * 100}%"></div></div>` +
           `<span class="num">${b.count}</span></div>`
@@ -573,6 +710,68 @@ async function loadTopProducts(targetId = "stat-products") {
   }
 }
 
+/* 상품안내 페이지 전용: 예금/적금/금리비교 3개 카테고리 Top5 캐러셀 */
+const STAT_PRODUCT_CATS = ["예금", "적금", "금리비교"];
+let statProductsIndex = 0;
+
+async function loadTopProductsCarousel(targetId = "stat-products") {
+  const box = document.getElementById(targetId);
+  try {
+    const res = await fetch("/api/stats/top-products");
+    const { categories } = await res.json();
+    const hasAny = STAT_PRODUCT_CATS.some((c) => (categories[c] || []).length > 0);
+    if (!hasAny) {
+      box.innerHTML = statEmpty();
+      return;
+    }
+    const slides = STAT_PRODUCT_CATS.map((cat) => {
+      const items = categories[cat] || [];
+      const body = items.length
+        ? `<ol class="topcat-list">${items
+            .map(
+              (p, i) =>
+                `<li><span class="rank">${i + 1}</span>` +
+                `<span class="p-name">${escapeHtml(p.product)}</span></li>`
+            )
+            .join("")}</ol>`
+        : `<p class="stat-empty">아직 조회 데이터가 없습니다.</p>`;
+      return `<div class="stat-products-slide"><div class="topcat"><div class="topcat-title">${escapeHtml(cat)}</div>${body}</div></div>`;
+    }).join("");
+    const dots = STAT_PRODUCT_CATS.map(
+      (cat, i) =>
+        `<button class="stat-products-dot${i === 0 ? " active" : ""}" type="button" data-slide="${i}" aria-label="${escapeHtml(cat)}"></button>`
+    ).join("");
+    box.innerHTML =
+      `<div class="stat-products-carousel">` +
+      `<button class="stat-products-nav prev" type="button" aria-label="이전 카테고리">‹</button>` +
+      `<div class="stat-products-track" id="stat-products-track">${slides}</div>` +
+      `<button class="stat-products-nav next" type="button" aria-label="다음 카테고리">›</button>` +
+      `</div>` +
+      `<div class="stat-products-dots">${dots}</div>`;
+    statProductsIndex = 0;
+    goStatProductsSlide(0);
+  } catch (err) {
+    box.innerHTML = statError();
+    console.error("인기 상품 로드 실패:", err);
+  }
+}
+
+function goStatProductsSlide(i) {
+  const track = document.getElementById("stat-products-track");
+  const dots = document.querySelectorAll(".stat-products-dot");
+  if (!track || !dots.length) return;
+  statProductsIndex = (i + dots.length) % dots.length;
+  track.style.transform = `translateX(-${statProductsIndex * 100}%)`;
+  dots.forEach((d, idx) => d.classList.toggle("active", idx === statProductsIndex));
+}
+
+document.addEventListener("click", (e) => {
+  const dot = e.target.closest(".stat-products-dot");
+  if (dot) { goStatProductsSlide(Number(dot.dataset.slide)); return; }
+  if (e.target.closest(".stat-products-nav.prev")) { goStatProductsSlide(statProductsIndex - 1); return; }
+  if (e.target.closest(".stat-products-nav.next")) { goStatProductsSlide(statProductsIndex + 1); return; }
+});
+
 function statEmpty() {
   return '<p class="stat-empty">아직 데이터가 없습니다 — 상품을 조회하거나 AI챗봇에 질문해 보세요.</p>';
 }
@@ -589,12 +788,114 @@ function trackView(payload) {
   }).catch(() => {});
 }
 
-/* 상품 카드 클릭 → track/view(product, category) → 완료 후 통계 갱신 */
+/* 상품 카드 클릭 → track/view(category) → FSS 상품 목록 표시. 카테고리별 인기상품 순위는
+   실제 상품 클릭(아래 product-list-row 확장) 기준으로 집계하므로 여기선 product를 보내지 않는다. */
 document.addEventListener("click", async (e) => {
   const card = e.target.closest(".prod-card");
   if (!card) return;
-  await trackView({ product: card.dataset.product, category: card.dataset.category });
+  loadProductList(card.dataset.category);
+  await trackView({ category: card.dataset.category });
   loadProductStats();
+});
+
+/* FSS(금융감독원) 상품 목록 조회/렌더 */
+async function loadProductList(category) {
+  const panel = document.getElementById("product-list-panel");
+  const titleEl = document.getElementById("product-list-title");
+  const listEl = document.getElementById("product-list");
+  panel.style.display = "block";
+  titleEl.textContent = `${category} 상품 목록`;
+  listEl.innerHTML = '<p class="product-list-empty">불러오는 중…</p>';
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  try {
+    const res = await fetch(`/api/products?category=${encodeURIComponent(category)}`);
+    if (!res.ok) {
+      const { detail } = await res.json().catch(() => ({}));
+      throw new Error(detail || "상품 목록을 불러오지 못했습니다.");
+    }
+    const { products } = await res.json();
+    listEl.innerHTML = products.length
+      ? products.map(renderProductRow).join("")
+      : '<p class="product-list-empty">조회된 상품이 없습니다.</p>';
+  } catch (err) {
+    listEl.innerHTML = `<p class="product-list-empty">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function renderProductRow(p) {
+  const rates = p.options
+    .map((o) => (o.max_rate != null ? o.max_rate : o.base_rate))
+    .filter((r) => r != null);
+  const minRate = rates.length ? Math.min(...rates) : null;
+  const maxRate = rates.length ? Math.max(...rates) : null;
+  const rateText =
+    minRate == null
+      ? "-"
+      : minRate === maxRate
+      ? `<span class="pl-rate-label">연</span><span class="pl-rate-max">${maxRate}%</span>`
+      : `<span class="pl-rate-label">연</span><span class="pl-rate-min">${minRate}%</span><span class="pl-rate-sep">~</span><span class="pl-rate-max">${maxRate}%</span>`;
+  const termRates = p.options
+    .map(
+      (o) =>
+        `<span class="pl-term">${o.term_months}개월 ${o.max_rate ?? o.base_rate ?? "-"}%${
+          o.save_type ? ` · ${escapeHtml(o.save_type)}` : ""
+        }</span>`
+    )
+    .join("");
+  const catBadge = p.category ? `<span class="pl-cat">${escapeHtml(p.category)}</span>` : "";
+  const denyBadge = p.join_deny_label
+    ? `<span class="pl-badge${p.join_deny_label === "가입제한 없음" ? " ok" : ""}">${escapeHtml(p.join_deny_label)}</span>`
+    : "";
+  const linkBtn = p.url
+    ? `<a class="btn btn-ghost pl-link" href="${p.url}" target="_blank" rel="noopener">공식 상품 페이지 ↗</a>`
+    : "";
+  const detailRows = [
+    ["가입방법", p.join_way],
+    ["가입대상", p.join_member],
+    ["우대조건", p.spcl_cnd && p.spcl_cnd !== "해당사항 없음" ? p.spcl_cnd : ""],
+    ["기타 유의사항", p.etc_note],
+    ["만기 후 이자율", p.mtrt_int],
+  ].filter(([, v]) => v);
+  const detailBody = detailRows.length
+    ? detailRows
+        .map(
+          ([label, value]) =>
+            `<div class="pl-detail-row"><span class="pl-detail-label">${escapeHtml(label)}</span><span class="pl-detail-value">${escapeHtml(value)}</span></div>`
+        )
+        .join("")
+    : `<p class="product-list-empty">추가 상세 정보가 없습니다.</p>`;
+  const dclsMeta = p.dcls_date ? `<div class="pl-detail-meta">공시 기준일: ${escapeHtml(p.dcls_date)}</div>` : "";
+
+  return `<div class="product-list-row" data-product="${escapeHtml(p.product_name)}" data-category="${escapeHtml(p.category)}">
+      <div class="pl-head">
+        ${catBadge}
+        <span class="pl-bank">${bankBadge(p.bank)} ${escapeHtml(p.bank)}</span>
+        <span class="pl-name">${escapeHtml(p.product_name)}</span>
+        ${denyBadge}
+        <span class="pl-rate">${rateText}</span>
+        <span class="chev">▾</span>
+      </div>
+      <div class="pl-terms">${termRates}</div>
+      <div class="pl-detail">
+        ${dclsMeta}
+        ${detailBody}
+        ${linkBtn}
+      </div>
+    </div>`;
+}
+
+/* 상품 목록 행 클릭 → 상세 정보 아코디언 확장/축소. 처음 펼칠 때만 조회(클릭)로 집계 →
+   카테고리별 인기상품 TOP5는 이 조회수를 기준으로 순위가 매겨진다. */
+document.addEventListener("click", async (e) => {
+  if (e.target.closest(".pl-link")) return;
+  const row = e.target.closest("#product-list .product-list-row");
+  if (!row) return;
+  const opening = !row.classList.contains("open");
+  row.classList.toggle("open");
+  if (opening) {
+    await trackView({ product: row.dataset.product, category: row.dataset.category });
+    loadProductStats();
+  }
 });
 
 /* ── 은행 바로가기 ───────────────────────────────────────────────── */
@@ -616,7 +917,7 @@ async function ensureBanksLoaded() {
       .map(
         (b) =>
           `<a class="bank-chip" href="${b.url}" target="_blank" rel="noopener" data-bank="${escapeHtml(b.name)}">` +
-          `<span>${escapeHtml(b.name)}</span><span class="arrow">↗</span></a>`
+          `<span class="bank-chip-name">${bankBadge(b.name)} ${escapeHtml(b.name)}</span><span class="arrow">↗</span></a>`
       )
       .join("");
   } catch (err) {
@@ -631,7 +932,7 @@ document.addEventListener("click", async (e) => {
   if (!chip) return;
   // 새 탭 이동은 브라우저가 처리(target=_blank), 현재 탭에서 추적·갱신
   await trackView({ bank: chip.dataset.bank });
-  loadBankRanking();
+  loadBankRanking("stat-banks", 5);
 });
 
 /* ── 인증: 로그인 / 회원가입 / 로그아웃 ─────────────────────────────── */
