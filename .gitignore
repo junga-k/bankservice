@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+conversations/
+rag_store/
+.DS_Store
+config.json
+bank.db
+bank.db-wal
+bank.db-shm
+.coverage
+.pytest_cache/
+.ipynb_checkpoints/

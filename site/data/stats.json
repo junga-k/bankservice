@@ -1,0 +1,60 @@
+{
+  "quality": {
+    "total": 999,
+    "success": 999,
+    "success_rate": 100.0,
+    "avg_latency_ms": 1234,
+    "provider": "OpenAI",
+    "model": "gpt-4o-mini",
+    "tested_at": "2026-06-30T10:05:02.040063",
+    "categories": [
+      {
+        "name": "상식",
+        "count": 100
+      },
+      {
+        "name": "세계지리",
+        "count": 100
+      },
+      {
+        "name": "수학",
+        "count": 100
+      },
+      {
+        "name": "영어",
+        "count": 100
+      },
+      {
+        "name": "문화예술",
+        "count": 100
+      },
+      {
+        "name": "한국역사",
+        "count": 100
+      },
+      {
+        "name": "논리",
+        "count": 100
+      },
+      {
+        "name": "경제",
+        "count": 100
+      },
+      {
+        "name": "파이썬코딩",
+        "count": 100
+      },
+      {
+        "name": "과학",
+        "count": 99
+      }
+    ]
+  },
+  "recent_questions": [
+    "적금 금리 가장 높은 걸로 보여줘",
+    "현재 판매중인 적금 중 금리가 가장 높은 상품은 뭐가 …",
+    "카카오뱅크 적금 상품 알려줘",
+    "12개월 정기예금 금리 높은 상품 추천해줘"
+  ],
+  "conversation_count": 4
+}

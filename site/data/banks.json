@@ -1,0 +1,78 @@
+[
+  {
+    "name": "KB국민은행",
+    "url": "https://obank.kbstar.com/quics?page=C016528"
+  },
+  {
+    "name": "국민은행",
+    "url": "https://obank.kbstar.com/quics?page=C016528"
+  },
+  {
+    "name": "우리은행",
+    "url": "https://spot.wooribank.com/pot/Dream?withyou=PODEP0001"
+  },
+  {
+    "name": "NH농협은행",
+    "url": "https://wmall.nonghyup.com/servlet/SFBCW0000R.view"
+  },
+  {
+    "name": "농협은행",
+    "url": "https://wmall.nonghyup.com/servlet/SFBCW0000R.view"
+  },
+  {
+    "name": "토스뱅크",
+    "url": "https://www.tossbank.com/product-service/savings"
+  },
+  {
+    "name": "제주은행",
+    "url": "https://www.jejubank.co.kr/hmpg/prdGdnc/sid.do"
+  },
+  {
+    "name": "SC제일은행",
+    "url": "https://www.standardchartered.co.kr/np/kr/pl/se/SavingList.jsp"
+  },
+  {
+    "name": "신한은행",
+    "url": "https://www.shinhan.com"
+  },
+  {
+    "name": "하나은행",
+    "url": "https://www.kebhana.com"
+  },
+  {
+    "name": "카카오뱅크",
+    "url": "https://www.kakaobank.com"
+  },
+  {
+    "name": "IBK기업은행",
+    "url": "https://www.ibk.co.kr"
+  },
+  {
+    "name": "기업은행",
+    "url": "https://www.ibk.co.kr"
+  },
+  {
+    "name": "케이뱅크",
+    "url": "https://www.kbanknow.com"
+  },
+  {
+    "name": "부산은행",
+    "url": "https://www.busanbank.co.kr"
+  },
+  {
+    "name": "대구은행",
+    "url": "https://www.dgb.co.kr"
+  },
+  {
+    "name": "전북은행",
+    "url": "https://www.jbbank.co.kr"
+  },
+  {
+    "name": "경남은행",
+    "url": "https://www.knbank.co.kr"
+  },
+  {
+    "name": "광주은행",
+    "url": "https://www.kjbank.com"
+  }
+]
