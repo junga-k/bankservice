@@ -1,9 +1,10 @@
-/* ── 금융서비스 홈페이지 공통 스타일 ─────────────────────────────── */
+/* ── 매치뱅크 홈페이지 공통 스타일 ───────────────────────────────── */
 :root {
-  --blue:        #1A73E8;
-  --blue-dark:   #1565C0;
-  --blue-soft:   #E8F0FE;
-  --blue-line:   #C5D9F8;
+  /* 브랜드 프라이머리 컬러(매치뱅크 로고 그린) — 변수명은 --blue로 유지 */
+  --blue:        #0FA968;
+  --blue-dark:   #0B8457;
+  --blue-soft:   #E3F6EC;
+  --blue-line:   #A8E0C4;
   --bg:          #FFFFFF;
   --bg-soft:     #F8FAFD;
   --text:        #3C4043;
@@ -45,12 +46,12 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 19px;
-  font-weight: 700;
+  font-family: "Black Han Sans", sans-serif;
+  font-size: 20px;
   color: var(--blue);
   white-space: nowrap;
 }
-.brand .logo { font-size: 22px; }
+.brand .logo-mark { flex-shrink: 0; }
 
 .nav {
   display: flex;
@@ -94,7 +95,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 
 /* ── 홈: 히어로 ──────────────────────────────────────────────────── */
 .hero {
-  background: linear-gradient(135deg, #EAF2FE 0%, #F8FAFD 100%);
+  background: linear-gradient(135deg, #E3F6EC 0%, #F8FAFD 100%);
   border-bottom: 1px solid var(--border);
 }
 .hero-inner {
@@ -131,7 +132,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .btn-primary {
   background: var(--blue);
   color: #fff;
-  box-shadow: 0 4px 14px rgba(26, 115, 232, 0.28);
+  box-shadow: 0 4px 14px rgba(15, 169, 104, 0.28);
 }
 .btn-primary:hover { background: var(--blue-dark); }
 .btn-ghost {
@@ -544,7 +545,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .tx-cp { font-size: 14px; color: var(--text); }
 .tx-date { font-size: 13px; color: var(--text-sub); }
 .tx-amt { font-size: 15px; font-weight: 700; }
-.tx-amt.tx-in { color: #1565C0; }
+.tx-amt.tx-in { color: #0B8457; }
 .tx-amt.tx-out { color: #D32F2F; }
 .tx-empty { color: var(--text-sub); font-size: 14px; }
 
@@ -617,7 +618,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .tf-hint { margin-top: 6px; font-size: 13px; color: var(--text-sub); }
 .tf-hint.err { color: #D32F2F; font-weight: 600; }
 .tf-holder { margin-top: 8px; font-size: 14px; min-height: 18px; }
-.tf-holder.ok { color: #1565C0; }
+.tf-holder.ok { color: #0B8457; }
 .tf-holder.err { color: #D32F2F; font-weight: 600; }
 
 .tf-quick { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
@@ -643,7 +644,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 .tf-next { width: 100%; justify-content: center; }
 .tf-status { margin-top: 14px; font-size: 14px; min-height: 20px; }
-.tf-status.ok { color: #1565C0; font-weight: 600; }
+.tf-status.ok { color: #0B8457; font-weight: 600; }
 .tf-status.err { color: #D32F2F; font-weight: 600; }
 
 /* 확인 화면 */

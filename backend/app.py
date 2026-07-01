@@ -17,7 +17,7 @@ from backend import auth, db, health, kafka_io
 
 SITE_DIR = Path(__file__).resolve().parent.parent / "site"
 
-app = FastAPI(title="금융서비스 백엔드")
+app = FastAPI(title="매치뱅크 백엔드")
 
 # 챗(Streamlit :8501)에서 /api/track/search 호출 → CORS 허용
 app.add_middleware(
