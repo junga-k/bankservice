@@ -19,6 +19,23 @@ DEMO_HOLDER = "홍길동"
 # 관리자 계정(고정): 데모 계정 정보를 확인할 수 있는 유일한 계정
 ADMIN_USER = "admin"
 ADMIN_PASSWORD = "admin1234"
+ADMIN_HOLDER = "관리자"
+
+# 관리자 본인 계좌: 관리자도 '내 계좌' 화면(조회·이체)을 온전히 볼 수 있도록 시드
+ADMIN_ACCOUNTS = [
+    ("111-222-333444", "신한은행", 5_000_000),
+    ("777-88-9990001", "카카오뱅크", 1_250_000),
+]
+ADMIN_PAST_TX = {
+    "111-222-333444": [
+        ("in", 4_000_000, "급여", 18),
+        ("out", 320_000, "카드대금", 6),
+    ],
+    "777-88-9990001": [
+        ("in", 500_000, "이체", 10),
+        ("out", 78_000, "쇼핑", 2),
+    ],
+}
 
 # 내 계좌: (account_no, bank_name, balance)
 MY_ACCOUNTS = [
@@ -115,15 +132,38 @@ def main() -> None:
 
 
 def _ensure_admin(conn, now: float) -> None:
-    """admin 계정이 없으면 생성한다(멱등)."""
-    if conn.execute("SELECT id FROM users WHERE username = ?", (ADMIN_USER,)).fetchone():
-        return
-    conn.execute(
-        "INSERT INTO users(username, password_hash, name, role, created_at) "
-        "VALUES (?, ?, ?, 'admin', ?)",
-        (ADMIN_USER, auth.hash_password(ADMIN_PASSWORD), "관리자", now),
-    )
-    print(f"'{ADMIN_USER}' 관리자 계정 생성 완료")
+    """admin 계정과 그 본인 계좌를 보장한다(멱등)."""
+    row = conn.execute("SELECT id FROM users WHERE username = ?", (ADMIN_USER,)).fetchone()
+    if row:
+        admin_id = row["id"]
+    else:
+        cur = conn.execute(
+            "INSERT INTO users(username, password_hash, name, role, created_at) "
+            "VALUES (?, ?, ?, 'admin', ?)",
+            (ADMIN_USER, auth.hash_password(ADMIN_PASSWORD), "관리자", now),
+        )
+        admin_id = cur.lastrowid
+        print(f"'{ADMIN_USER}' 관리자 계정 생성 완료")
+
+    # 관리자도 '내 계좌' 화면을 온전히 볼 수 있도록 계좌가 없으면 시드
+    has_acct = conn.execute(
+        "SELECT COUNT(*) AS n FROM accounts WHERE user_id = ?", (admin_id,)
+    ).fetchone()["n"]
+    if not has_acct:
+        for account_no, bank, balance in ADMIN_ACCOUNTS:
+            cur = conn.execute(
+                "INSERT INTO accounts(user_id, account_no, bank_name, holder_name, balance) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (admin_id, account_no, bank, ADMIN_HOLDER, balance),
+            )
+            acc_id = cur.lastrowid
+            for typ, amount, counterparty, days_ago in ADMIN_PAST_TX.get(account_no, []):
+                conn.execute(
+                    "INSERT INTO transactions(account_id, type, amount, counterparty, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (acc_id, typ, amount, counterparty, now - days_ago * 86400),
+                )
+        print(f"'{ADMIN_USER}' 관리자 계좌 {len(ADMIN_ACCOUNTS)}개 시드 완료")
 
 
 if __name__ == "__main__":

@@ -406,6 +406,31 @@ main { min-height: calc(100vh - var(--header-h)); }
 .bar-fill { height: 100%; background: var(--blue); border-radius: 6px; transition: width 0.4s; }
 .bar-row .num { width: 42px; text-align: right; font-size: 13px; color: var(--text); }
 
+/* 순수 CSS 도넛 차트 (conic-gradient) */
+.donut-chart-wrap { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.donut-chart {
+  position: relative;
+  width: 150px; height: 150px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--bg-soft);
+}
+.donut-hole {
+  position: absolute; inset: 22px;
+  background: #fff;
+  border-radius: 50%;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.donut-hole-value { font-size: 20px; font-weight: 800; color: var(--text); }
+.donut-hole-label { font-size: 11px; color: var(--text-sub); }
+.donut-legend { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 160px; }
+.donut-legend li { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+.donut-legend li:last-child { border-bottom: none; }
+.donut-legend .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.donut-legend .lg-name { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.donut-legend .lg-pct { color: var(--text-sub); font-size: 12px; width: 40px; text-align: right; flex-shrink: 0; }
+
 /* ── FSS 상품 목록 (상품안내 카드 클릭 시) ───────────────────────── */
 .product-list-panel { margin: 32px 0; }
 .product-list-panel h3 { font-size: 18px; margin: 0 0 14px; }
@@ -507,6 +532,10 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 .topcat-list .p-count { color: var(--text-sub); font-size: 13px; }
 
+/* 시스템설정 인프라 설정: 긴 값(URL 등)이 줄바꿈되지 않도록 라벨=natural width, 값=우측정렬·nowrap */
+#bo-infra-config .p-name { flex: 0 0 auto; }
+#bo-infra-config .p-count { margin-left: auto; white-space: nowrap; }
+
 /* 카테고리별 인기 상품 캐러셀 (흰 패널 배경 — 이벤트 배너와 달리 어두운 dot 사용) */
 .stat-products-carousel { position: relative; overflow: hidden; }
 .stat-products-track { display: flex; transition: transform 0.4s ease; }
@@ -600,20 +629,50 @@ main { min-height: calc(100vh - var(--header-h)); }
 /* ── 로그인/회원가입 폼 ──────────────────────────────────────────── */
 .auth-container { max-width: 420px; }
 .auth-panel { margin-bottom: 0; }
-.auth-tabs { display: flex; gap: 6px; margin-bottom: 24px; }
-.auth-tab {
-  flex: 1;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-sub);
-  cursor: pointer;
-}
-.auth-tab.active { border-color: var(--blue-line); background: var(--blue-soft); color: var(--blue); }
+.auth-heading { font-size: 22px; font-weight: 700; margin: 0 0 24px; }
 .auth-form .btn { width: 100%; justify-content: center; margin-top: 6px; }
+
+/* 회원가입 약관 동의 */
+.auth-agree { margin: 4px 0 14px; display: flex; flex-direction: column; gap: 10px; }
+.auth-agree-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.auth-agree-row label { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); cursor: pointer; margin: 0; }
+.auth-agree-row input[type="checkbox"] { width: 16px; height: 16px; flex-shrink: 0; accent-color: var(--blue); }
+.auth-agree-view {
+  background: none; border: none; padding: 0;
+  color: var(--text-sub); font-size: 13px; text-decoration: underline; cursor: pointer;
+  flex-shrink: 0;
+}
+.auth-agree-view:hover { color: var(--blue); }
+
+/* 계좌 등록 소제목 */
+.auth-subhead {
+  font-size: 14px; font-weight: 700; color: var(--text);
+  margin: 20px 0 8px; padding-top: 16px; border-top: 1px solid var(--border);
+}
+
+/* 인증(휴대폰/1원) 인라인 행: 입력 + 버튼 나란히 */
+.auth-verify-row { display: flex; gap: 8px; margin-top: 6px; align-items: center; }
+.auth-verify-row input { flex: 1; min-width: 0; }
+/* .auth-form .btn 의 width:100% 를 무효화해 입력창 옆 인라인 버튼으로 표시 */
+.auth-verify-row .btn { width: auto; margin-top: 0; flex-shrink: 0; white-space: nowrap; padding: 10px 14px; }
+.verify-badge.ok { color: #1E7E34; font-weight: 700; }
+
+/* 로그인 ↔ 회원가입 전환 링크 */
+.auth-switch { margin: 16px 0 0; text-align: center; font-size: 14px; color: var(--text-sub); }
+.auth-switch a { color: var(--blue); font-weight: 600; cursor: pointer; }
+.auth-switch a:hover { text-decoration: underline; }
+
+/* 약관 모달 본문 */
+.terms-body {
+  max-height: 50vh; overflow-y: auto;
+  font-size: 13px; line-height: 1.7; color: var(--text-sub);
+  white-space: pre-line;
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px;
+}
+
+/* 비활성 버튼 */
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .admin-demo-info { margin-top: 12px; }
 .admin-demo-info .cf-row { margin-bottom: 6px; }
 
@@ -627,24 +686,92 @@ main { min-height: calc(100vh - var(--header-h)); }
 /* ── Backoffice ──────────────────────────────────────────────────── */
 .nav-divider { color: var(--border); font-weight: 400; }
 
+.container-wide { max-width: 1240px; }
+
+/* 사이드바 레이아웃 */
+.bo-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+}
+.bo-sidebar {
+  flex: 0 0 196px;
+  position: sticky;
+  top: calc(var(--header-h) + 24px);
+}
+.bo-content {
+  flex: 1;
+  min-width: 0;
+}
+
 .bo-tabs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 24px;
+  flex-direction: column;
+  gap: 4px;
 }
 .bo-tab {
-  padding: 8px 14px;
-  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid transparent;
   border-radius: var(--radius);
-  background: #fff;
-  font-size: 13px;
+  background: transparent;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-sub);
   cursor: pointer;
+  text-align: left;
+  width: 100%;
 }
+.bo-tab-icon { font-size: 15px; line-height: 1; flex-shrink: 0; }
+.bo-tab:hover { background: var(--bg-soft); }
 .bo-tab.active { border-color: var(--blue-line); background: var(--blue-soft); color: var(--blue); }
 
+@media (max-width: 900px) {
+  .bo-layout { flex-direction: column; }
+  .bo-sidebar { position: static; width: 100%; flex-basis: auto; }
+  .bo-tabs { flex-direction: row; flex-wrap: wrap; }
+  .bo-tab { width: auto; }
+}
+
+/* 성능관리: 대시보드 그리드 */
+.perf-dashboard {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.perf-main, .perf-side { min-width: 0; }
+.perf-side .panel { position: sticky; top: calc(var(--header-h) + 24px); }
+
+@media (max-width: 900px) {
+  .perf-dashboard { grid-template-columns: 1fr; }
+  .perf-side .panel { position: static; }
+}
+
+/* 대시보드: KPI 증감 배지 + 차트 3열 그리드 */
+.trend-badge { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 10px; margin-left: 6px; }
+.trend-badge.up { background: #E6F4EA; color: #1E7E34; }
+.trend-badge.down { background: #FCE8E6; color: #C5221F; }
+.trend-badge.flat { background: var(--bg-soft); color: var(--text-sub); }
+#bo-dash-summary .metric .value { font-size: 26px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px; }
+
+.dashboard-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .dashboard-chart-grid { grid-template-columns: 1fr; }
+}
+
+.bo-inline-form {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px dashed var(--border);
+}
 .bo-toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .bo-toolbar input {
   flex: 1;
@@ -697,6 +824,19 @@ main { min-height: calc(100vh - var(--header-h)); }
 
 /* 이체모니터링: 5칸이라 기본 .metric보다 좁아서 값 폰트를 줄임 */
 #bo-transfer-summary .metric .value { font-size: 22px; }
+
+/* 이체 상태 뱃지: 완료=초록 / 대기=노랑 / 실패=빨강 */
+.tx-status {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.tx-completed { background: #E6F4EA; color: #1E7E34; }
+.tx-pending   { background: #FEF3C7; color: #92400E; }
+.tx-failed    { background: #FCE8E6; color: #C5221F; }
 
 /* ── 고객센터 ─────────────────────────────────────────────────────── */
 .support-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; }
@@ -829,6 +969,15 @@ main { min-height: calc(100vh - var(--header-h)); }
   color: #fff;
   font-size: 10px;
   font-weight: 700;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.bank-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 5px;
+  background: #fff;
   flex-shrink: 0;
   vertical-align: middle;
 }
@@ -1005,3 +1154,27 @@ main { min-height: calc(100vh - var(--header-h)); }
   .nav a { padding: 8px 10px; font-size: 14px; }
   .nav-auth-group { margin-left: 0; }
 }
+
+/* ── 맨 위로 이동 플로팅 버튼 ─────────────────────────────────────── */
+.scroll-top {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid var(--blue-line);
+  background: var(--blue);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+  z-index: 200;
+}
+.scroll-top:hover { background: var(--blue-dark); }
+.scroll-top.show { opacity: 1; visibility: visible; transform: translateY(0); }

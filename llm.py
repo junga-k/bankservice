@@ -27,6 +27,14 @@ PROVIDERS: dict[str, dict] = {
 
 DEFAULT_PROVIDER = "OpenAI"
 
+# 답변 스타일 → temperature 매핑. app.py(사이드바)와 backend/app.py(Backoffice 챗봇 설정 API)가
+# 공유하는 단일 소스.
+TEMP_OPTIONS: dict[str, float] = {
+    "🎯 정확  — 코드·번역·사실 질문": 0.2,
+    "⚖️ 균형  — 일반 대화 (기본)": 0.7,
+    "✨ 창의  — 글쓰기·아이디어": 0.95,
+}
+
 
 def models_for(provider: str) -> list[str]:
     return PROVIDERS[provider]["models"]

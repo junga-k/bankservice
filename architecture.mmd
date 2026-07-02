@@ -1,0 +1,72 @@
+flowchart TB
+    User(["👤 사용자"])
+
+    subgraph L1["① 채널"]
+        direction LR
+        Site["웹사이트"]
+        Chat["AI 챗봇"]
+    end
+
+    subgraph L2["② 은행 에이전트"]
+        Orch["🧠 오케스트레이터<br/>OpenAI 도구호출·라우팅"]
+        subgraph DOM[" "]
+            direction LR
+            A1["💰 계좌 비서"]
+            A2["💸 이체 도우미"]
+            A3["📈 상품 어드바이저"]
+            A4["💬 고객지원"]
+        end
+        Orch --> A1 & A2 & A3 & A4
+    end
+
+    subgraph L3["③ 백엔드 API :8000"]
+        API["REST API · 인증(JWT)"]
+    end
+
+    subgraph L4["④ 데이터 · 외부"]
+        direction LR
+        DB[("SQLite")]
+        Kafka{{"Kafka"}}
+        Worker["이체 워커"]
+        ES[("Elasticsearch")]
+        OpenAI["OpenAI"]
+        FSS["FSS"]
+    end
+
+    %% 진입 (한 방향)
+    User --> Site
+    User --> Chat
+    Site --> API
+    Chat --> Orch
+
+    %% 도메인 에이전트 → 백엔드 (한 점으로 모임)
+    A1 --> API
+    A2 --> API
+    A3 --> API
+    A4 --> API
+    Orch --> OpenAI
+
+    %% 백엔드 → 데이터·외부
+    API --> DB
+    API --> ES
+    API --> FSS
+    API --> Kafka
+    Kafka --> Worker
+    Worker --> DB
+
+    %% ── 스타일 ──
+    classDef ch fill:#E3F6EC,stroke:#0B8457,color:#0B2E20,font-weight:bold;
+    classDef orch fill:#EDE4FB,stroke:#6D45B8,color:#2A1A47,font-weight:bold;
+    classDef dom fill:#F7F1FF,stroke:#9B7FD4,color:#2A1A47;
+    classDef be fill:#E4EEFF,stroke:#2F5FD6,color:#122A57,font-weight:bold;
+    classDef data fill:#F3F5F7,stroke:#5F6368,color:#20242A;
+    classDef ext fill:#FEF0DC,stroke:#E8871E,color:#5A3410;
+
+    class Site,Chat ch;
+    class Orch orch;
+    class A1,A2,A3,A4 dom;
+    class API be;
+    class DB,Kafka,Worker,ES data;
+    class OpenAI,FSS ext;
+
+    style DOM fill:transparent,stroke:transparent;

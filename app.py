@@ -56,6 +56,9 @@ def _inject_bank_links(text: str) -> str:
     return result
 
 
+import requests
+
+import agent
 import cache
 import config
 import fss_fetcher
@@ -261,6 +264,16 @@ st.markdown("""<style>
 [data-testid="stPopoverBody"] [data-testid="stButton"] > button[kind="primary"]:hover {
     background: #D3E3FD !important; color: #1565C0 !important;
 }
+/* 파일 첨부: 안내 영역 아래에 버튼이 오도록 세로 배치 */
+[data-testid="stFileUploaderDropzone"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+}
+[data-testid="stFileUploaderDropzone"] button {
+    width: 100% !important;
+    margin-left: 0 !important;
+}
 </style>""", unsafe_allow_html=True)
 
 # ── Phoenix 초기화 ────────────────────────────────────────────────────
@@ -271,12 +284,6 @@ if "conversation" not in st.session_state:
     st.session_state.conversation = storage.new_conversation()
 
 # ── 세션: 설정 (config에서 한 번만 로드) ─────────────────────────────
-_TEMP_OPTIONS = {
-    "🎯 정확  — 코드·번역·사실 질문": 0.2,
-    "⚖️ 균형  — 일반 대화 (기본)": 0.7,
-    "✨ 창의  — 글쓰기·아이디어": 0.95,
-}
-
 if "sel_provider" not in st.session_state:
     _cfg = config.load()
     _providers = list(llm.PROVIDERS.keys())
@@ -284,8 +291,8 @@ if "sel_provider" not in st.session_state:
     st.session_state.sel_provider = _prov if _prov in _providers else _providers[0]
     st.session_state.sel_web_search = bool(_cfg.get("web_search", False))
     st.session_state.sel_cache_enabled = bool(_cfg.get("cache_enabled", False))
-    _ds = _cfg.get("default_style", list(_TEMP_OPTIONS.keys())[0])
-    st.session_state.sel_temperature = _TEMP_OPTIONS.get(_ds, 0.7)
+    _ds = _cfg.get("default_style", list(llm.TEMP_OPTIONS.keys())[0])
+    st.session_state.sel_temperature = llm.TEMP_OPTIONS.get(_ds, 0.7)
     st.session_state.sel_system_prompt = _cfg.get("system_prompt", "")
     if "selected_model" not in st.session_state:
         _models = llm.models_for(st.session_state.sel_provider)
@@ -295,6 +302,36 @@ if "sel_provider" not in st.session_state:
 
 # 사이트 백엔드(이용 통계) 주소
 _BACKEND_URL = "http://localhost:8000"
+
+# 은행 에이전트 인증 토큰: 사이트 iframe(?token=)이 있으면 그걸 단일 기준으로 매 실행 동기화
+# (로그인=토큰, 로그아웃=빈 토큰). token 파라미터가 아예 없을 때(:8501 직접 접속)만 사이드바 로그인 사용.
+_SITE_EMBEDDED = "token" in st.query_params
+if _SITE_EMBEDDED:
+    st.session_state.auth_token = (st.query_params.get("token") or "").strip() or None
+elif "auth_token" not in st.session_state:
+    st.session_state.auth_token = None
+
+
+def _fetch_user_name(token: str) -> str | None:
+    """토큰으로 로그인 사용자 이름 조회(홈 인사말용)."""
+    try:
+        r = requests.get(f"{_BACKEND_URL}/api/me",
+                         headers={"Authorization": f"Bearer {token}"}, timeout=3)
+        if r.ok:
+            return (r.json().get("name") or "").strip() or None
+    except Exception:
+        pass
+    return None
+
+
+# 토큰이 바뀔 때만 이름을 조회해 캐시(매 실행 호출 방지)
+_tok = st.session_state.auth_token
+if _tok and st.session_state.get("_auth_name_for") != _tok:
+    st.session_state.auth_name = _fetch_user_name(_tok)
+    st.session_state._auth_name_for = _tok
+elif not _tok:
+    st.session_state.auth_name = None
+    st.session_state._auth_name_for = None
 
 
 def _log_search_products(doc_names: list[str]) -> None:
@@ -418,14 +455,31 @@ with st.sidebar:
         help="텍스트·PDF는 내용을 추출해 LLM에 전달, 이미지는 멀티모달로 전달합니다.",
     )
 
-    st.divider()
-
-    st.page_link(
-        "pages/2_⚙️_설정.py",
-        label="설정",
-        icon=":material/settings:",
-        use_container_width=True,
-    )
+    # 은행 에이전트 로그인 — 사이트 iframe 임베드 시에는 사이트 로그인과 자동 연동되므로
+    # 사이드바에 노출하지 않고, :8501 직접 접속 시에만 수동 로그인 UI를 보여준다.
+    if not _SITE_EMBEDDED:
+        st.divider()
+        with st.expander("🤖 은행 에이전트", expanded=not st.session_state.get("auth_token")):
+            if st.session_state.get("auth_token"):
+                st.success("로그인됨 — 계좌·거래내역·이체·문의 도구 사용 가능")
+                if st.button("로그아웃", use_container_width=True, key="agent_logout"):
+                    st.session_state.auth_token = None
+                    st.rerun()
+            else:
+                st.caption("로그인하면 계좌·이체 등 은행업무를 대화로 처리합니다. (테스트 계정: demo / demo1234)")
+                _lu = st.text_input("아이디", key="agent_login_u")
+                _lp = st.text_input("비밀번호", type="password", key="agent_login_p")
+                if st.button("에이전트 로그인", type="primary", use_container_width=True, key="agent_login_btn"):
+                    try:
+                        _r = requests.post(f"{_BACKEND_URL}/api/login",
+                                           json={"username": _lu, "password": _lp}, timeout=5)
+                        if _r.ok:
+                            st.session_state.auth_token = _r.json()["token"]
+                            st.rerun()
+                        else:
+                            st.error(_r.json().get("detail", "로그인에 실패했습니다."))
+                    except Exception as _e:
+                        st.error(f"백엔드(:8000) 연결 실패: {_e}")
 
 
 # ── 런타임 설정 ──────────────────────────────────────────────────────
@@ -436,6 +490,10 @@ web_search_enabled = st.session_state.sel_web_search
 cache_enabled = st.session_state.sel_cache_enabled
 openai_key = get_api_key("OpenAI")
 rag_enabled = bool(openai_key)
+
+# 은행 에이전트: 로그인 토큰(iframe ?token= 또는 사이드바 로그인)이 있고 OpenAI면 활성화
+auth_token = st.session_state.get("auth_token")
+agent_enabled = bool(auth_token) and provider == "OpenAI" and bool(openai_key)
 
 # ── API 키 확인 ─────────────────────────────────────────────────────
 api_key = get_api_key(provider)
@@ -453,12 +511,16 @@ if not api_key:
 conv = st.session_state.conversation
 
 if not conv["messages"]:
+    import html as _html
+    _name = st.session_state.get("auth_name")
+    _greet = (f"{_html.escape(_name)}님 안녕하세요, 무엇을 도와드릴까요?"
+              if _name else "안녕하세요, 무엇을 도와드릴까요?")
     st.markdown("<div style='height:22vh'></div>", unsafe_allow_html=True)
-    st.markdown("""
+    st.markdown(f"""
 <div style='text-align:center; padding:1.5rem 2rem;'>
   <p style='font-size:2rem; font-weight:400; color:#3C4043;
             letter-spacing:-0.3px; line-height:1.35; margin:0;'>
-    안녕하세요, 무엇을 도와드릴까요?
+    {_greet}
   </p>
 </div>""", unsafe_allow_html=True)
     st.markdown("<div style='height:8vh'></div>", unsafe_allow_html=True)
@@ -491,6 +553,35 @@ for i, msg in enumerate(conv["messages"]):
                 if conv["messages"] and conv["messages"][-1]["role"] == "user":
                     st.session_state["_retry_prompt"] = conv["messages"][-1]["content"]
                 st.rerun()
+
+# ── 에이전트 이체 확인 카드 (사용자 확인 후에만 실제 이체 실행) ──────
+_pending = st.session_state.get("pending_transfer")
+if _pending:
+    with st.chat_message("assistant"):
+        st.markdown(
+            "**💸 이체 확인**\n\n"
+            f"- 받는 분: {_pending['holder_name']} ({_pending['bank_name']} {_pending['to_account']})\n"
+            f"- 출금 계좌: {_pending['from_account']}\n"
+            f"- 이체 금액: **{_pending['amount']:,}원**\n"
+            f"- 수수료: {_pending['fee']:,}원"
+        )
+        _c1, _c2 = st.columns(2)
+        if _c1.button("✅ 이체 실행", type="primary", key="tf_exec"):
+            _res = agent.execute_transfer(_pending, auth_token)
+            st.session_state.pop("pending_transfer", None)
+            if "error" in _res:
+                _msg = f"이체에 실패했습니다: {_res['error']}"
+            else:
+                _msg = (f"✅ 이체가 접수되었습니다. 거래번호 {_res.get('transfer_id')}, "
+                        f"수수료 {_res.get('fee', 0):,}원.")
+            conv["messages"].append({"role": "assistant", "content": _msg})
+            storage.save_conversation(conv)
+            st.rerun()
+        if _c2.button("취소", key="tf_cancel"):
+            st.session_state.pop("pending_transfer", None)
+            conv["messages"].append({"role": "assistant", "content": "이체를 취소했습니다."})
+            storage.save_conversation(conv)
+            st.rerun()
 
 # ── 액션 버튼 이벤트 핸들러 주입 (iframe → 부모 DOM) ────────────────
 _components.html("""<script>
@@ -573,6 +664,27 @@ prompt = _chat_input or _retry_prompt
 if prompt:
     if _chat_input:
         conv["messages"].append({"role": "user", "content": prompt})
+
+    # ── 은행업무 에이전트 경로 (로그인 + OpenAI) ──────────────────────
+    if agent_enabled:
+        if not _retry_prompt:
+            with st.chat_message("user"):
+                st.markdown(prompt)
+        with st.chat_message("assistant"):
+            with st.spinner("🤖 처리 중…"):
+                try:
+                    result = agent.run_agent(
+                        conv["messages"], openai_key=openai_key, model=model,
+                        token=auth_token, system_prompt=system_prompt.strip() or None,
+                    )
+                except Exception as e:
+                    result = {"kind": "message", "text": f"처리 중 오류가 발생했습니다: {e}"}
+            st.markdown(result["text"])
+        conv["messages"].append({"role": "assistant", "content": result["text"]})
+        if result["kind"] == "transfer_proposal":
+            st.session_state.pending_transfer = result["proposal"]
+        storage.save_conversation(conv)
+        st.rerun()
 
     llm_messages = [m.copy() for m in conv["messages"]]
 

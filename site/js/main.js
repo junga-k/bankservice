@@ -53,23 +53,31 @@ function refreshAuthUI() {
   document.getElementById("nav-backoffice-sep").style.display = isAdmin ? "" : "none";
   document.getElementById("nav-backoffice-link").style.display = isAdmin ? "" : "none";
   updateAuthSectionView();
+  syncChatAuth();   // 로그인/로그아웃을 챗봇 iframe에 반영(사이트 로그인과 연동)
 }
 
 function updateAuthSectionView() {
   const auth = getAuth();
   const logged = !!auth?.token;
-  document.getElementById("auth-forms").style.display = logged ? "none" : "";
+  const loginPanel = document.getElementById("login-panel");
+  const signupPanel = document.getElementById("signup-panel");
   document.getElementById("auth-welcome").style.display = logged ? "" : "none";
-  if (!logged) return;
-  document.getElementById("auth-welcome-title").textContent = `환영합니다, ${auth.name}님`;
+  if (logged) {
+    loginPanel.style.display = "none";
+    signupPanel.style.display = "none";
+    document.getElementById("auth-welcome-title").textContent = `환영합니다, ${auth.name}님`;
+    return;
+  }
+  // 비로그인: 둘 다 숨겨져 있으면 기본 로그인 화면 표시(로그아웃 직후 등)
+  if (loginPanel.style.display === "none" && signupPanel.style.display === "none") {
+    setAuthTab("login");
+  }
 }
 
+/* 로그인 화면 ↔ 회원가입 화면 전환 (탭 제거 후 독립 패널 토글) */
 function setAuthTab(tab) {
-  document.querySelectorAll(".auth-tab").forEach((b) =>
-    b.classList.toggle("active", b.dataset.authTab === tab)
-  );
-  document.getElementById("login-form").style.display = tab === "login" ? "" : "none";
-  document.getElementById("signup-form").style.display = tab === "signup" ? "" : "none";
+  document.getElementById("login-panel").style.display = tab === "login" ? "" : "none";
+  document.getElementById("signup-panel").style.display = tab === "signup" ? "" : "none";
 }
 
 /* ── 범용 모달 ───────────────────────────────────────────────────── */
@@ -112,7 +120,7 @@ function navigate(name) {
       navigate("home");
       return;
     }
-    ensureBoTabLoaded("members");
+    ensureBoTabLoaded("dashboard");
   }
   if (name === "support") {
     const active = document.querySelector(".support-tab.active");
@@ -185,43 +193,65 @@ if (bannerEl) {
 
 /* ── AI챗봇 iframe: 최초 1회만 생성 ─────────────────────────────── */
 let chatLoaded = false;
+
+/* 챗봇 iframe URL: 사이트 로그인 토큰을 항상 token 파라미터로 전달(로그아웃 시 빈 값).
+   → 챗봇(:8501)이 사이트 로그인 상태를 단일 기준으로 삼아 동기화한다.
+   (로컬 데모용. 프로덕션에서는 URL 대신 postMessage 등 안전한 방식 권장) */
+function chatSrc() {
+  const token = getAuth()?.token || "";
+  return `${CHAT_URL}&token=${encodeURIComponent(token)}`;
+}
+
 function ensureChatLoaded() {
   if (chatLoaded) return;
   const wrap = document.getElementById("chat-frame-wrap");
   const iframe = document.createElement("iframe");
-  iframe.src = CHAT_URL;
+  iframe.id = "chat-frame";
+  iframe.src = chatSrc();
   iframe.title = "AI 금융상담 챗봇";
   iframe.allow = "clipboard-write";
   wrap.appendChild(iframe);
   chatLoaded = true;
 }
 
+/* 로그인/로그아웃 시 챗봇 iframe을 현재 토큰으로 재로딩 → 로그인 상태 연동 */
+function syncChatAuth() {
+  const iframe = document.getElementById("chat-frame");
+  if (iframe) iframe.src = chatSrc();
+}
+
 /* ── 은행 로고 배지 ──────────────────────────────────────────────── */
 /* 실제 로고 이미지 대신 은행 브랜드 컬러 기반 이니셜 배지로 대체(상표권 부담 없이 구분 가능) */
+// logo: site/img/banks/ 에 해당 파일이 있으면 로고로 표시, 없으면 색상 뱃지로 자동 대체
 const BANK_BRAND = {
-  "신한은행":    { label: "신한", color: "#0046FF" },
-  "국민은행":    { label: "KB",  color: "#FFB300" },
-  "KB국민은행":  { label: "KB",  color: "#FFB300" },
-  "우리은행":    { label: "우리", color: "#0067AC" },
-  "하나은행":    { label: "하나", color: "#00857C" },
-  "농협은행":    { label: "NH",  color: "#00A651" },
-  "NH농협은행":  { label: "NH",  color: "#00A651" },
-  "IBK기업은행": { label: "IBK", color: "#0072BC" },
-  "카카오뱅크":  { label: "카카오", color: "#FFCD00" },
-  "토스뱅크":    { label: "토스", color: "#0064FF" },
-  "케이뱅크":    { label: "케이", color: "#FF5F3B" },
-  "SC제일은행":  { label: "SC",  color: "#12A0D7" },
-  "부산은행":    { label: "부산", color: "#004EA2" },
-  "대구은행":    { label: "대구", color: "#EE7D1F" },
-  "경남은행":    { label: "경남", color: "#009944" },
-  "광주은행":    { label: "광주", color: "#F58220" },
-  "전북은행":    { label: "전북", color: "#EE3524" },
-  "제주은행":    { label: "제주", color: "#00AEEF" },
+  "신한은행":    { label: "신한", color: "#0046FF", logo: "shinhan.png" },
+  "국민은행":    { label: "KB",  color: "#FFB300", logo: "kb.png" },
+  "KB국민은행":  { label: "KB",  color: "#FFB300", logo: "kb.png" },
+  "우리은행":    { label: "우리", color: "#0067AC", logo: "woori.png" },
+  "하나은행":    { label: "하나", color: "#00857C", logo: "hana.png" },
+  "농협은행":    { label: "NH",  color: "#00A651", logo: "nh.png" },
+  "NH농협은행":  { label: "NH",  color: "#00A651", logo: "nh.png" },
+  "IBK기업은행": { label: "IBK", color: "#0072BC", logo: "ibk.png" },
+  "카카오뱅크":  { label: "카카오", color: "#FFCD00", logo: "kakaobank.png" },
+  "토스뱅크":    { label: "토스", color: "#0064FF", logo: "tossbank.png" },
+  "케이뱅크":    { label: "케이", color: "#FF5F3B", logo: "kbank.png" },
+  "SC제일은행":  { label: "SC",  color: "#12A0D7", logo: "sc.png" },
+  "부산은행":    { label: "부산", color: "#004EA2", logo: "busan.png" },
+  "대구은행":    { label: "대구", color: "#EE7D1F", logo: "daegu.png" },
+  "경남은행":    { label: "경남", color: "#009944", logo: "gyeongnam.png" },
+  "광주은행":    { label: "광주", color: "#F58220", logo: "gwangju.png" },
+  "전북은행":    { label: "전북", color: "#EE3524", logo: "jeonbuk.png" },
+  "제주은행":    { label: "제주", color: "#00AEEF", logo: "jeju.png" },
 };
 const BANK_FALLBACK_COLORS = ["#5F6368", "#7B61FF", "#00838F", "#8D6E63", "#546E7A"];
 
 function bankBadge(name) {
   const brand = BANK_BRAND[name];
+  // 로고 파일이 지정된 은행: 로고 이미지 우선(없으면 onerror로 색상 뱃지 대체)
+  if (brand && brand.logo) {
+    return `<img class="bank-logo" src="img/banks/${brand.logo}" alt="${escapeHtml(name)}" ` +
+           `onerror="bankLogoFallback(this,'${escapeHtml(name)}')">`;
+  }
   if (brand) {
     return `<span class="bank-badge" style="background:${brand.color}">${escapeHtml(brand.label)}</span>`;
   }
@@ -230,6 +260,18 @@ function bankBadge(name) {
   const color = BANK_FALLBACK_COLORS[hash % BANK_FALLBACK_COLORS.length];
   const label = (name || "?").slice(0, 2);
   return `<span class="bank-badge" style="background:${color}">${escapeHtml(label)}</span>`;
+}
+
+// 로고 파일이 없거나 로드 실패 시 색상 뱃지로 대체
+function bankLogoFallback(img, name) {
+  const brand = BANK_BRAND[name] || {};
+  const color = brand.color || "#888";
+  const label = brand.label || (name || "?").slice(0, 2);
+  const span = document.createElement("span");
+  span.className = "bank-badge";
+  span.style.background = color;
+  span.textContent = label;
+  img.replaceWith(span);
 }
 
 /* ── 내 계좌 (계좌조회 + 이체) ──────────────────────────────────── */
@@ -649,11 +691,11 @@ function renderReceipt(tr) {
 
 /* ── 인기 통계 (상품안내 상단: 은행 순위 + 카테고리별 Top 5) ──────── */
 async function loadProductStats() {
-  loadBankRanking("stat-banks", 5);
-  loadTopProductsCarousel();
+  loadBankRanking("stat-banks", 5, false);   // 상품안내: 조회수 숨김
+  loadTopProductsCarousel("stat-products");
 }
 
-async function loadBankRanking(targetId = "stat-banks", limit = 10) {
+async function loadBankRanking(targetId = "stat-banks", limit = 10, showNum = true) {
   const box = document.getElementById(targetId);
   try {
     const res = await fetch(`/api/stats/banks?limit=${limit}`);
@@ -671,7 +713,8 @@ async function loadBankRanking(targetId = "stat-banks", limit = 10) {
           bankBadge(b.name) +
           `<span class="name">${escapeHtml(b.name)}</span>` +
           `<div class="bar-track"><div class="bar-fill" style="width:${(b.count / max) * 100}%"></div></div>` +
-          `<span class="num">${b.count}</span></div>`
+          (showNum ? `<span class="num">${b.count}</span>` : ``) +
+          `</div>`
       )
       .join("");
   } catch (err) {
@@ -710,8 +753,9 @@ async function loadTopProducts(targetId = "stat-products") {
   }
 }
 
-/* 상품안내 페이지 전용: 예금/적금/금리비교 3개 카테고리 Top5 캐러셀 */
-const STAT_PRODUCT_CATS = ["예금", "적금", "금리비교"];
+/* 상품안내 페이지 전용: 카테고리별 Top5 캐러셀(스와이프).
+   옆 은행순위(5줄)와 높이를 맞추기 위해 전체를 한 번에 나열하지 않고
+   한 카테고리씩 슬라이드로 보여준다. 내용은 이용통계와 동일하게 순위+상품명+조회수. */
 let statProductsIndex = 0;
 
 async function loadTopProductsCarousel(targetId = "stat-products") {
@@ -719,37 +763,43 @@ async function loadTopProductsCarousel(targetId = "stat-products") {
   try {
     const res = await fetch("/api/stats/top-products");
     const { categories } = await res.json();
-    const hasAny = STAT_PRODUCT_CATS.some((c) => (categories[c] || []).length > 0);
-    if (!hasAny) {
+    const names = Object.keys(categories).filter((c) => (categories[c] || []).length > 0);
+    if (!names.length) {
       box.innerHTML = statEmpty();
       return;
     }
-    const slides = STAT_PRODUCT_CATS.map((cat) => {
-      const items = categories[cat] || [];
-      const body = items.length
-        ? `<ol class="topcat-list">${items
-            .map(
-              (p, i) =>
-                `<li><span class="rank">${i + 1}</span>` +
-                `<span class="p-name">${escapeHtml(p.product)}</span></li>`
-            )
-            .join("")}</ol>`
-        : `<p class="stat-empty">아직 조회 데이터가 없습니다.</p>`;
-      return `<div class="stat-products-slide"><div class="topcat"><div class="topcat-title">${escapeHtml(cat)}</div>${body}</div></div>`;
-    }).join("");
-    const dots = STAT_PRODUCT_CATS.map(
-      (cat, i) =>
-        `<button class="stat-products-dot${i === 0 ? " active" : ""}" type="button" data-slide="${i}" aria-label="${escapeHtml(cat)}"></button>`
-    ).join("");
+    const slides = names
+      .map((cat) => {
+        const rows = categories[cat]
+          .map(
+            (p, i) =>
+              `<li><span class="rank">${i + 1}</span>` +
+              `<span class="p-name">${escapeHtml(p.product)}</span></li>`
+          )
+          .join("");
+        return `<div class="stat-products-slide"><div class="topcat"><div class="topcat-title">${escapeHtml(cat)}</div><ol class="topcat-list">${rows}</ol></div></div>`;
+      })
+      .join("");
+    const dots = names
+      .map(
+        (cat, i) =>
+          `<button class="stat-products-dot${i === 0 ? " active" : ""}" type="button" data-slide="${i}" aria-label="${escapeHtml(cat)}"></button>`
+      )
+      .join("");
+    // 슬라이드가 1개뿐이면 화살표·dot 숨김
+    const nav = names.length > 1
+      ? `<button class="stat-products-nav prev" type="button" aria-label="이전 카테고리">‹</button>` +
+        `<button class="stat-products-nav next" type="button" aria-label="다음 카테고리">›</button>`
+      : "";
     box.innerHTML =
       `<div class="stat-products-carousel">` +
-      `<button class="stat-products-nav prev" type="button" aria-label="이전 카테고리">‹</button>` +
       `<div class="stat-products-track" id="stat-products-track">${slides}</div>` +
-      `<button class="stat-products-nav next" type="button" aria-label="다음 카테고리">›</button>` +
+      nav +
       `</div>` +
-      `<div class="stat-products-dots">${dots}</div>`;
+      (names.length > 1 ? `<div class="stat-products-dots">${dots}</div>` : "");
     statProductsIndex = 0;
     goStatProductsSlide(0);
+    setupStatProductsSwipe();
   } catch (err) {
     box.innerHTML = statError();
     console.error("인기 상품 로드 실패:", err);
@@ -759,10 +809,31 @@ async function loadTopProductsCarousel(targetId = "stat-products") {
 function goStatProductsSlide(i) {
   const track = document.getElementById("stat-products-track");
   const dots = document.querySelectorAll(".stat-products-dot");
-  if (!track || !dots.length) return;
-  statProductsIndex = (i + dots.length) % dots.length;
+  if (!track) return;
+  const count = dots.length || 1;
+  statProductsIndex = (i + count) % count;
   track.style.transform = `translateX(-${statProductsIndex * 100}%)`;
   dots.forEach((d, idx) => d.classList.toggle("active", idx === statProductsIndex));
+}
+
+/* 터치/마우스 드래그 스와이프. box.innerHTML 재설정 시 요소가 교체되므로
+   리스너가 누적되지 않는다(옛 요소와 함께 GC). */
+function setupStatProductsSwipe() {
+  const carousel = document.querySelector(".stat-products-carousel");
+  if (!carousel) return;
+  let startX = null;
+  const begin = (x) => { startX = x; };
+  const end = (x) => {
+    if (startX === null) return;
+    const dx = x - startX;
+    startX = null;
+    if (Math.abs(dx) > 40) goStatProductsSlide(statProductsIndex + (dx < 0 ? 1 : -1));
+  };
+  carousel.addEventListener("touchstart", (e) => begin(e.touches[0].clientX), { passive: true });
+  carousel.addEventListener("touchend", (e) => end(e.changedTouches[0].clientX));
+  carousel.addEventListener("mousedown", (e) => begin(e.clientX));
+  carousel.addEventListener("mouseup", (e) => end(e.clientX));
+  carousel.addEventListener("mouseleave", () => { startX = null; });
 }
 
 document.addEventListener("click", (e) => {
@@ -777,6 +848,49 @@ function statEmpty() {
 }
 function statError() {
   return '<p class="stat-empty">통계를 불러오지 못했습니다 (백엔드 :8000 확인).</p>';
+}
+
+/* 순수 CSS 도넛 차트 (conic-gradient). data: [{label, value, color?}] */
+const DONUT_PALETTE = ["#0FA968", "#0B8457", "#2E86DE", "#8E7CC3", "#F2A93B", "#5F6368"];
+const DONUT_GAP_DEG = 2;
+
+function renderDonutChart(chartId, legendId, data, opts = {}) {
+  const box = document.getElementById(chartId);
+  if (!box) return;
+  const total = data.reduce((s, d) => s + (d.value || 0), 0);
+  if (!total) {
+    box.closest(".donut-chart-wrap").innerHTML = statEmpty();
+    return;
+  }
+
+  const palette = opts.palette || DONUT_PALETTE;
+  let cursor = 0;
+  const stops = [];
+  data.forEach((d, i) => {
+    const color = d.color || palette[i % palette.length];
+    const share = d.value / total;
+    const start = cursor * 360;
+    const end = (cursor + share) * 360;
+    const gapEnd = Math.max(start, end - DONUT_GAP_DEG);
+    stops.push(`${color} ${start}deg ${gapEnd}deg`, `#fff ${gapEnd}deg ${end}deg`);
+    cursor += share;
+  });
+  box.style.background = `conic-gradient(${stops.join(", ")})`;
+  const valueEl = box.querySelector(".donut-hole-value");
+  if (valueEl) valueEl.textContent = opts.centerValue ?? total;
+
+  const legendBox = document.getElementById(legendId);
+  if (legendBox) {
+    legendBox.innerHTML = data
+      .map((d, i) => {
+        const color = d.color || palette[i % palette.length];
+        const pct = Math.round((d.value / total) * 100);
+        return `<li><span class="dot" style="background:${color}"></span>` +
+          `<span class="lg-name">${escapeHtml(d.label)}</span>` +
+          `<span class="lg-pct">${pct}%</span></li>`;
+      })
+      .join("");
+  }
 }
 
 /* 추적: 서버로 이벤트 전송 (실패해도 무시). 전송 완료 후 resolve. */
@@ -936,9 +1050,163 @@ document.addEventListener("click", async (e) => {
 });
 
 /* ── 인증: 로그인 / 회원가입 / 로그아웃 ─────────────────────────────── */
+
+/* 회원가입 약관 (데모용 표준 문구) */
+const TERMS_TEXT = {
+  terms: {
+    title: "이용약관",
+    body:
+      "제1조(목적)\n본 약관은 매치뱅크(이하 '회사')가 제공하는 금융상품 정보 조회 및 AI 상담 서비스(이하 '서비스')의 이용 조건을 규정합니다.\n\n" +
+      "제2조(서비스의 내용)\n① 회사는 금융감독원 공시 데이터를 기반으로 예금·적금·대출 상품 정보를 제공합니다.\n② 제공되는 정보는 참고용이며, 실제 가입 조건은 각 금융기관에 확인해야 합니다.\n\n" +
+      "제3조(회원의 의무)\n회원은 본인의 계정 정보를 안전하게 관리하며, 타인에게 양도·대여할 수 없습니다.\n\n" +
+      "제4조(면책)\n본 서비스는 데모 목적으로 제공되며, 제공된 정보로 인한 투자·금융 결정의 책임은 회원 본인에게 있습니다.",
+  },
+  privacy: {
+    title: "개인정보 수집·이용 동의",
+    body:
+      "1. 수집 항목\n- 필수: 아이디, 비밀번호, 이름\n\n" +
+      "2. 수집·이용 목적\n- 회원 식별 및 로그인, 서비스 제공, 이용 내역 관리\n\n" +
+      "3. 보유 및 이용 기간\n- 회원 탈퇴 시까지 보관하며, 관련 법령에 따라 필요한 경우 해당 기간 동안 보관합니다.\n\n" +
+      "4. 동의 거부 권리\n- 필수 항목 수집에 동의하지 않을 수 있으나, 이 경우 회원가입이 제한됩니다.\n\n" +
+      "※ 본 서비스는 데모 목적이며 실제 개인정보를 수집·저장하지 않습니다.",
+  },
+  openbanking: {
+    title: "오픈뱅킹 이용 동의",
+    body:
+      "1. 목적\n등록하신 계좌의 잔액 조회 및 출금이체(이체) 서비스를 제공하기 위해 오픈뱅킹 서비스를 이용합니다.\n\n" +
+      "2. 제공 정보\n- 계좌번호, 예금주명, 잔액, 거래내역\n\n" +
+      "3. 출금이체 동의\n회원이 요청한 이체 건에 한하여 등록 계좌에서 출금이 이루어집니다.\n\n" +
+      "4. 철회\n오픈뱅킹 이용 동의는 계좌 해지 또는 회원 탈퇴 시 철회됩니다.\n\n" +
+      "※ 본 서비스는 데모 목적이며 실제 출금·조회가 발생하지 않습니다.",
+  },
+};
+
+function showTermsModal(kind) {
+  const t = TERMS_TEXT[kind];
+  if (!t) return;
+  showModal(
+    `<h3 style="margin:0 0 12px">${escapeHtml(t.title)}</h3>` +
+    `<div class="terms-body">${escapeHtml(t.body)}</div>` +
+    `<button class="btn btn-primary" id="modal-confirm-ok" style="margin-top:16px;width:100%">확인</button>`
+  );
+}
+
+/* 회원가입 인증 상태(데모 시뮬레이션) */
+let signupPhoneVerified = false;
+let signupPhoneExpected = "";     // 고정 코드
+let signupAccountVerified = false;
+let signupAccountExpected = "";   // 1원 인증 난수 코드
+
+function fillSignupBanks() {
+  const sel = document.getElementById("signup-bank");
+  if (!sel || sel.options.length) return;
+  sel.innerHTML =
+    `<option value="" disabled selected>은행을 선택하세요</option>` +
+    TF_BANKS.map((b) => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join("");
+}
+
+function updateSignupButtonState() {
+  const btn = document.getElementById("signup-submit");
+  if (!btn) return;
+  const terms = document.getElementById("signup-agree-terms").checked;
+  const privacy = document.getElementById("signup-agree-privacy").checked;
+  const openbanking = document.getElementById("signup-agree-openbanking").checked;
+  btn.disabled = !(terms && privacy && openbanking && signupPhoneVerified && signupAccountVerified);
+}
+
+/* 폼 리셋 시 인증 상태·안내 초기화 */
+function resetSignupVerification() {
+  signupPhoneVerified = false; signupPhoneExpected = "";
+  signupAccountVerified = false; signupAccountExpected = "";
+  const hide = (id) => { const el = document.getElementById(id); if (el) el.style.display = "none"; };
+  const clear = (id) => { const el = document.getElementById(id); if (el) el.textContent = ""; };
+  hide("signup-phone-code-row"); hide("signup-account-code-row");
+  clear("signup-phone-hint"); clear("signup-account-hint");
+}
+
 document.addEventListener("click", (e) => {
-  const tab = e.target.closest(".auth-tab");
-  if (tab) setAuthTab(tab.dataset.authTab);
+  const view = e.target.closest(".auth-agree-view");
+  if (view) { e.preventDefault(); showTermsModal(view.dataset.terms); return; }
+
+  // 휴대폰 인증번호 받기 (고정 코드 시뮬레이션)
+  if (e.target.id === "signup-phone-send") {
+    const phone = document.getElementById("signup-phone").value.replace(/[^0-9]/g, "");
+    const hint = document.getElementById("signup-phone-hint");
+    if (phone.length < 10) { hint.className = "tf-status err"; hint.textContent = "전화번호를 정확히 입력하세요."; return; }
+    signupPhoneExpected = "123456";
+    document.getElementById("signup-phone-code-row").style.display = "";
+    hint.className = "tf-hint";
+    hint.textContent = "인증번호 123456 이(가) 발송되었습니다. (데모)";
+    return;
+  }
+  if (e.target.id === "signup-phone-verify") {
+    const code = document.getElementById("signup-phone-code").value.trim();
+    const hint = document.getElementById("signup-phone-hint");
+    if (signupPhoneExpected && code === signupPhoneExpected) {
+      signupPhoneVerified = true;
+      hint.className = "tf-hint"; hint.innerHTML = `<span class="verify-badge ok">✓ 휴대폰 인증 완료</span>`;
+    } else {
+      signupPhoneVerified = false;
+      hint.className = "tf-status err"; hint.textContent = "인증번호가 일치하지 않습니다.";
+    }
+    updateSignupButtonState();
+    return;
+  }
+
+  // 계좌 1원 인증 요청 (난수 코드 시뮬레이션)
+  if (e.target.id === "signup-account-verify") {
+    const bank = document.getElementById("signup-bank").value;
+    const acctNo = document.getElementById("signup-account-no").value.trim();
+    const holder = document.getElementById("signup-account-holder").value.trim();
+    const name = document.getElementById("signup-name").value.trim();
+    const hint = document.getElementById("signup-account-hint");
+    if (!bank || !acctNo) { hint.className = "tf-status err"; hint.textContent = "은행과 계좌번호를 입력하세요."; return; }
+    if (holder && name && holder !== name) {
+      hint.className = "tf-status err"; hint.textContent = "예금주명이 가입자 이름과 다릅니다."; return;
+    }
+    signupAccountExpected = String(Math.floor(100 + Math.random() * 900)); // 3자리
+    document.getElementById("signup-account-code-row").style.display = "";
+    hint.className = "tf-hint";
+    hint.textContent = `입금자명 '매치[${signupAccountExpected}]'으로 1원이 입금되었습니다. 괄호 안 3자리 코드를 입력하세요. (데모)`;
+    return;
+  }
+  if (e.target.id === "signup-account-code-confirm") {
+    const code = document.getElementById("signup-account-code").value.trim();
+    const hint = document.getElementById("signup-account-hint");
+    if (signupAccountExpected && code === signupAccountExpected) {
+      signupAccountVerified = true;
+      hint.className = "tf-hint"; hint.innerHTML = `<span class="verify-badge ok">✓ 계좌 인증 완료</span>`;
+    } else {
+      signupAccountVerified = false;
+      hint.className = "tf-status err"; hint.textContent = "인증코드가 일치하지 않습니다.";
+    }
+    updateSignupButtonState();
+    return;
+  }
+});
+
+document.addEventListener("change", (e) => {
+  const id = e.target.id;
+  if (id === "signup-agree-terms" || id === "signup-agree-privacy" || id === "signup-agree-openbanking") {
+    updateSignupButtonState();
+  }
+});
+
+/* 전화번호/계좌 정보가 바뀌면 재인증을 요구(인증 상태 리셋) */
+document.addEventListener("input", (e) => {
+  const id = e.target.id;
+  if (id === "signup-phone") {
+    signupPhoneVerified = false;
+    document.getElementById("signup-phone-code-row").style.display = "none";
+    document.getElementById("signup-phone-hint").textContent = "";
+    updateSignupButtonState();
+  }
+  if (id === "signup-account-no" || id === "signup-account-holder") {
+    signupAccountVerified = false;
+    document.getElementById("signup-account-code-row").style.display = "none";
+    document.getElementById("signup-account-hint").textContent = "";
+    updateSignupButtonState();
+  }
 });
 
 document.addEventListener("submit", (e) => {
@@ -986,12 +1254,35 @@ async function handleSignup() {
     statusEl.textContent = "비밀번호가 일치하지 않습니다.";
     return;
   }
+  if (!document.getElementById("signup-agree-terms").checked ||
+      !document.getElementById("signup-agree-privacy").checked ||
+      !document.getElementById("signup-agree-openbanking").checked) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = "필수 약관에 동의해 주세요.";
+    return;
+  }
+  if (!signupPhoneVerified || !signupAccountVerified) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = "휴대폰·계좌 인증을 완료해 주세요.";
+    return;
+  }
+  const payload = {
+    username, password, name,
+    phone: document.getElementById("signup-phone").value.replace(/[^0-9]/g, ""),
+    email: document.getElementById("signup-email").value.trim(),
+    bank_name: document.getElementById("signup-bank").value,
+    account_no: document.getElementById("signup-account-no").value.trim(),
+    account_holder: document.getElementById("signup-account-holder").value.trim(),
+    nickname: document.getElementById("signup-account-nickname").value.trim(),
+    is_primary: document.getElementById("signup-account-primary").checked,
+    agree_openbanking: document.getElementById("signup-agree-openbanking").checked,
+  };
   statusEl.textContent = "가입 처리 중…";
   try {
     const res = await fetch("/api/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password, name }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const { detail } = await res.json().catch(() => ({}));
@@ -1001,6 +1292,8 @@ async function handleSignup() {
     setAuth(data);
     statusEl.textContent = "";
     document.getElementById("signup-form").reset();
+    resetSignupVerification();
+    updateSignupButtonState();
     refreshAuthUI();
     navigate("home");
   } catch (err) {
@@ -1018,7 +1311,7 @@ document.addEventListener("click", (e) => {
 });
 
 /* ── Backoffice (관리자 전용) ───────────────────────────────────────── */
-const BO_TABS = ["members", "transfers", "usage", "perf", "products", "faq", "settings"];
+const BO_TABS = ["dashboard", "members", "transfers", "usage", "perf", "products", "faq", "settings"];
 const boLoaded = {};   // 탭별 최초 로드 여부(지연 로드)
 let boUserOffset = 0;
 let boUserQuery = "";
@@ -1027,7 +1320,7 @@ let boTransferStatus = "";
 const BO_PAGE_SIZE = 20;
 
 function boGoTab(name) {
-  if (!BO_TABS.includes(name)) name = "members";
+  if (!BO_TABS.includes(name)) name = "dashboard";
   document.querySelectorAll(".bo-tab").forEach((b) =>
     b.classList.toggle("active", b.dataset.boTab === name)
   );
@@ -1040,6 +1333,7 @@ function boGoTab(name) {
 function ensureBoTabLoaded(name) {
   if (boLoaded[name]) return;
   boLoaded[name] = true;
+  if (name === "dashboard") loadBoDashboard();
   if (name === "members") loadBoUsers();
   if (name === "transfers") loadBoTransfers();
   if (name === "usage") {
@@ -1047,13 +1341,149 @@ function ensureBoTabLoaded(name) {
     loadBankRanking("bo-stat-banks");
     loadTopProducts("bo-stat-products");
   }
-  if (name === "perf") { loadBoHealth(); loadBoBatchPerf(); }
+  if (name === "perf") { loadBoHealth(); loadBoBatchPerf(); loadBoChatbotConfig(); }
+  if (name === "products") {
+    loadBankRanking("bo-product-stat-banks");
+    loadTopProducts("bo-product-stat-products");
+    loadBoDocuments();
+  }
+  if (name === "faq") { loadBoNotices(); loadBoFaqs(); }
+  if (name === "settings") { loadBoSystemOverview(); loadBoInfraConfig(); }
 }
 
 document.addEventListener("click", (e) => {
   const tab = e.target.closest(".bo-tab");
   if (tab) boGoTab(tab.dataset.boTab);
 });
+
+/* 대시보드: KPI 요약 + 이용 추이 + 은행별 비중/이체 상태 도넛 */
+async function loadBoDashboard() {
+  try {
+    const [usersRes, transfersRes, usageRes, healthRes] = await Promise.all([
+      apiFetch("/api/admin/users?limit=1"),
+      apiFetch("/api/admin/transfers?limit=1"),
+      apiFetch("/api/admin/usage-stats"),
+      apiFetch("/api/admin/health"),
+    ]);
+    const users = await usersRes.json();
+    const transfers = await transfersRes.json();
+    const usage = await usageRes.json();
+    const health = await healthRes.json();
+
+    renderBoDashboardSummary(users, transfers, usage, health);
+    renderBoUsageDaily(usage.daily, "bo-dash-usage-daily");
+    renderBoDashboardStatusDonut(transfers.summary);
+  } catch (err) {
+    document.getElementById("bo-dash-summary").innerHTML = statError();
+    console.error("대시보드 로드 실패:", err);
+  }
+  loadBoDashboardBankDonut();
+  loadBoDashboardInfra();
+}
+
+const INFRA_STATUS_LABEL = { ok: "정상", warn: "주의", down: "연결안됨" };
+
+/* 대시보드: 인프라 연동 현황(Kafka/ES/Phoenix) + LLM·RAG 24h 사용 지표 */
+async function loadBoDashboardInfra() {
+  const statusBox = document.getElementById("bo-dash-infra-status");
+  const metricBox = document.getElementById("bo-dash-infra-metrics");
+  const cfgBox = document.getElementById("bo-dash-infra-config");
+  statusBox.textContent = "불러오는 중…";
+  try {
+    const res = await apiFetch("/api/admin/infra-metrics");
+    if (!res.ok) throw new Error("인프라 지표 조회 실패");
+    const data = await res.json();
+
+    const cards = [
+      { name: "Kafka", ...data.kafka },
+      { name: "Elasticsearch", ...data.elasticsearch },
+      { name: "Phoenix (LLM 추적)", ...data.phoenix },
+    ];
+    statusBox.innerHTML = cards
+      .map(
+        (c) =>
+          `<div class="status-card"><div class="status-card-head"><b>${escapeHtml(c.name)}</b>` +
+          `<span class="status-badge ${c.status}">${INFRA_STATUS_LABEL[c.status] || c.status}</span></div>` +
+          `<p>${escapeHtml(c.detail)}</p></div>`
+      )
+      .join("");
+
+    const p = data.phoenix;
+    metricBox.innerHTML = `
+      <div class="metric"><div class="value">${p.llm_avg_latency_ms}ms</div><div class="label">LLM 평균 응답 지연</div></div>
+      <div class="metric"><div class="value">${p.llm_request_count}</div><div class="label">LLM 요청 수</div></div>
+      <div class="metric"><div class="value">${p.rag_search_count}</div><div class="label">RAG 검색 횟수</div></div>
+      <div class="metric"><div class="value">${p.cache_hit_rate}%</div><div class="label">캐시 히트율</div></div>`;
+
+    const lc = data.llm_config, rc = data.rag_config;
+    cfgBox.textContent =
+      `현재 설정: ${lc.provider || "-"} · ${lc.model || "-"} · ` +
+      `RAG top_k=${rc.top_k} · 캐시 ${rc.cache_enabled ? "사용중" : "미사용"}`;
+  } catch (err) {
+    statusBox.innerHTML = statError();
+    console.error("인프라 지표 로드 실패:", err);
+  }
+}
+
+function renderBoDashboardSummary(users, transfers, usage, health) {
+  const daily = usage.daily || [];
+  // daily는 이벤트가 있었던 날짜만 포함(공백 스킵)되므로, 엄밀한 캘린더상 "어제"가 아니라
+  // "직전 데이터 존재일" 대비 증감이다. 데모 데이터셋 특성상 이 정도 근사로 충분하다.
+  const today = daily.length ? daily[daily.length - 1].count : 0;
+  const prev = daily.length > 1 ? daily[daily.length - 2].count : 0;
+  const trend = usageTrendBadge(today, prev);
+
+  const checks = health.checks || [];
+  const okCount = checks.filter((c) => c.status === "ok").length;
+  const healthCls = okCount === checks.length && checks.length > 0 ? "ok" : okCount === 0 ? "down" : "warn";
+
+  document.getElementById("bo-dash-summary").innerHTML = `
+    <div class="metric"><div class="value">${users.total}</div><div class="label">총 회원수</div></div>
+    <div class="metric"><div class="value">${won(users.total_balance)}</div><div class="label">총 예치금</div></div>
+    <div class="metric"><div class="value">${transfers.summary.total}</div><div class="label">총 이체 건수</div></div>
+    <div class="metric"><div class="value">${won(transfers.summary.completed_amount || 0)}</div><div class="label">이체 완료금액</div></div>
+    <div class="metric"><div class="value">${today}${trend}</div><div class="label">오늘 이용 이벤트</div></div>
+    <div class="metric"><div class="value"><span class="status-badge ${healthCls}">${okCount}/${checks.length} 정상</span></div><div class="label">시스템 상태</div></div>`;
+}
+
+function usageTrendBadge(today, prev) {
+  if (prev === 0) {
+    return today > 0
+      ? `<span class="trend-badge up">▲ 신규</span>`
+      : `<span class="trend-badge flat">− 0%</span>`;
+  }
+  const pct = Math.round(((today - prev) / prev) * 100);
+  if (pct > 0) return `<span class="trend-badge up">▲ ${pct}%</span>`;
+  if (pct < 0) return `<span class="trend-badge down">▼ ${Math.abs(pct)}%</span>`;
+  return `<span class="trend-badge flat">− 0%</span>`;
+}
+
+function renderBoDashboardStatusDonut(summary) {
+  const data = [
+    { label: "완료", value: summary.completed, color: "#0FA968" },
+    { label: "대기", value: summary.pending, color: "#F2A93B" },
+    { label: "실패", value: summary.failed, color: "#C5221F" },
+  ];
+  renderDonutChart("bo-dash-donut-transfers", "bo-dash-donut-transfers-legend", data, { centerValue: summary.total });
+}
+
+async function loadBoDashboardBankDonut() {
+  try {
+    const res = await fetch("/api/stats/banks?limit=20");
+    const { banks } = await res.json();
+    if (!banks.length) {
+      document.getElementById("bo-dash-donut-banks").closest(".donut-chart-wrap").innerHTML = statEmpty();
+      return;
+    }
+    const top = banks.slice(0, 5);
+    const restTotal = banks.slice(5).reduce((s, b) => s + b.count, 0);
+    const data = top.map((b) => ({ label: b.name, value: b.count }));
+    if (restTotal > 0) data.push({ label: "기타", value: restTotal, color: "#5F6368" });
+    renderDonutChart("bo-dash-donut-banks", "bo-dash-donut-banks-legend", data);
+  } catch (err) {
+    console.error("은행 비중 로드 실패:", err);
+  }
+}
 
 /* 테스트 계정(데모 계정) 정보 표시 */
 document.addEventListener("click", async (e) => {
@@ -1153,9 +1583,11 @@ function renderBoTransferRows(transfers, reset) {
   const rows = transfers
     .map((t) => {
       const d = new Date(t.created_at * 1000).toLocaleString("ko-KR");
+      const label = BO_STATUS_LABEL[t.status] || escapeHtml(t.status);
+      const badge = `<span class="tx-status tx-${escapeHtml(t.status)}">${label}</span>`;
       return `<tr><td>${t.id}</td><td>${escapeHtml(t.from_account)}</td>` +
         `<td>${escapeHtml(t.to_account)}</td><td>${won(t.amount)}</td><td>${won(t.fee)}</td>` +
-        `<td>${BO_STATUS_LABEL[t.status] || escapeHtml(t.status)}</td><td>${d}</td></tr>`;
+        `<td>${badge}</td><td>${d}</td></tr>`;
     })
     .join("");
   const tbody = document.getElementById("bo-transfer-rows");
@@ -1192,8 +1624,8 @@ function renderBoUsageSummary(s) {
     <div class="metric"><div class="value">${s.search}</div><div class="label">검색</div></div>`;
 }
 
-function renderBoUsageDaily(daily) {
-  const box = document.getElementById("bo-usage-daily");
+function renderBoUsageDaily(daily, targetId = "bo-usage-daily") {
+  const box = document.getElementById(targetId);
   if (!daily.length) { box.innerHTML = statEmpty(); return; }
   const max = Math.max(1, ...daily.map((d) => d.count));
   box.innerHTML = daily
@@ -1250,6 +1682,349 @@ async function loadBoBatchPerf() {
   } catch (err) {
     box.innerHTML = statError();
     console.error("배치 테스트 성능 로드 실패:", err);
+  }
+}
+
+/* AI챗봇 설정 (제공자/모델/답변스타일/시스템프롬프트/웹검색) — Backoffice 성능관리 */
+let boChatbotProviders = {};
+
+async function loadBoChatbotConfig() {
+  const statusEl = document.getElementById("bo-cc-status");
+  try {
+    const res = await apiFetch("/api/admin/chatbot-config");
+    if (!res.ok) throw new Error("챗봇 설정을 불러오지 못했습니다.");
+    const { config: cfg, providers, styles } = await res.json();
+    boChatbotProviders = providers;
+
+    const providerSel = document.getElementById("bo-cc-provider");
+    providerSel.innerHTML = Object.keys(providers)
+      .map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
+      .join("");
+    providerSel.value = cfg.provider;
+    fillBoChatbotModels(cfg.provider, cfg.default_model);
+
+    const styleSel = document.getElementById("bo-cc-style");
+    styleSel.innerHTML = styles
+      .map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`)
+      .join("");
+    styleSel.value = cfg.default_style;
+
+    document.getElementById("bo-cc-prompt").value = cfg.system_prompt || "";
+    document.getElementById("bo-cc-websearch").checked = !!cfg.web_search;
+  } catch (err) {
+    if (statusEl) { statusEl.className = "tf-status err"; statusEl.textContent = err.message; }
+    console.error("챗봇 설정 로드 실패:", err);
+  }
+}
+
+function fillBoChatbotModels(provider, selected) {
+  const modelSel = document.getElementById("bo-cc-model");
+  const models = (boChatbotProviders[provider] && boChatbotProviders[provider].models) || [];
+  modelSel.innerHTML = models
+    .map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`)
+    .join("");
+  if (models.includes(selected)) modelSel.value = selected;
+}
+
+document.addEventListener("change", (e) => {
+  if (e.target.id !== "bo-cc-provider") return;
+  fillBoChatbotModels(e.target.value, "");
+});
+
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "bo-chatbot-config-form") return;
+  e.preventDefault();
+  const statusEl = document.getElementById("bo-cc-status");
+  statusEl.className = "tf-status";
+  statusEl.textContent = "저장 중…";
+  try {
+    const res = await apiFetch("/api/admin/chatbot-config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: document.getElementById("bo-cc-provider").value,
+        default_model: document.getElementById("bo-cc-model").value,
+        default_style: document.getElementById("bo-cc-style").value,
+        system_prompt: document.getElementById("bo-cc-prompt").value,
+        web_search: document.getElementById("bo-cc-websearch").checked,
+      }),
+    });
+    if (!res.ok) {
+      const { detail } = await res.json().catch(() => ({}));
+      throw new Error(detail || "저장에 실패했습니다.");
+    }
+    statusEl.className = "tf-status ok";
+    statusEl.textContent = "저장되었습니다.";
+  } catch (err) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = err.message;
+  }
+});
+
+/* ── Backoffice: 공지사항 관리 ───────────────────────────────────── */
+let boNoticeOffset = 0, boNoticeQuery = "";
+
+async function loadBoNotices(reset = true) {
+  if (reset) boNoticeOffset = 0;
+  try {
+    const res = await apiFetch(
+      `/api/notices?offset=${boNoticeOffset}&limit=${BO_PAGE_SIZE}&q=${encodeURIComponent(boNoticeQuery)}`
+    );
+    if (!res.ok) throw new Error("공지사항 목록 조회 실패");
+    const data = await res.json();
+    renderBoNoticeRows(data.notices, reset);
+    document.getElementById("bo-notice-more").style.display =
+      boNoticeOffset + data.notices.length < data.total ? "" : "none";
+    boNoticeOffset += data.notices.length;
+  } catch (err) {
+    console.error("공지사항 목록 로드 실패:", err);
+  }
+}
+
+function renderBoNoticeRows(notices, reset) {
+  const rows = notices
+    .map((n) => {
+      const d = new Date(n.created_at * 1000).toLocaleDateString("ko-KR");
+      return `<tr><td>${escapeHtml(n.title)}</td><td>${d}</td>` +
+        `<td><button class="btn btn-ghost bo-del-btn" type="button" data-kind="notice" data-id="${n.id}">삭제</button></td></tr>`;
+    })
+    .join("");
+  const tbody = document.getElementById("bo-notice-rows");
+  tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#bo-notice-search-btn")) {
+    boNoticeQuery = document.getElementById("bo-notice-search").value.trim();
+    loadBoNotices(true);
+  }
+  if (e.target.closest("#bo-notice-more")) loadBoNotices(false);
+});
+
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "bo-notice-form") return;
+  e.preventDefault();
+  const statusEl = document.getElementById("bo-notice-form-status");
+  statusEl.className = "tf-status";
+  statusEl.textContent = "등록 중…";
+  try {
+    const res = await apiFetch("/api/admin/notices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: document.getElementById("bo-notice-title").value.trim(),
+        content: document.getElementById("bo-notice-content").value.trim(),
+      }),
+    });
+    if (!res.ok) throw new Error("등록에 실패했습니다.");
+    statusEl.textContent = "";
+    e.target.reset();
+    loadBoNotices(true);
+  } catch (err) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = err.message;
+  }
+});
+
+/* ── Backoffice: FAQ 관리 ───────────────────────────────────────── */
+let boFaqOffset = 0, boFaqQuery = "";
+
+async function loadBoFaqs(reset = true) {
+  if (reset) boFaqOffset = 0;
+  try {
+    const res = await apiFetch(
+      `/api/faqs?offset=${boFaqOffset}&limit=${BO_PAGE_SIZE}&q=${encodeURIComponent(boFaqQuery)}`
+    );
+    if (!res.ok) throw new Error("FAQ 목록 조회 실패");
+    const data = await res.json();
+    renderBoFaqRows(data.faqs, reset);
+    document.getElementById("bo-faq-more").style.display =
+      boFaqOffset + data.faqs.length < data.total ? "" : "none";
+    boFaqOffset += data.faqs.length;
+  } catch (err) {
+    console.error("FAQ 목록 로드 실패:", err);
+  }
+}
+
+function renderBoFaqRows(faqs, reset) {
+  const rows = faqs
+    .map((f) => {
+      const d = new Date(f.created_at * 1000).toLocaleDateString("ko-KR");
+      return `<tr><td>${escapeHtml(f.question)}</td><td>${d}</td>` +
+        `<td><button class="btn btn-ghost bo-del-btn" type="button" data-kind="faq" data-id="${f.id}">삭제</button></td></tr>`;
+    })
+    .join("");
+  const tbody = document.getElementById("bo-faq-rows");
+  tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#bo-faq-search-btn")) {
+    boFaqQuery = document.getElementById("bo-faq-search").value.trim();
+    loadBoFaqs(true);
+  }
+  if (e.target.closest("#bo-faq-more")) loadBoFaqs(false);
+});
+
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "bo-faq-form") return;
+  e.preventDefault();
+  const statusEl = document.getElementById("bo-faq-form-status");
+  statusEl.className = "tf-status";
+  statusEl.textContent = "등록 중…";
+  try {
+    const res = await apiFetch("/api/admin/faqs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: document.getElementById("bo-faq-question").value.trim(),
+        answer: document.getElementById("bo-faq-answer").value.trim(),
+      }),
+    });
+    if (!res.ok) throw new Error("등록에 실패했습니다.");
+    statusEl.textContent = "";
+    e.target.reset();
+    loadBoFaqs(true);
+  } catch (err) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = err.message;
+  }
+});
+
+/* ── Backoffice: 서식·약관·설명서 관리 ─────────────────────────────── */
+let boDocOffset = 0, boDocQuery = "";
+
+async function loadBoDocuments(reset = true) {
+  if (reset) boDocOffset = 0;
+  try {
+    const res = await apiFetch(
+      `/api/documents?offset=${boDocOffset}&limit=${BO_PAGE_SIZE}&q=${encodeURIComponent(boDocQuery)}`
+    );
+    if (!res.ok) throw new Error("서식자료 목록 조회 실패");
+    const data = await res.json();
+    renderBoDocRows(data.documents, reset);
+    document.getElementById("bo-doc-more").style.display =
+      boDocOffset + data.documents.length < data.total ? "" : "none";
+    boDocOffset += data.documents.length;
+  } catch (err) {
+    console.error("서식자료 목록 로드 실패:", err);
+  }
+}
+
+function renderBoDocRows(docs, reset) {
+  const rows = docs
+    .map((doc) => {
+      const d = new Date(doc.created_at * 1000).toLocaleDateString("ko-KR");
+      return `<tr><td>${escapeHtml(doc.title)}</td><td>${escapeHtml(doc.category)}</td><td>${d}</td>` +
+        `<td><button class="btn btn-ghost bo-del-btn" type="button" data-kind="document" data-id="${doc.id}">삭제</button></td></tr>`;
+    })
+    .join("");
+  const tbody = document.getElementById("bo-doc-rows");
+  tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#bo-doc-search-btn")) {
+    boDocQuery = document.getElementById("bo-doc-search").value.trim();
+    loadBoDocuments(true);
+  }
+  if (e.target.closest("#bo-doc-more")) loadBoDocuments(false);
+});
+
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "bo-document-form") return;
+  e.preventDefault();
+  const statusEl = document.getElementById("bo-doc-form-status");
+  statusEl.className = "tf-status";
+  statusEl.textContent = "등록 중…";
+  try {
+    const res = await apiFetch("/api/admin/documents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: document.getElementById("bo-doc-title").value.trim(),
+        category: document.getElementById("bo-doc-category").value,
+        description: document.getElementById("bo-doc-desc").value.trim(),
+      }),
+    });
+    if (!res.ok) throw new Error("등록에 실패했습니다.");
+    statusEl.textContent = "";
+    e.target.reset();
+    loadBoDocuments(true);
+  } catch (err) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = err.message;
+  }
+});
+
+/* 공지사항/FAQ/서식자료 공용 삭제 버튼 */
+const BO_DELETE_ENDPOINTS = {
+  notice: { url: (id) => `/api/admin/notices/${id}`, reload: () => loadBoNotices(true), label: "공지사항" },
+  faq: { url: (id) => `/api/admin/faqs/${id}`, reload: () => loadBoFaqs(true), label: "FAQ" },
+  document: { url: (id) => `/api/admin/documents/${id}`, reload: () => loadBoDocuments(true), label: "서식자료" },
+};
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".bo-del-btn");
+  if (!btn) return;
+  const entry = BO_DELETE_ENDPOINTS[btn.dataset.kind];
+  if (!entry) return;
+  if (!confirm(`이 ${entry.label}을(를) 삭제할까요?`)) return;
+  try {
+    const res = await apiFetch(entry.url(btn.dataset.id), { method: "DELETE" });
+    if (!res.ok) throw new Error("삭제에 실패했습니다.");
+    entry.reload();
+  } catch (err) {
+    console.error("삭제 실패:", err);
+    alert(err.message);
+  }
+});
+
+/* ── Backoffice: 시스템설정 (시스템 현황 + 인프라 설정 읽기전용) ───── */
+async function loadBoSystemOverview() {
+  const box = document.getElementById("bo-sys-overview");
+  try {
+    const [usersRes, transfersRes, usageRes] = await Promise.all([
+      apiFetch("/api/admin/users?limit=1"),
+      apiFetch("/api/admin/transfers?limit=1"),
+      apiFetch("/api/admin/usage-stats"),
+    ]);
+    const users = await usersRes.json();
+    const transfers = await transfersRes.json();
+    const usage = await usageRes.json();
+    box.innerHTML = `
+      <div class="metric"><div class="value">${users.total}</div><div class="label">총 회원수</div></div>
+      <div class="metric"><div class="value">${users.account_count}</div><div class="label">총 계좌수</div></div>
+      <div class="metric"><div class="value">${won(users.total_balance)}</div><div class="label">총 예치금</div></div>
+      <div class="metric"><div class="value">${transfers.summary.total}</div><div class="label">총 이체건수</div></div>
+      <div class="metric"><div class="value">${won(transfers.summary.completed_amount || 0)}</div><div class="label">이체 완료금액</div></div>
+      <div class="metric"><div class="value">${usage.summary.total}</div><div class="label">총 이용이벤트</div></div>`;
+  } catch (err) {
+    box.innerHTML = statError();
+    console.error("시스템 현황 로드 실패:", err);
+  }
+}
+
+async function loadBoInfraConfig() {
+  const box = document.getElementById("bo-infra-config");
+  try {
+    const res = await apiFetch("/api/admin/infra-config");
+    if (!res.ok) throw new Error("인프라 설정 조회 실패");
+    const cfg = await res.json();
+    const rows = [
+      ["시맨틱 캐시", cfg.cache_enabled ? "사용" : "미사용"],
+      ["RAG 검색 결과 수", cfg.rag_top_k],
+      ["캐시 유사도 임계값", cfg.cache_threshold],
+      ["Redis TTL (초)", cfg.redis_ttl],
+      ["Elasticsearch 주소", cfg.es_host],
+      ["Redis 주소", `${cfg.redis_host}:${cfg.redis_port}`],
+    ];
+    box.innerHTML = `<ol class="topcat-list">${rows
+      .map(([label, value]) => `<li><span class="p-name">${escapeHtml(label)}</span><span class="p-count">${escapeHtml(String(value))}</span></li>`)
+      .join("")}</ol>`;
+  } catch (err) {
+    box.innerHTML = statError();
+    console.error("인프라 설정 로드 실패:", err);
   }
 }
 
@@ -1465,7 +2240,18 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+/* ── 맨 위로 이동 플로팅 버튼 (스크롤 300px 이상 시 노출) ─────────── */
+(function () {
+  const btn = document.getElementById("scroll-top");
+  if (!btn) return;
+  const toggle = () => btn.classList.toggle("show", window.scrollY > 300);
+  window.addEventListener("scroll", toggle, { passive: true });
+  btn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+  toggle();
+})();
+
 /* ── 초기 진입 (해시 기반) ───────────────────────────────────────── */
+fillSignupBanks();
 refreshAuthUI();
 navigate((location.hash || "#home").slice(1));
 window.addEventListener("hashchange", () =>

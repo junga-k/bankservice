@@ -6,6 +6,8 @@
 """
 from __future__ import annotations
 
+import re
+import sqlite3
 import time
 from pathlib import Path
 
@@ -16,7 +18,8 @@ from pydantic import BaseModel
 
 import config
 import fss_fetcher
-from backend import auth, db, health, kafka_io
+import llm
+from backend import auth, db, health, infra_metrics, kafka_io
 
 SITE_DIR = Path(__file__).resolve().parent.parent / "site"
 
@@ -85,6 +88,14 @@ class SignupReq(BaseModel):
     username: str
     password: str
     name: str
+    phone: str = ""
+    email: str = ""
+    bank_name: str = ""
+    account_no: str = ""
+    account_holder: str = ""
+    nickname: str = ""
+    is_primary: bool = True
+    agree_openbanking: bool = False
 
 
 class InquiryReq(BaseModel):
@@ -98,9 +109,6 @@ class LoginReq(BaseModel):
 
 
 # ── 인증 ─────────────────────────────────────────────────────────────
-# 회원가입 시 자동 개설되는 시작 계좌
-SIGNUP_BANK = "카카오뱅크"
-
 # 관리자가 방문자 입장에서 계좌조회·거래내역·이체·AI챗봇 등 사이트 기능을
 # 테스트할 때 쓰는 데모 계정(seed_bank.py에서 생성). 고정값이라 여기서만 노출.
 DEMO_ACCOUNT_INFO = {
@@ -119,11 +127,39 @@ def signup(req: SignupReq):
         raise HTTPException(status_code=400, detail="이미 사용 중인 아이디입니다.")
 
     name = req.name.strip() or username
+
+    # 연락처 형식 검증
+    phone_digits = re.sub(r"[^0-9]", "", req.phone)
+    if not (10 <= len(phone_digits) <= 11):
+        raise HTTPException(status_code=400, detail="전화번호를 정확히 입력하세요.")
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", req.email.strip()):
+        raise HTTPException(status_code=400, detail="이메일 형식이 올바르지 않습니다.")
+
+    # 계좌 등록(필수) + 실명확인
+    bank_name = req.bank_name.strip()
+    account_no = req.account_no.strip()
+    if not bank_name or not account_no:
+        raise HTTPException(status_code=400, detail="등록할 계좌 정보를 입력하세요.")
+    if req.account_holder.strip() != name:
+        raise HTTPException(status_code=400, detail="예금주명이 가입자 이름과 일치하지 않습니다.")
+    if not req.agree_openbanking:
+        raise HTTPException(status_code=400, detail="오픈뱅킹 이용에 동의해야 합니다.")
+    # 계좌 중복은 회원 생성 전에 먼저 확인(중간 실패로 계정만 생성되는 것을 방지).
+    # lookup_account는 숫자만 비교하므로 대시 표기 차이까지 잡아낸다.
+    if db.lookup_account(account_no) is not None:
+        raise HTTPException(status_code=400, detail="이미 등록된 계좌번호입니다.")
+
     password_hash = auth.hash_password(req.password)
-    user_id = db.create_user(username, password_hash, name=name)
-    db.create_account(
-        user_id, f"9000-{user_id:04d}-000001", SIGNUP_BANK, name, balance=0,
+    user_id = db.create_user(
+        username, password_hash, name=name, phone=phone_digits, email=req.email.strip(),
     )
+    try:
+        db.create_account(
+            user_id, account_no, bank_name, name, balance=0,
+            nickname=req.nickname.strip(), is_primary=1 if req.is_primary else 0,
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="이미 등록된 계좌번호입니다.")
 
     user = db.get_user_by_username(username)
     token = auth.make_token(user)
@@ -180,6 +216,64 @@ def admin_transfers(
 @app.get("/api/admin/health")
 def admin_health(user: dict = Depends(auth.require_admin)):
     return {"checks": health.check_all()}
+
+
+# ── Backoffice: 대시보드 인프라 실시간 지표 ────────────────────────────
+@app.get("/api/admin/infra-metrics")
+def admin_infra_metrics(user: dict = Depends(auth.require_admin)):
+    cfg = config.load()
+    return {
+        "kafka": infra_metrics.kafka_metrics(),
+        "elasticsearch": infra_metrics.elasticsearch_metrics(),
+        "phoenix": infra_metrics.phoenix_metrics(),
+        "llm_config": {
+            "provider": cfg.get("provider") or llm.DEFAULT_PROVIDER,
+            "model": cfg.get("default_model", ""),
+        },
+        "rag_config": {
+            "top_k": cfg.get("rag_top_k", 10),
+            "cache_enabled": bool(cfg.get("cache_enabled", False)),
+        },
+    }
+
+
+# ── Backoffice: AI챗봇 설정 (성능관리 탭) ──────────────────────────────
+@app.get("/api/admin/chatbot-config")
+def get_chatbot_config(user: dict = Depends(auth.require_admin)):
+    cfg = config.load()
+    return {
+        "config": {
+            "provider": cfg.get("provider") or llm.DEFAULT_PROVIDER,
+            "default_model": cfg.get("default_model", ""),
+            "default_style": cfg.get("default_style", list(llm.TEMP_OPTIONS.keys())[1]),
+            "system_prompt": cfg.get("system_prompt", ""),
+            "web_search": bool(cfg.get("web_search", False)),
+        },
+        "providers": llm.PROVIDERS,
+        "styles": list(llm.TEMP_OPTIONS.keys()),
+    }
+
+
+class ChatbotConfigReq(BaseModel):
+    provider: str
+    default_model: str
+    default_style: str
+    system_prompt: str
+    web_search: bool
+
+
+@app.put("/api/admin/chatbot-config")
+def update_chatbot_config(req: ChatbotConfigReq, user: dict = Depends(auth.require_admin)):
+    if req.provider not in llm.PROVIDERS:
+        raise HTTPException(400, "지원하지 않는 제공자입니다.")
+    if req.default_model not in llm.models_for(req.provider):
+        raise HTTPException(400, "지원하지 않는 모델입니다.")
+    if req.default_style not in llm.TEMP_OPTIONS:
+        raise HTTPException(400, "지원하지 않는 답변 스타일입니다.")
+    cfg = config.load()
+    cfg.update(req.model_dump())
+    config.save(cfg)
+    return {"ok": True}
 
 
 # ── Backoffice: 이용통계 ──────────────────────────────────────────────
@@ -352,6 +446,73 @@ def get_faqs(offset: int = 0, limit: int = 20, q: str = ""):
 @app.get("/api/documents")
 def get_documents(offset: int = 0, limit: int = 20, q: str = ""):
     return {"documents": db.list_documents(offset, limit, q), "total": db.count_documents(q)}
+
+
+# ── Backoffice: 공지사항·FAQ·서식자료 관리 ─────────────────────────────
+class NoticeReq(BaseModel):
+    title: str
+    content: str
+
+
+@app.post("/api/admin/notices")
+def admin_create_notice(req: NoticeReq, user: dict = Depends(auth.require_admin)):
+    return {"id": db.create_notice(req.title, req.content)}
+
+
+@app.delete("/api/admin/notices/{notice_id}")
+def admin_delete_notice(notice_id: int, user: dict = Depends(auth.require_admin)):
+    db.delete_notice(notice_id)
+    return {"ok": True}
+
+
+class FaqReq(BaseModel):
+    question: str
+    answer: str
+
+
+@app.post("/api/admin/faqs")
+def admin_create_faq(req: FaqReq, user: dict = Depends(auth.require_admin)):
+    return {"id": db.create_faq(req.question, req.answer)}
+
+
+@app.delete("/api/admin/faqs/{faq_id}")
+def admin_delete_faq(faq_id: int, user: dict = Depends(auth.require_admin)):
+    db.delete_faq(faq_id)
+    return {"ok": True}
+
+
+class DocumentReq(BaseModel):
+    title: str
+    category: str
+    description: str = ""
+
+
+@app.post("/api/admin/documents")
+def admin_create_document(req: DocumentReq, user: dict = Depends(auth.require_admin)):
+    if req.category not in ("약관", "서식", "설명서"):
+        raise HTTPException(400, "지원하지 않는 구분입니다.")
+    return {"id": db.create_document(req.title, req.category, req.description)}
+
+
+@app.delete("/api/admin/documents/{document_id}")
+def admin_delete_document(document_id: int, user: dict = Depends(auth.require_admin)):
+    db.delete_document(document_id)
+    return {"ok": True}
+
+
+# ── Backoffice: 인프라 설정 조회(읽기 전용, API 키 제외) ────────────────
+@app.get("/api/admin/infra-config")
+def admin_infra_config(user: dict = Depends(auth.require_admin)):
+    cfg = config.load()
+    return {
+        "cache_enabled": bool(cfg.get("cache_enabled", False)),
+        "rag_top_k": cfg.get("rag_top_k"),
+        "cache_threshold": cfg.get("cache_threshold"),
+        "redis_ttl": cfg.get("redis_ttl"),
+        "es_host": cfg.get("es_host"),
+        "redis_host": cfg.get("redis_host"),
+        "redis_port": cfg.get("redis_port"),
+    }
 
 
 # ── 고객센터: 문의하기 (로그인 필수) ───────────────────────────────────

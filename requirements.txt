@@ -13,6 +13,7 @@ pypdf
 pillow
 arize-phoenix
 arize-phoenix-otel
+arize-phoenix-client
 openinference-instrumentation-openai
 openinference-semantic-conventions
 redis

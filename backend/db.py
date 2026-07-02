@@ -118,8 +118,12 @@ def init_db() -> None:
         for col, ddl in (
             ("name", "ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT ''"),
             ("role", "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"),
+            ("phone", "ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''"),
+            ("email", "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''"),
             ("sender_memo", "ALTER TABLE transfers ADD COLUMN sender_memo TEXT"),
             ("balance_after", "ALTER TABLE transactions ADD COLUMN balance_after INTEGER"),
+            ("nickname", "ALTER TABLE accounts ADD COLUMN nickname TEXT NOT NULL DEFAULT ''"),
+            ("is_primary", "ALTER TABLE accounts ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0"),
         ):
             try:
                 conn.execute(ddl)
@@ -155,8 +159,8 @@ def _backfill_balance_after(conn: sqlite3.Connection) -> None:
 def list_accounts(user_id: int = DEMO_USER_ID) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, account_no, bank_name, holder_name, balance FROM accounts "
-            "WHERE user_id = ? ORDER BY id",
+            "SELECT id, account_no, bank_name, holder_name, balance, nickname, is_primary "
+            "FROM accounts WHERE user_id = ? ORDER BY is_primary DESC, id",
             (user_id,),
         ).fetchall()
     return [dict(r) for r in rows]
@@ -443,6 +447,11 @@ def create_notice(title: str, content: str) -> int:
         return cur.lastrowid
 
 
+def delete_notice(notice_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM notices WHERE id = ?", (notice_id,))
+
+
 def list_notices(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
     with get_conn() as conn:
         if q:
@@ -481,6 +490,11 @@ def create_faq(question: str, answer: str) -> int:
         return cur.lastrowid
 
 
+def delete_faq(faq_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM faqs WHERE id = ?", (faq_id,))
+
+
 def list_faqs(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
     with get_conn() as conn:
         if q:
@@ -516,6 +530,11 @@ def create_document(title: str, category: str, description: str = "") -> int:
             (title, category, description, time.time()),
         )
         return cur.lastrowid
+
+
+def delete_document(document_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
 
 
 def list_documents(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
@@ -576,25 +595,26 @@ def count_inquiries(user_id: int) -> int:
 
 # ── 사용자/인증 (Phase 3) ────────────────────────────────────────────
 def create_user(username: str, password_hash: str, name: str = "",
-                role: str = "user") -> int:
+                role: str = "user", phone: str = "", email: str = "") -> int:
     """사용자 생성 후 id 반환. username 중복 시 sqlite3.IntegrityError."""
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO users(username, password_hash, name, role, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (username, password_hash, name, role, time.time()),
+            "INSERT INTO users(username, password_hash, name, role, phone, email, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (username, password_hash, name, role, phone, email, time.time()),
         )
         return cur.lastrowid
 
 
 def create_account(user_id: int, account_no: str, bank_name: str,
-                    holder_name: str, balance: int = 0) -> int:
+                    holder_name: str, balance: int = 0,
+                    nickname: str = "", is_primary: int = 0) -> int:
     """계좌 개설 후 id 반환. account_no 중복 시 sqlite3.IntegrityError."""
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO accounts(user_id, account_no, bank_name, holder_name, balance) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (user_id, account_no, bank_name, holder_name, balance),
+            "INSERT INTO accounts(user_id, account_no, bank_name, holder_name, balance, nickname, is_primary) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, account_no, bank_name, holder_name, balance, nickname, is_primary),
         )
         return cur.lastrowid
 
