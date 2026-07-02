@@ -36,23 +36,18 @@ _BANK_URLS: dict[str, str] = {
 
 
 def _inject_bank_links(text: str) -> str:
-    """어시스턴트 응답에서 은행명을 찾아 홈페이지 ↗ 링크를 주입한다."""
+    """어시스턴트 응답에서 기존 링크(상품명 등)는 일반 텍스트로 풀고, 은행명에만 홈페이지 ↗ 링크를 단다."""
+    # '상품 페이지' 링크 줄 제거
     result = _re.sub(r'\n[ \t]*[-*○◦•]?\s*\[상품\s*페이지\]\([^)]*\)', '', text)
-    links: list[str] = []
-
-    def _stash(m: _re.Match) -> str:
-        links.append(m.group(0))
-        return f"\x00{len(links)-1}\x00"
-
-    result = _re.sub(r'\[.*?\]\(.*?\)', _stash, result, flags=_re.DOTALL)
+    # 기존 마크다운 링크는 텍스트만 남기고 링크 제거 → 상품명 등에 걸린 링크 제거
+    result = _re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', result)
+    # 은행명에만 홈페이지 링크 주입(긴 이름부터 처리해 부분일치 방지)
     for bank, url in sorted(_BANK_URLS.items(), key=lambda x: -len(x[0])):
         result = _re.sub(
             rf'(?<!\w){_re.escape(bank)}(?!\w)',
             lambda m, u=url: f'[{m.group(0)} ↗]({u})',
-            result, count=1,
+            result,
         )
-    for i, original in enumerate(links):
-        result = result.replace(f"\x00{i}\x00", original)
     return result
 
 
@@ -641,20 +636,12 @@ _components.html("""<script>
 })();
 </script>""", height=0)
 
-# ── 모델 팝오버 ─────────────────────────────────────────────────────
+# ── 모델 결정 (선택 UI는 표시하지 않음) ─────────────────────────────
 model = st.session_state.selected_model
 _models = llm.models_for(provider)
 if model not in _models:
     model = _models[0]
     st.session_state.selected_model = model
-
-with st.popover(model):
-    st.caption("모델 선택")
-    for _m in _models:
-        _btn_type = "primary" if _m == model else "secondary"
-        if st.button(_m, key=f"mpick_{_m}", use_container_width=True, type=_btn_type):
-            st.session_state.selected_model = _m
-            st.rerun()
 
 # ── 사용자 입력 처리 ─────────────────────────────────────────────────
 _retry_prompt = st.session_state.pop("_retry_prompt", None)

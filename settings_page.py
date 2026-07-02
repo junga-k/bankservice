@@ -1,51 +1,28 @@
-"""설정 페이지."""
+"""인프라/API 키 설정 — 운영자 전용 유지보수 스크립트.
+
+일반 사용자에게 노출되지 않도록 app.py의 pages/ 멀티페이지 구성에서 제외되어 있다.
+필요할 때 `streamlit run settings_page.py`로 직접 실행한다.
+챗봇 동작 설정(제공자·모델·답변스타일·시스템프롬프트·웹검색)은 Backoffice > 성능관리에서 관리한다.
+"""
 from __future__ import annotations
 
 import io
-import sys
-import pathlib
-
-sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 import streamlit as st
 import cache
 import config
 import fss_fetcher
-import llm
 import rag
 import tracing
 
 st.set_page_config(page_title="설정", page_icon="⚙️", layout="wide")
 
-st.markdown(
-    "<style>[data-testid='stSidebarNav']{display:none;}"
-    "[data-testid='stSidebar']{background-color:#F8FAFD;border-right:1px solid #DDE3EA;}</style>",
-    unsafe_allow_html=True,
-)
-
-_TEMP_OPTIONS = {
-    "🎯 정확  — 코드·번역·사실 질문": 0.2,
-    "⚖️ 균형  — 일반 대화 (기본)": 0.7,
-    "✨ 창의  — 글쓰기·아이디어": 0.95,
-}
-
 
 def _init_session() -> None:
-    if "sel_provider" in st.session_state:
+    if "sel_cache_enabled" in st.session_state:
         return
     _cfg = config.load()
-    _providers = list(llm.PROVIDERS.keys())
-    _prov = _cfg.get("provider", "")
-    st.session_state.sel_provider = _prov if _prov in _providers else _providers[0]
-    st.session_state.sel_web_search = bool(_cfg.get("web_search", False))
     st.session_state.sel_cache_enabled = bool(_cfg.get("cache_enabled", False))
-    _ds = _cfg.get("default_style", list(_TEMP_OPTIONS.keys())[0])
-    st.session_state.sel_temperature = _TEMP_OPTIONS.get(_ds, 0.7)
-    st.session_state.sel_system_prompt = _cfg.get("system_prompt", "")
-    if "selected_model" not in st.session_state:
-        _models = llm.models_for(st.session_state.sel_provider)
-        _dm = _cfg.get("default_model", "")
-        st.session_state.selected_model = _dm if _dm in _models else _models[0]
 
 
 _init_session()
@@ -62,26 +39,9 @@ def _get_openai_key() -> str | None:
         return None
 
 
-# ── 사이드바 ─────────────────────────────────────────────────────────
-with st.sidebar:
-    st.page_link(
-        "app.py",
-        label="AI 채팅",
-        icon=":material/chat_bubble_outline:",
-        use_container_width=True,
-    )
-    st.divider()
-    st.page_link(
-        "pages/2_⚙️_설정.py",
-        label="설정",
-        icon=":material/settings:",
-        use_container_width=True,
-    )
-
-
 # ── 헤더 ─────────────────────────────────────────────────────────────
-st.title("⚙️ 설정")
-st.page_link("app.py", label="← 채팅으로 돌아가기")
+st.title("⚙️ 설정 (운영자 전용)")
+st.caption("이 화면은 일반 사용자에게 노출되지 않는 유지보수용 화면입니다.")
 st.write("")
 
 cfg = config.load()
@@ -254,73 +214,29 @@ if st.button("🗑 캐시 전체 초기화", use_container_width=True):
 
 st.divider()
 
-# ── AI 모델 ──────────────────────────────────────────────────────────
-st.header("🤖 AI 모델")
-
-_providers = list(llm.PROVIDERS.keys())
-_prov_idx = _providers.index(st.session_state.sel_provider) if st.session_state.sel_provider in _providers else 0
-col_prov, col_model = st.columns(2)
-with col_prov:
-    provider = st.selectbox("제공자", _providers, index=_prov_idx, key="sel_provider")
-with col_model:
-    _models = llm.models_for(provider)
-    _m_idx = 0
-    if "selected_model" in st.session_state and st.session_state.selected_model in _models:
-        _m_idx = _models.index(st.session_state.selected_model)
-    st.selectbox("기본 모델", _models, index=_m_idx, key="selected_model")
-
-_style_keys = list(_TEMP_OPTIONS.keys())
-_curr_style = next(
-    (k for k, v in _TEMP_OPTIONS.items() if v == st.session_state.get("sel_temperature", 0.7)),
-    _style_keys[1],
-)
-_style_idx = _style_keys.index(_curr_style) if _curr_style in _style_keys else 1
-col_style, _ = st.columns([2, 1])
-with col_style:
-    _new_style = st.selectbox("답변 스타일", _style_keys, index=_style_idx)
-st.session_state.sel_temperature = _TEMP_OPTIONS[_new_style]
-
-st.text_area(
-    "시스템 프롬프트",
-    placeholder="예: 당신은 친절한 한국어 비서입니다.",
-    height=100,
-    key="sel_system_prompt",
+# ── AI 모델 / 챗봇 동작 ─────────────────────────────────────────────
+st.info(
+    "🤖 제공자·기본 모델·답변 스타일·시스템 프롬프트·웹검색 사용여부는 "
+    "Backoffice 관리자 페이지 > 성능관리 탭에서 관리합니다."
 )
 
 st.divider()
 
 # ── 채팅 기능 ────────────────────────────────────────────────────────
 st.header("🔧 채팅 기능")
-col_ws, col_sc = st.columns(2)
-with col_ws:
-    st.checkbox(
-        "🔍 웹 검색",
-        key="sel_web_search",
-        help="답변 전 DuckDuckGo로 최신 정보를 검색합니다. (API 키 불필요)",
-    )
-with col_sc:
-    st.checkbox(
-        "⚡ 시맨틱 캐시",
-        key="sel_cache_enabled",
-        disabled=not _openai_key,
-        help="동일/유사한 질문은 저장된 답변을 반환합니다. (OpenAI 키 필요)",
-    )
+st.checkbox(
+    "⚡ 시맨틱 캐시",
+    key="sel_cache_enabled",
+    disabled=not _openai_key,
+    help="동일/유사한 질문은 저장된 답변을 반환합니다. (OpenAI 키 필요)",
+)
 
 st.divider()
 
 # ── 저장 ─────────────────────────────────────────────────────────────
 if st.button("💾 설정 저장", type="primary", use_container_width=True):
-    _sel_style = next(
-        (k for k, v in _TEMP_OPTIONS.items() if v == st.session_state.sel_temperature),
-        list(_TEMP_OPTIONS.keys())[1],
-    )
     config.save({
         **cfg,
-        "provider":        st.session_state.sel_provider,
-        "default_model":   st.session_state.selected_model,
-        "default_style":   _sel_style,
-        "system_prompt":   st.session_state.sel_system_prompt,
-        "web_search":      st.session_state.sel_web_search,
         "cache_enabled":   st.session_state.sel_cache_enabled,
         "openai_api_key":  openai_key_input.strip(),
         "fss_api_key":     fss_key_input.strip(),
