@@ -15,7 +15,11 @@ arize-phoenix
 arize-phoenix-otel
 arize-phoenix-client
 openinference-instrumentation-openai
+openinference-instrumentation-langchain
 openinference-semantic-conventions
+langgraph
+langchain-openai
+langchain-core
 redis
 jupyter
 pytest

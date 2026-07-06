@@ -476,6 +476,18 @@ with st.sidebar:
                     except Exception as _e:
                         st.error(f"백엔드(:8000) 연결 실패: {_e}")
 
+    st.divider()
+    with st.expander("ℹ️ AI 챗봇 유의사항", expanded=False):
+        st.markdown(
+            "- 모든 답변은 AI가 생성하며, 정확하지 않을 수 있습니다.\n"
+            "- 같은 질문도 대화 맥락에 따라 답변이 달라질 수 있습니다.\n"
+            "- 입력창에 비밀번호·주민등록번호 등 민감한 개인정보를 입력하지 마세요.\n"
+            "- **AI 이체**는 예금주·금액을 확인하고 비밀번호로 승인해야만 실행됩니다. 승인 없이 자동으로 이체되지 않습니다.\n"
+            "- **이체 한도(간편이체 기준): 1회 500만원 / 1일 1,000만원**이며, 안전한 금융거래를 위해 일부 계좌로의 이체가 제한될 수 있습니다.\n"
+            "- 이체 관련 사고·오류는 전자금융거래법 및 매치뱅크 약관에 따라 처리되며, 이용자의 고의 또는 중대한 과실이 있는 경우 배상이 제한될 수 있습니다. (본 서비스는 데모입니다.)\n"
+            "- 상품 정보는 참고용이며 투자·금융 자문이 아닙니다."
+        )
+
 
 # ── 런타임 설정 ──────────────────────────────────────────────────────
 provider = st.session_state.sel_provider
@@ -518,7 +530,23 @@ if not conv["messages"]:
     {_greet}
   </p>
 </div>""", unsafe_allow_html=True)
-    st.markdown("<div style='height:8vh'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:4vh'></div>", unsafe_allow_html=True)
+
+    # 대화 제안(추천 프롬프트) — 클릭 시 해당 질문 전송
+    _SUGGESTIONS = [
+        "💰 내 계좌 잔액 알려줘",
+        "📄 최근 거래내역 보여줘",
+        "📈 금리 높은 정기예금 추천해줘",
+        "🐷 적금 상품 비교해줘",
+        "💸 오늘 이체 한도 얼마 남았어?",
+        "🙋 공지사항 알려줘",
+    ]
+    _scols = st.columns(2)
+    for _i, _sugg in enumerate(_SUGGESTIONS):
+        if _scols[_i % 2].button(_sugg, key=f"sugg_{_i}", use_container_width=True):
+            st.session_state["_retry_prompt"] = _sugg.split(" ", 1)[1]  # 이모지 제거
+            st.rerun()
+    st.markdown("<div style='height:4vh'></div>", unsafe_allow_html=True)
 
 for i, msg in enumerate(conv["messages"]):
     with st.chat_message(msg["role"]):
@@ -549,34 +577,105 @@ for i, msg in enumerate(conv["messages"]):
                     st.session_state["_retry_prompt"] = conv["messages"][-1]["content"]
                 st.rerun()
 
-# ── 에이전트 이체 확인 카드 (사용자 확인 후에만 실제 이체 실행) ──────
+# ── 이체 확인 카드 헬퍼 ──────────────────────────────────────────────
+def _won_kor(n: int) -> str:
+    """금액을 억/만 단위 한글 병기용 문자열로. 예: 20000 → '2만원'."""
+    n = int(n)
+    eok, rest = divmod(n, 100_000_000)
+    man, won = divmod(rest, 10_000)
+    parts = []
+    if eok:
+        parts.append(f"{eok}억")
+    if man:
+        parts.append(f"{man}만")
+    if won:
+        parts.append(f"{won}")
+    return ("".join(parts) or "0") + "원"
+
+
+def _my_accounts(token: str) -> list[dict]:
+    try:
+        r = requests.get(f"{_BACKEND_URL}/api/accounts",
+                         headers={"Authorization": f"Bearer {token}"}, timeout=3)
+        if r.ok:
+            return r.json().get("accounts", [])
+    except Exception:
+        pass
+    return []
+
+
+# ── 에이전트 이체 확인 카드 (사용자 확인 + 비밀번호 인증 후에만 실행) ──
 _pending = st.session_state.get("pending_transfer")
 if _pending:
+    _accts = _my_accounts(auth_token)
     with st.chat_message("assistant"):
-        st.markdown(
-            "**💸 이체 확인**\n\n"
-            f"- 받는 분: {_pending['holder_name']} ({_pending['bank_name']} {_pending['to_account']})\n"
-            f"- 출금 계좌: {_pending['from_account']}\n"
-            f"- 이체 금액: **{_pending['amount']:,}원**\n"
-            f"- 수수료: {_pending['fee']:,}원"
-        )
-        _c1, _c2 = st.columns(2)
-        if _c1.button("✅ 이체 실행", type="primary", key="tf_exec"):
-            _res = agent.execute_transfer(_pending, auth_token)
-            st.session_state.pop("pending_transfer", None)
-            if "error" in _res:
-                _msg = f"이체에 실패했습니다: {_res['error']}"
+        _amt = _pending["amount"]
+        st.markdown(f"**💸 {_pending['holder_name']}님에게 {_amt:,}원({_won_kor(_amt)}) 이체할까요?**")
+
+        # 출금 계좌 선택(계좌 2개 이상일 때)
+        _from = _pending["from_account"]
+        if len(_accts) > 1:
+            _opts = [a["account_no"] for a in _accts]
+            _labels = {a["account_no"]: f"{a['bank_name']} {a['account_no']} (잔액 {a['balance']:,}원)"
+                       for a in _accts}
+            if _from in _opts:
+                _def = _opts.index(_from)
             else:
-                _msg = (f"✅ 이체가 접수되었습니다. 거래번호 {_res.get('transfer_id')}, "
-                        f"수수료 {_res.get('fee', 0):,}원.")
-            conv["messages"].append({"role": "assistant", "content": _msg})
-            storage.save_conversation(conv)
-            st.rerun()
+                _def = next((i for i, a in enumerate(_accts) if a.get("is_primary")), 0)
+            _from = st.selectbox("출금 계좌", _opts, index=_def,
+                                 format_func=lambda x: _labels.get(x, x), key="tf_from_sel")
+
+        _from_bank = next((a["bank_name"] for a in _accts if a["account_no"] == _from), "")
+        st.markdown(
+            f"- **출금계좌**: {_from_bank} {_from}\n"
+            f"- **받는계좌**: {_pending['bank_name']} {_pending['to_account']} · 예금주 **{_pending['holder_name']}**\n"
+            f"- 수수료: {_pending['fee']:,}원 (참고 · 실제 수수료는 처리 시 확정)"
+        )
+        if _pending.get("is_new_payee"):
+            st.warning("⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.")
+        st.caption("AI가 이체를 위해 정리한 정보입니다. 정확한지 확인 후 진행해 주세요.")
+
+        _ok = st.checkbox("받는 분(예금주명)과 금액을 확인했습니다", key="tf_confirm_chk")
+        _pw = st.text_input("이체 비밀번호 (로그인 비밀번호)", type="password", key="tf_pw")
+
+        _c1, _c2 = st.columns(2)
+        if _c1.button("✅ 이체하기", type="primary", key="tf_exec"):
+            if not _ok:
+                st.warning("예금주명과 금액을 확인한 뒤 체크해 주세요.")
+            elif not _pw:
+                st.warning("이체 비밀번호를 입력해 주세요.")
+            else:
+                _exec = dict(_pending, from_account=_from)
+                _res = agent.execute_transfer(_exec, auth_token, _pw)
+                if "error" in _res:
+                    st.error(f"이체 실패: {_res['error']}")   # 카드 유지 → 수정 후 재시도
+                else:
+                    st.session_state.pop("pending_transfer", None)
+                    _bal = next((a["balance"] for a in _my_accounts(auth_token)
+                                 if a["account_no"] == _from), None)
+                    _tail = f" · 출금계좌({_from[-4:]}) 잔액 {_bal:,}원" if _bal is not None else ""
+                    conv["messages"].append({"role": "assistant", "content":
+                        f"✅ **이체 완료** — {_pending['holder_name']}님에게 {_amt:,}원을 보냈어요.{_tail}"})
+                    st.session_state["_show_txn_link"] = {"account_no": _from}
+                    storage.save_conversation(conv)
+                    st.rerun()
         if _c2.button("취소", key="tf_cancel"):
             st.session_state.pop("pending_transfer", None)
             conv["messages"].append({"role": "assistant", "content": "이체를 취소했습니다."})
             storage.save_conversation(conv)
             st.rerun()
+
+# ── 이체 완료 후: 내 계좌 거래내역으로 이동하는 액션(부모 SPA에 postMessage) ──
+_txn_link = st.session_state.get("_show_txn_link")
+if _txn_link:
+    _components.html(f"""
+    <div style="padding:2px 0 8px">
+      <button onclick="window.parent.postMessage({{type:'goto-account', account_no:'{_txn_link['account_no']}'}}, '*')"
+        style="border:1px solid #A8E0C4;background:#E3F6EC;color:#0B8457;border-radius:20px;
+               padding:8px 16px;font-size:14px;font-weight:600;cursor:pointer;">
+        📄 이체내역 조회하기
+      </button>
+    </div>""", height=52)
 
 # ── 액션 버튼 이벤트 핸들러 주입 (iframe → 부모 DOM) ────────────────
 _components.html("""<script>
@@ -649,6 +748,7 @@ _chat_input = st.chat_input("메시지를 입력하세요…")
 prompt = _chat_input or _retry_prompt
 
 if prompt:
+    st.session_state.pop("_show_txn_link", None)  # 새 메시지 입력 시 이체내역 링크 정리
     if _chat_input:
         conv["messages"].append({"role": "user", "content": prompt})
 

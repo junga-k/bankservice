@@ -23,6 +23,12 @@ SYSTEM_PROMPT = (
     "금융상품 추천·비교, 고객지원(공지/FAQ/문의) 요청을 도구를 사용해 처리합니다.\n"
     "- 도구가 필요한 요청은 반드시 도구를 호출해 실제 데이터를 근거로 답하세요. 추측하지 마세요.\n"
     "- 이체는 propose_transfer로 '제안'만 하세요. 실제 실행은 사용자가 화면에서 확인합니다.\n"
+    "- 이체 시 from_account/to_account 에는 반드시 실제 계좌번호를 넣으세요. 사용자가 '신한은행 계좌'처럼 "
+    "은행명만 말하면 먼저 get_accounts 로 내 계좌 목록을 조회해 해당 은행의 계좌번호를 확인한 뒤 사용하세요.\n"
+    "- 출금 계좌를 지정하지 않았고 내 계좌가 여러 개면, 특정 계좌를 임의로 고르지 말고 사용자가 확인 카드에서 "
+    "출금계좌를 직접 선택하도록 안내하세요.\n"
+    "- 이체 제안 시 신규 수취계좌(처음 보내는 계좌)이거나 100만원 이상 고액이면 사용자에게 주의를 환기하세요. "
+    "실제 실행은 사용자가 예금주·금액을 확인하고 비밀번호를 입력해 승인해야만 이뤄집니다(자동 실행 금지).\n"
     "- 상품 추천·비교 요청에는 반드시 search_products를 호출하고, 그 결과 products 목록(상품안내 "
     "페이지와 동일한 FSS 데이터) 안의 상품만 안내하세요. 목록에 없는 상품명·수치를 지어내지 마세요.\n"
     "- 금융상품 정보는 참고용이며 투자·금융 자문이 아님을 필요 시 안내하세요.\n"
@@ -38,8 +44,6 @@ def _auth_headers(token: str | None) -> dict:
 def _get(path: str, token: str | None = None, params: dict | None = None) -> dict:
     r = requests.get(f"{BACKEND_URL}{path}", headers=_auth_headers(token),
                      params=params, timeout=_TIMEOUT)
-    if r.status_code == 401:
-        return {"error": "로그인이 필요합니다."}
     if not r.ok:
         return {"error": _detail(r)}
     return r.json()
@@ -48,8 +52,6 @@ def _get(path: str, token: str | None = None, params: dict | None = None) -> dic
 def _post(path: str, token: str | None, body: dict) -> dict:
     r = requests.post(f"{BACKEND_URL}{path}", headers=_auth_headers(token),
                       json=body, timeout=_TIMEOUT)
-    if r.status_code == 401:
-        return {"error": "로그인이 필요합니다."}
     if not r.ok:
         return {"error": _detail(r)}
     return r.json()
@@ -108,6 +110,7 @@ def tool_propose_transfer(args, ctx):
         "amount": int(args.get("amount", 0)),
         "fee": look.get("fee", 0),
         "memo": args.get("memo") or None,
+        "is_new_payee": look.get("is_new_payee", False),
     }
     # UI가 확인 카드를 띄우도록 컨텍스트에 저장
     ctx["proposal"] = proposal
@@ -115,13 +118,14 @@ def tool_propose_transfer(args, ctx):
             "note": "사용자 확인 후 실행됩니다. 아직 이체되지 않았습니다."}
 
 
-def execute_transfer(proposal: dict, token: str) -> dict:
-    """사용자 확인 후 실제 이체 실행(UI에서 호출)."""
+def execute_transfer(proposal: dict, token: str, password: str = "") -> dict:
+    """사용자 확인 + 비밀번호 재인증 후 실제 이체 실행(UI에서 호출)."""
     return _post("/api/transfer", token, {
         "from_account": proposal["from_account"],
         "to_account": proposal["to_account"],
         "amount": proposal["amount"],
         "memo": proposal.get("memo"),
+        "password": password,
     })
 
 
@@ -189,119 +193,93 @@ def tool_create_inquiry(args, ctx):
     })
 
 
-# ── 도구 스키마(도메인별 그룹) ────────────────────────────────────────
-def _fn(name, desc, props, required=None):
-    return {"type": "function", "function": {
-        "name": name, "description": desc,
-        "parameters": {"type": "object", "properties": props, "required": required or []},
-    }}
+# ── LangChain 도구 빌더 (요청별 token 바인딩) ─────────────────────────
+def _build_lc_tools(ctx: dict):
+    """기존 tool_*(args, ctx) 로직을 그대로 재사용해 LangChain StructuredTool 목록을 만든다.
+    ctx(가변 dict)를 클로저로 캡처하므로 propose_transfer가 ctx['proposal']에 저장한 값을
+    run_agent가 그래프 실행 후 읽을 수 있다."""
+    from langchain_core.tools import StructuredTool
 
-ACCOUNT_TOOLS = [
-    _fn("get_accounts", "로그인 사용자의 모든 계좌와 잔액을 조회한다.", {}),
-    _fn("get_transactions", "특정 계좌번호의 거래내역을 조회한다.",
-        {"account_no": {"type": "string", "description": "조회할 계좌번호"}}, ["account_no"]),
-]
-TRANSFER_TOOLS = [
-    _fn("lookup_recipient", "받는 계좌의 예금주명·은행·예상 수수료를 조회한다.",
-        {"account_no": {"type": "string"}, "from_account": {"type": "string", "description": "출금 계좌번호(선택)"}},
-        ["account_no"]),
-    _fn("propose_transfer",
-        "이체를 '제안'한다(실행하지 않음). 예금주·수수료를 확인해 반환하며, 실제 이체는 사용자가 확인 버튼을 눌러야 실행된다.",
-        {"from_account": {"type": "string", "description": "출금 계좌번호"},
-         "to_account": {"type": "string", "description": "받는 계좌번호"},
-         "amount": {"type": "integer", "description": "이체 금액(원)"},
-         "memo": {"type": "string", "description": "받는 분 통장 표시(선택)"}},
-        ["from_account", "to_account", "amount"]),
-]
-PRODUCT_TOOLS = [
-    _fn("search_products",
-        "상품안내 페이지와 동일한 FSS 예금·적금 상품 목록을 가져온다. 상품 추천·비교 시 반드시 이 도구를 호출하고, 반환된 products 목록 안의 상품만 안내한다.",
-        {"query": {"type": "string", "description": "검색어(예: 금리 높은 정기예금)"},
-         "category": {"type": "string", "description": "예금 / 적금 / 금리비교(예금+적금) 중 하나(선택)"}},
-        ["query"]),
-]
-SUPPORT_TOOLS = [
-    _fn("get_faqs", "자주 묻는 질문(FAQ)을 검색한다.", {"q": {"type": "string"}}),
-    _fn("get_notices", "공지사항을 검색한다.", {"q": {"type": "string"}}),
-    _fn("get_documents", "서식·약관·설명서를 검색한다.", {"q": {"type": "string"}}),
-    _fn("create_inquiry", "1:1 문의를 접수한다(로그인 필요).",
-        {"title": {"type": "string"}, "content": {"type": "string"}}, ["title", "content"]),
-]
+    def _dump(result: dict) -> str:
+        return json.dumps(result, ensure_ascii=False)
 
-ALL_TOOLS = ACCOUNT_TOOLS + TRANSFER_TOOLS + PRODUCT_TOOLS + SUPPORT_TOOLS
+    # 도메인별 도구(이름·설명은 기존 스키마 문구 유지)
+    def get_accounts() -> str:
+        return _dump(tool_get_accounts({}, ctx))
 
-_DISPATCH = {
-    "get_accounts": tool_get_accounts,
-    "get_transactions": tool_get_transactions,
-    "lookup_recipient": tool_lookup_recipient,
-    "propose_transfer": tool_propose_transfer,
-    "search_products": tool_search_products,
-    "get_faqs": tool_get_faqs,
-    "get_notices": tool_get_notices,
-    "get_documents": tool_get_documents,
-    "create_inquiry": tool_create_inquiry,
-}
+    def get_transactions(account_no: str) -> str:
+        return _dump(tool_get_transactions({"account_no": account_no}, ctx))
+
+    def lookup_recipient(account_no: str, from_account: str = "") -> str:
+        return _dump(tool_lookup_recipient({"account_no": account_no, "from_account": from_account}, ctx))
+
+    def propose_transfer(from_account: str, to_account: str, amount: int, memo: str = "") -> str:
+        return _dump(tool_propose_transfer(
+            {"from_account": from_account, "to_account": to_account, "amount": amount, "memo": memo}, ctx))
+
+    def search_products(query: str, category: str = "") -> str:
+        return _dump(tool_search_products({"query": query, "category": category}, ctx))
+
+    def get_faqs(q: str = "") -> str:
+        return _dump(tool_get_faqs({"q": q}, ctx))
+
+    def get_notices(q: str = "") -> str:
+        return _dump(tool_get_notices({"q": q}, ctx))
+
+    def get_documents(q: str = "") -> str:
+        return _dump(tool_get_documents({"q": q}, ctx))
+
+    def create_inquiry(title: str, content: str) -> str:
+        return _dump(tool_create_inquiry({"title": title, "content": content}, ctx))
+
+    specs = [
+        (get_accounts, "get_accounts", "로그인 사용자의 모든 계좌와 잔액을 조회한다."),
+        (get_transactions, "get_transactions", "특정 계좌번호의 거래내역을 조회한다."),
+        (lookup_recipient, "lookup_recipient", "받는 계좌의 예금주명·은행·예상 수수료를 조회한다."),
+        (propose_transfer, "propose_transfer",
+         "이체를 '제안'한다(실행하지 않음). 예금주·수수료를 확인해 반환하며, 실제 이체는 사용자가 확인 버튼을 눌러야 실행된다."),
+        (search_products, "search_products",
+         "상품안내 페이지와 동일한 FSS 예금·적금 상품 목록을 가져온다. 상품 추천·비교 시 반드시 이 도구를 호출하고, 반환된 products 목록 안의 상품만 안내한다."),
+        (get_faqs, "get_faqs", "자주 묻는 질문(FAQ)을 검색한다."),
+        (get_notices, "get_notices", "공지사항을 검색한다."),
+        (get_documents, "get_documents", "서식·약관·설명서를 검색한다."),
+        (create_inquiry, "create_inquiry", "1:1 문의를 접수한다(로그인 필요)."),
+    ]
+    return [StructuredTool.from_function(fn, name=name, description=desc) for fn, name, desc in specs]
 
 
-# ── 에이전트 실행 루프 ────────────────────────────────────────────────
+# ── 에이전트 실행 (LangGraph create_react_agent) ──────────────────────
 def run_agent(messages: list[dict], *, openai_key: str, model: str,
               token: str | None = None, system_prompt: str | None = None,
               max_steps: int = 5) -> dict:
-    """도구호출 루프를 돌려 최종 결과를 반환한다.
+    """LangGraph ReAct 에이전트로 도구호출을 오케스트레이션해 최종 결과를 반환한다.
 
-    반환:
-        {"kind": "message", "text": str}                     — 일반 답변
+    반환(계약 유지):
+        {"kind": "message", "text": str}
         {"kind": "transfer_proposal", "proposal": {...}, "text": str}  — 이체 확인 대기
     """
-    from openai import OpenAI
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+    from langchain_openai import ChatOpenAI
+    from langgraph.prebuilt import create_react_agent
 
-    client = OpenAI(api_key=openai_key)
     ctx: dict = {"token": token, "openai_key": openai_key}
+    tools = _build_lc_tools(ctx)
+    llm = ChatOpenAI(model=model, api_key=openai_key, temperature=0)
+    graph = create_react_agent(llm, tools)
 
     sys = (system_prompt.strip() + "\n\n" + SYSTEM_PROMPT) if system_prompt else SYSTEM_PROMPT
-    oai_messages = [{"role": "system", "content": sys}]
-    oai_messages += [{"role": m["role"], "content": m["content"]} for m in messages]
+    lc_messages = [SystemMessage(content=sys)]
+    for m in messages:
+        role, content = m.get("role"), m.get("content", "")
+        lc_messages.append(HumanMessage(content=content) if role == "user" else AIMessage(content=content))
 
-    for _ in range(max_steps):
-        resp = client.chat.completions.create(
-            model=model, messages=oai_messages, tools=ALL_TOOLS, tool_choice="auto",
-        )
-        msg = resp.choices[0].message
-        if not msg.tool_calls:
-            return {"kind": "message", "text": msg.content or ""}
+    out = graph.invoke({"messages": lc_messages}, {"recursion_limit": max(4, max_steps * 2)})
+    final = out["messages"][-1].content or ""
+    if isinstance(final, list):  # 멀티모달 대비: 텍스트 파트만 합침
+        final = "".join(p.get("text", "") for p in final if isinstance(p, dict))
 
-        # 어시스턴트의 tool_calls 메시지를 대화에 추가
-        oai_messages.append({
-            "role": "assistant", "content": msg.content or "",
-            "tool_calls": [
-                {"id": tc.id, "type": "function",
-                 "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                for tc in msg.tool_calls
-            ],
-        })
-
-        proposal_made = False
-        for tc in msg.tool_calls:
-            name = tc.function.name
-            try:
-                args = json.loads(tc.function.arguments or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            fn = _DISPATCH.get(name)
-            result = fn(args, ctx) if fn else {"error": f"알 수 없는 도구: {name}"}
-            if name == "propose_transfer" and "proposal" in ctx:
-                proposal_made = True
-            oai_messages.append({
-                "role": "tool", "tool_call_id": tc.id,
-                "content": json.dumps(result, ensure_ascii=False),
-            })
-
-        # 이체 제안이 나오면 확인을 위해 루프 종료
-        if proposal_made:
-            follow = client.chat.completions.create(model=model, messages=oai_messages)
-            return {"kind": "transfer_proposal", "proposal": ctx["proposal"],
-                    "text": follow.choices[0].message.content or "이체 내용을 확인해 주세요."}
-
-    # 스텝 초과 시 마지막으로 도구 없이 한 번 더 정리
-    resp = client.chat.completions.create(model=model, messages=oai_messages)
-    return {"kind": "message", "text": resp.choices[0].message.content or ""}
+    # propose_transfer가 호출됐으면 이체 확인 대기로 반환(자동 실행 안 함)
+    if ctx.get("proposal"):
+        return {"kind": "transfer_proposal", "proposal": ctx["proposal"],
+                "text": final or "이체 내용을 확인해 주세요."}
+    return {"kind": "message", "text": final}

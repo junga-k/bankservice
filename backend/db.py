@@ -689,3 +689,35 @@ def transfer_summary() -> dict:
         "pending": by_status.get("pending", 0),
         "completed_amount": completed_amt,
     }
+
+
+def is_new_payee(user_id: int, to_account: str) -> bool:
+    """사용자가 이 수취계좌로 '완료된 이체' 이력이 없으면 True(처음 보내는 계좌).
+    계좌번호는 대시(-) 유무와 무관하게 숫자만 비교한다."""
+    import re
+    digits = re.sub(r"[^0-9]", "", to_account or "")
+    if not digits:
+        return True
+    with get_conn() as conn:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM transfers "
+            "WHERE status='completed' "
+            "AND REPLACE(to_account, '-', '') = ? "
+            "AND from_account IN (SELECT account_no FROM accounts WHERE user_id = ?)",
+            (digits, user_id),
+        ).fetchone()[0]
+    return n == 0
+
+
+def sum_user_transfers_today(account_nos: list[str], since_epoch: float) -> int:
+    """오늘(since_epoch 이후) 해당 출금계좌들의 completed+pending 이체 금액 합계."""
+    if not account_nos:
+        return 0
+    placeholders = ",".join("?" * len(account_nos))
+    with get_conn() as conn:
+        return conn.execute(
+            f"SELECT COALESCE(SUM(amount), 0) FROM transfers "
+            f"WHERE from_account IN ({placeholders}) "
+            f"AND status IN ('completed', 'pending') AND created_at >= ?",
+            (*account_nos, since_epoch),
+        ).fetchone()[0]

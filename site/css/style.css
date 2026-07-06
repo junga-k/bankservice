@@ -1055,6 +1055,29 @@ main { min-height: calc(100vh - var(--header-h)); }
 .tf-holder.ok { color: #0B8457; }
 .tf-holder.err { color: #D32F2F; font-weight: 600; }
 
+/* 처음 보내는 계좌 경고 */
+.tf-newpayee {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #FEF3C7;
+  color: #92400E;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 이체 확인 체크박스 */
+.tf-confirm-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 6px;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+.tf-confirm-check input[type="checkbox"] { width: 16px; height: 16px; flex-shrink: 0; accent-color: var(--blue); }
+
 .tf-quick-accounts { margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
 .tf-quick-accounts-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-sub); margin-bottom: 10px; }
 .tf-quick-accounts-list { display: flex; gap: 8px; flex-wrap: wrap; }

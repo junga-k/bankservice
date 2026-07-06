@@ -56,8 +56,9 @@ def _get_producer():
 # ── 요청 모델 ────────────────────────────────────────────────────────
 # 타행 이체 수수료(원). 같은 은행이면 면제.
 TRANSFER_FEE = 500
-# 1회 이체 한도(원)
-TRANSFER_LIMIT = 50_000_000
+# 이체 한도(원) — 비밀번호(간편) 인증 수준에 맞춘 한도
+TRANSFER_LIMIT = 5_000_000        # 1회 500만원
+DAILY_TRANSFER_LIMIT = 10_000_000  # 1일 누적 1,000만원
 
 
 class TransferReq(BaseModel):
@@ -66,6 +67,7 @@ class TransferReq(BaseModel):
     amount: int
     memo: str | None = None
     sender_memo: str | None = None
+    password: str = ""
 
 
 class ViewReq(BaseModel):
@@ -297,8 +299,9 @@ def get_transactions(account_id: int, user: dict = Depends(auth.get_current_user
 
 
 @app.get("/api/accounts/lookup")
-def lookup_account(account_no: str, from_account: str | None = None):
-    """받는 계좌의 예금주·은행 조회 + 예상 수수료 계산."""
+def lookup_account(account_no: str, from_account: str | None = None,
+                   user: dict = Depends(auth.get_current_user)):
+    """받는 계좌의 예금주·은행 조회 + 예상 수수료 + 신규 수취계좌 여부."""
     dst = db.lookup_account(account_no)
     if dst is None:
         raise HTTPException(status_code=404, detail="조회되지 않는 계좌입니다. 계좌번호를 확인하세요.")
@@ -312,6 +315,7 @@ def lookup_account(account_no: str, from_account: str | None = None):
         "bank_name": dst["bank_name"],
         "holder_name": dst["holder_name"],
         "fee": fee,
+        "is_new_payee": db.is_new_payee(user["id"], dst["account_no"]),
     }
 
 
@@ -341,6 +345,20 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
     fee = 0 if src["bank_name"] == dst["bank_name"] else TRANSFER_FEE
     if src["balance"] < req.amount + fee:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
+
+    # 1일 누적 이체 한도(내 계좌들 오늘 completed+pending 합계 + 이번 금액)
+    _today0 = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))
+    if db.sum_user_transfers_today(list(my.keys()), _today0) + req.amount > DAILY_TRANSFER_LIMIT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"1일 이체 한도({DAILY_TRANSFER_LIMIT:,}원)를 초과했습니다.",
+        )
+
+    # 본인 확인(비밀번호 재인증) — 버튼 클릭만으로 실행되지 않도록 서버가 재검증
+    # get_current_user는 password_hash를 주지 않으므로 사용자 레코드를 다시 조회
+    _acct = db.get_user_by_username(user["username"])
+    if not req.password or _acct is None or not auth.verify_password(req.password, _acct["password_hash"]):
+        raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다. 본인 확인에 실패했습니다.")
 
     transfer_id = db.create_transfer(
         req.from_account, req.to_account, req.amount,

@@ -51,6 +51,13 @@ def init_tracing() -> dict:
         except Exception:
             pass
 
+        # LangChain/LangGraph 자동 계측 (은행 에이전트)
+        try:
+            from openinference.instrumentation.langchain import LangChainInstrumentor
+            LangChainInstrumentor().instrument()
+        except Exception:
+            pass
+
         phoenix_up = _is_phoenix_running(PHOENIX_URL)
         return {"ok": True, "url": PHOENIX_URL, "phoenix_up": phoenix_up, "error": None}
 

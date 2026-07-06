@@ -529,15 +529,18 @@ async function runTfLookup(to, from) {
     // 받는 은행 자동 맞춤
     const toBank = document.getElementById("tf-to-bank");
     if ([...toBank.options].some((o) => o.value === data.bank_name)) toBank.value = data.bank_name;
+    const newPayee = data.is_new_payee
+      ? `<div class="tf-newpayee">⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.</div>` : "";
     holderEl.className = "tf-holder ok";
     holderEl.innerHTML = `✅ <b>${escapeHtml(data.holder_name)}</b> (${escapeHtml(data.bank_name)})` +
-      (data.fee ? ` · 타행 수수료 ${won(data.fee)}` : " · 수수료 면제");
+      (data.fee ? ` · 타행 수수료 ${won(data.fee)}` : " · 수수료 면제") + newPayee;
     showModal(`
       <h3>받는 분 확인</h3>
       <div class="cf-row"><span>예금주</span><b>${escapeHtml(data.holder_name)}</b></div>
       <div class="cf-row"><span>은행명</span><b>${escapeHtml(data.bank_name)}</b></div>
       <div class="cf-row"><span>계좌번호</span><b>${escapeHtml(data.account_no)}</b></div>
       <div class="cf-row"><span>수수료</span><b>${data.fee ? won(data.fee) : "면제"}</b></div>
+      ${data.is_new_payee ? '<div class="tf-newpayee">⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.</div>' : ""}
       <button class="btn btn-primary" type="button" id="modal-confirm-ok">확인</button>`);
     updateAfterBalance();
   } catch (err) {
@@ -609,8 +612,21 @@ document.addEventListener("click", async (e) => {
   const amount = tfAmountValue();
   const memo = document.getElementById("tf-memo").value.trim();
   const senderMemo = document.getElementById("tf-sender-memo").value.trim();
+  const password = document.getElementById("tf-password").value;
+  const confirmed = document.getElementById("tf-confirm-check").checked;
   const statusEl = document.getElementById("tf-status2");
   statusEl.className = "tf-status";
+  // 확인 체크 + 비밀번호 검사(백엔드가 최종 검증하지만 UX상 선차단)
+  if (!confirmed) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = "받는 분과 금액을 확인한 뒤 체크해 주세요.";
+    return;
+  }
+  if (!password) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = "이체 비밀번호를 입력해 주세요.";
+    return;
+  }
   statusEl.textContent = "이체 요청 중…";
   e.target.disabled = true;
 
@@ -621,6 +637,7 @@ document.addEventListener("click", async (e) => {
       body: JSON.stringify({
         from_account: acc.account_no, to_account: tfVerified.account_no,
         amount, memo: memo || null, sender_memo: senderMemo || null,
+        password,
       }),
     });
     if (!res.ok) {
@@ -647,6 +664,8 @@ document.addEventListener("click", (e) => {
   document.getElementById("tf-sender-memo").value = "";
   document.getElementById("tf-status").textContent = "";
   document.getElementById("tf-after").textContent = "";
+  document.getElementById("tf-password").value = "";
+  document.getElementById("tf-confirm-check").checked = false;
   tfResetVerify();
   tfGoStep(1);
 });
@@ -2249,6 +2268,27 @@ function escapeHtml(s) {
   btn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
   toggle();
 })();
+
+/* ── 챗봇 iframe → 부모 SPA 이동 (이체내역 조회하기 등) ───────────── */
+window.addEventListener("message", (e) => {
+  const d = e.data;
+  if (!d || d.type !== "goto-account") return;   // 내부 네비게이션 메시지만 처리
+  navigate("account");
+  const acctNo = d.account_no;
+  if (!acctNo) return;
+  // 계좌 목록이 렌더된 뒤 해당 계좌의 거래내역 자동 열기
+  let tries = 0;
+  const open = () => {
+    const card = document.querySelector(`.acct-card[data-acct-no="${CSS.escape(acctNo)}"]`);
+    if (card) {
+      showTransactions(card.dataset.acctId, card.dataset.acctNo);
+      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } else if (tries++ < 25) {
+      setTimeout(open, 150);
+    }
+  };
+  open();
+});
 
 /* ── 초기 진입 (해시 기반) ───────────────────────────────────────── */
 fillSignupBanks();
