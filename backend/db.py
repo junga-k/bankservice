@@ -124,6 +124,7 @@ def init_db() -> None:
             ("balance_after", "ALTER TABLE transactions ADD COLUMN balance_after INTEGER"),
             ("nickname", "ALTER TABLE accounts ADD COLUMN nickname TEXT NOT NULL DEFAULT ''"),
             ("is_primary", "ALTER TABLE accounts ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0"),
+            ("scheduled_at", "ALTER TABLE transfers ADD COLUMN scheduled_at REAL"),
         ):
             try:
                 conn.execute(ddl)
@@ -202,16 +203,47 @@ def list_transactions(account_id: int, limit: int = 50) -> list[dict]:
 def create_transfer(from_account: str, to_account: str, amount: int,
                     to_bank: str = "", to_holder: str = "",
                     fee: int = 0, memo: str | None = None,
-                    sender_memo: str | None = None) -> int:
-    """pending 상태로 이체 레코드 생성 후 id 반환."""
+                    sender_memo: str | None = None,
+                    status: str = "pending", scheduled_at: float | None = None) -> int:
+    """이체 레코드 생성 후 id 반환. 예약/지연이면 status='scheduled'/'delayed' + scheduled_at."""
     with get_conn() as conn:
         cur = conn.execute(
             "INSERT INTO transfers"
             "(from_account, to_account, to_bank, to_holder, amount, fee, memo, sender_memo, "
-            "status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
-            (from_account, to_account, to_bank, to_holder, amount, fee, memo, sender_memo, time.time()),
+            "status, scheduled_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (from_account, to_account, to_bank, to_holder, amount, fee, memo, sender_memo,
+             status, scheduled_at, time.time()),
         )
         return cur.lastrowid
+
+
+def pop_due_scheduled(now: float) -> list[int]:
+    """실행 시각이 도래한 예약/지연 이체를 pending으로 원자적 전환하고 그 id 목록을 반환.
+    폴러가 호출 → 반환된 id들을 process_transfer로 처리한다."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id FROM transfers "
+            "WHERE status IN ('scheduled', 'delayed') AND scheduled_at IS NOT NULL AND scheduled_at <= ?",
+            (now,),
+        ).fetchall()
+        ids = [r["id"] for r in rows]
+        for tid in ids:
+            conn.execute("UPDATE transfers SET status='pending' WHERE id=?", (tid,))
+    return ids
+
+
+def cancel_scheduled(transfer_id: int, user_id: int) -> bool:
+    """본인 소유 출금계좌의 예약/지연 이체를 취소(canceled). 성공 여부 반환."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT status FROM transfers WHERE id=? "
+            "AND from_account IN (SELECT account_no FROM accounts WHERE user_id=?)",
+            (transfer_id, user_id),
+        ).fetchone()
+        if row is None or row["status"] not in ("scheduled", "delayed"):
+            return False
+        conn.execute("UPDATE transfers SET status='canceled' WHERE id=?", (transfer_id,))
+    return True
 
 
 def fail_transfer(transfer_id: int, error: str) -> None:
@@ -238,14 +270,14 @@ def list_transfers(offset: int = 0, limit: int = 20, status: str = "") -> list[d
         if status:
             rows = conn.execute(
                 "SELECT id, from_account, to_account, to_bank, to_holder, amount, fee, memo, "
-                "status, error, created_at FROM transfers WHERE status = ? "
+                "status, error, scheduled_at, created_at FROM transfers WHERE status = ? "
                 "ORDER BY id DESC LIMIT ? OFFSET ?",
                 (status, limit, offset),
             ).fetchall()
         else:
             rows = conn.execute(
                 "SELECT id, from_account, to_account, to_bank, to_holder, amount, fee, memo, "
-                "status, error, created_at FROM transfers ORDER BY id DESC LIMIT ? OFFSET ?",
+                "status, error, scheduled_at, created_at FROM transfers ORDER BY id DESC LIMIT ? OFFSET ?",
                 (limit, offset),
             ).fetchall()
     return [dict(r) for r in rows]

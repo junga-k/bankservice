@@ -1596,22 +1596,50 @@ function renderBoTransferSummary(s) {
     <div class="metric"><div class="value">${won(s.completed_amount)}</div><div class="label">완료 금액</div></div>`;
 }
 
-const BO_STATUS_LABEL = { completed: "완료", pending: "대기", failed: "실패" };
+const BO_STATUS_LABEL = { completed: "완료", pending: "대기", failed: "실패",
+  scheduled: "예약", delayed: "지연", canceled: "취소" };
 
 function renderBoTransferRows(transfers, reset) {
   const rows = transfers
     .map((t) => {
       const d = new Date(t.created_at * 1000).toLocaleString("ko-KR");
-      const label = BO_STATUS_LABEL[t.status] || escapeHtml(t.status);
+      let label = BO_STATUS_LABEL[t.status] || escapeHtml(t.status);
+      // 예약/지연은 실행 예정 시각을 함께 표기
+      if ((t.status === "scheduled" || t.status === "delayed") && t.scheduled_at) {
+        label += " · " + new Date(t.scheduled_at * 1000).toLocaleString("ko-KR",
+          { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      }
       const badge = `<span class="tx-status tx-${escapeHtml(t.status)}">${label}</span>`;
+      // 예약/지연 건은 취소 버튼
+      const cancelBtn = (t.status === "scheduled" || t.status === "delayed")
+        ? ` <button class="bo-cancel-btn" type="button" data-tf-id="${t.id}">취소</button>` : "";
       return `<tr><td>${t.id}</td><td>${escapeHtml(t.from_account)}</td>` +
         `<td>${escapeHtml(t.to_account)}</td><td>${won(t.amount)}</td><td>${won(t.fee)}</td>` +
-        `<td>${badge}</td><td>${d}</td></tr>`;
+        `<td>${badge}${cancelBtn}</td><td>${d}</td></tr>`;
     })
     .join("");
   const tbody = document.getElementById("bo-transfer-rows");
   tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
 }
+
+/* 예약/지연 이체 취소 (Backoffice) */
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".bo-cancel-btn");
+  if (!btn) return;
+  const id = btn.dataset.tfId;
+  btn.disabled = true;
+  try {
+    const res = await apiFetch(`/api/transfers/${id}/cancel`, { method: "POST" });
+    if (!res.ok) {
+      const { detail } = await res.json().catch(() => ({}));
+      throw new Error(detail || "취소 실패");
+    }
+    loadBoTransfers(true);   // 목록 새로고침
+  } catch (err) {
+    btn.disabled = false;
+    alert("취소 실패: " + err.message);
+  }
+});
 
 document.addEventListener("click", (e) => {
   const filterBtn = e.target.closest(".bo-filter-btn");

@@ -40,6 +40,35 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     db.init_db()
+    _start_scheduled_poller()
+
+
+# ── 예약/지연 이체 폴러 (백그라운드 스레드) ──────────────────────────
+_poller_started = False
+
+
+def _start_scheduled_poller() -> None:
+    """실행 시각이 도래한 예약/지연 이체를 주기적으로 처리하는 데몬 스레드."""
+    global _poller_started
+    if _poller_started:
+        return
+    _poller_started = True
+
+    import threading
+
+    def _loop():
+        while True:
+            try:
+                for tid in db.pop_due_scheduled(time.time()):
+                    try:
+                        db.process_transfer(tid)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            time.sleep(15)
+
+    threading.Thread(target=_loop, daemon=True).start()
 
 
 # ── Kafka 프로듀서 (지연 초기화) ─────────────────────────────────────
@@ -68,6 +97,8 @@ class TransferReq(BaseModel):
     memo: str | None = None
     sender_memo: str | None = None
     password: str = ""
+    scheduled_at: float | None = None   # 예약 실행 시각(epoch). 미래면 예약이체.
+    delay_minutes: int = 0              # 지연이체(분). >0이면 now+분 후 실행, 취소 가능.
 
 
 class ViewReq(BaseModel):
@@ -360,13 +391,28 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
     if not req.password or _acct is None or not auth.verify_password(req.password, _acct["password_hash"]):
         raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다. 본인 확인에 실패했습니다.")
 
+    # 예약/지연 이체 판별: 즉시 실행이 아니면 미래 시각에 폴러가 처리
+    now = time.time()
+    sched_at = None
+    sched_status = "pending"
+    if req.scheduled_at and req.scheduled_at > now + 30:      # 예약(미래 시각)
+        sched_at, sched_status = float(req.scheduled_at), "scheduled"
+    elif req.delay_minutes and req.delay_minutes > 0:          # 지연이체(취소 가능)
+        sched_at, sched_status = now + req.delay_minutes * 60, "delayed"
+
     transfer_id = db.create_transfer(
         req.from_account, req.to_account, req.amount,
         to_bank=dst["bank_name"], to_holder=dst["holder_name"],
         fee=fee, memo=req.memo, sender_memo=req.sender_memo,
+        status=sched_status, scheduled_at=sched_at,
     )
 
-    # Kafka로 이체 이벤트 발행
+    # 예약/지연이면 지금 발행하지 않고 폴러가 실행 시각에 처리
+    if sched_status != "pending":
+        return {"transfer_id": transfer_id, "status": sched_status, "fee": fee,
+                "scheduled_at": sched_at}
+
+    # 즉시 이체: Kafka로 이체 이벤트 발행
     try:
         producer = _get_producer()
         producer.send(kafka_io.TOPIC_TRANSFER, {
@@ -384,6 +430,14 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
         )
 
     return {"transfer_id": transfer_id, "status": "pending", "fee": fee}
+
+
+@app.post("/api/transfers/{transfer_id}/cancel")
+def cancel_transfer(transfer_id: int, user: dict = Depends(auth.get_current_user)):
+    """예약/지연 이체를 실행 전 취소."""
+    if db.cancel_scheduled(transfer_id, user["id"]):
+        return {"ok": True, "status": "canceled"}
+    raise HTTPException(status_code=400, detail="취소할 수 없는 이체입니다(이미 처리되었거나 권한 없음).")
 
 
 @app.get("/api/transfers/{transfer_id}")

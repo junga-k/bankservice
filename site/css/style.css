@@ -837,6 +837,23 @@ main { min-height: calc(100vh - var(--header-h)); }
 .tx-completed { background: #E6F4EA; color: #1E7E34; }
 .tx-pending   { background: #FEF3C7; color: #92400E; }
 .tx-failed    { background: #FCE8E6; color: #C5221F; }
+.tx-scheduled { background: #E8F0FE; color: #1A56DB; }
+.tx-delayed   { background: #EDE9FE; color: #6D28D9; }
+.tx-canceled  { background: #F1F3F4; color: #5F6368; text-decoration: line-through; }
+
+.bo-cancel-btn {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid #D0D3D9;
+  border-radius: 10px;
+  background: #fff;
+  color: #C5221F;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.bo-cancel-btn:hover { background: #FCE8E6; border-color: #C5221F; }
+.bo-cancel-btn:disabled { opacity: .5; cursor: default; }
 
 /* ── 고객센터 ─────────────────────────────────────────────────────── */
 .support-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; }

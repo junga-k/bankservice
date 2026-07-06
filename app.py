@@ -6,6 +6,7 @@
 from __future__ import annotations
 import io
 import json as _json
+import time
 import re as _re
 import base64 as _base64
 import streamlit as st
@@ -484,6 +485,7 @@ with st.sidebar:
             "- 입력창에 비밀번호·주민등록번호 등 민감한 개인정보를 입력하지 마세요.\n"
             "- **AI 이체**는 예금주·금액을 확인하고 비밀번호로 승인해야만 실행됩니다. 승인 없이 자동으로 이체되지 않습니다.\n"
             "- **이체 한도(간편이체 기준): 1회 500만원 / 1일 1,000만원**이며, 안전한 금융거래를 위해 일부 계좌로의 이체가 제한될 수 있습니다.\n"
+            "- **예약 이체**는 지정한 시각에 실행되며, **지연 이체**는 실행 전까지 취소할 수 있습니다.\n"
             "- 이체 관련 사고·오류는 전자금융거래법 및 매치뱅크 약관에 따라 처리되며, 이용자의 고의 또는 중대한 과실이 있는 경우 배상이 제한될 수 있습니다. (본 서비스는 데모입니다.)\n"
             "- 상품 정보는 참고용이며 투자·금융 자문이 아닙니다."
         )
@@ -635,6 +637,31 @@ if _pending:
             st.warning("⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.")
         st.caption("AI가 이체를 위해 정리한 정보입니다. 정확한지 확인 후 진행해 주세요.")
 
+        # 실행 시점 선택: 즉시 / 지연(취소 가능) / 예약(지정 시각)
+        _when = st.radio("이체 시점", ["즉시 이체", "지연 이체 (취소 가능)", "예약 이체 (지정 시각)"],
+                         horizontal=True, key="tf_when")
+        _sched_at = None
+        _delay_min = 0
+        if _when == "지연 이체 (취소 가능)":
+            _delay_labels = {"10분 후": 10, "30분 후": 30, "1시간 후": 60}
+            _dsel = st.selectbox("지연 시간", list(_delay_labels), key="tf_delay")
+            _delay_min = _delay_labels[_dsel]
+            st.caption(f"⏳ {_dsel} 실행됩니다. 실행 전까지 내 계좌·관리자 화면에서 취소할 수 있어요.")
+        elif _when == "예약 이체 (지정 시각)":
+            import datetime as _dt
+            _now = _dt.datetime.now()
+            _cd, _ct = st.columns(2)
+            _pd_date = _cd.date_input("예약 날짜", value=_now.date(),
+                                      min_value=_now.date(), key="tf_sched_d")
+            _pd_time = _ct.time_input("예약 시각", value=(_now + _dt.timedelta(hours=1)).time(),
+                                      key="tf_sched_t")
+            _sched_dt = _dt.datetime.combine(_pd_date, _pd_time)
+            _sched_at = _sched_dt.timestamp()
+            if _sched_at <= _now.timestamp() + 30:
+                st.warning("예약 시각은 현재보다 미래여야 합니다.")
+            else:
+                st.caption(f"🗓️ {_sched_dt.strftime('%Y-%m-%d %H:%M')}에 실행 예약됩니다.")
+
         _ok = st.checkbox("받는 분(예금주명)과 금액을 확인했습니다", key="tf_confirm_chk")
         _pw = st.text_input("이체 비밀번호 (로그인 비밀번호)", type="password", key="tf_pw")
 
@@ -644,19 +671,38 @@ if _pending:
                 st.warning("예금주명과 금액을 확인한 뒤 체크해 주세요.")
             elif not _pw:
                 st.warning("이체 비밀번호를 입력해 주세요.")
+            elif _when == "예약 이체 (지정 시각)" and (not _sched_at or _sched_at <= time.time() + 30):
+                st.warning("예약 시각을 현재보다 미래로 설정해 주세요.")
             else:
                 _exec = dict(_pending, from_account=_from)
-                _res = agent.execute_transfer(_exec, auth_token, _pw)
+                _res = agent.execute_transfer(_exec, auth_token, _pw,
+                                              scheduled_at=_sched_at, delay_minutes=_delay_min)
                 if "error" in _res:
                     st.error(f"이체 실패: {_res['error']}")   # 카드 유지 → 수정 후 재시도
                 else:
                     st.session_state.pop("pending_transfer", None)
-                    _bal = next((a["balance"] for a in _my_accounts(auth_token)
-                                 if a["account_no"] == _from), None)
-                    _tail = f" · 출금계좌({_from[-4:]}) 잔액 {_bal:,}원" if _bal is not None else ""
-                    conv["messages"].append({"role": "assistant", "content":
-                        f"✅ **이체 완료** — {_pending['holder_name']}님에게 {_amt:,}원을 보냈어요.{_tail}"})
-                    st.session_state["_show_txn_link"] = {"account_no": _from}
+                    _status = _res.get("status")
+                    if _status == "scheduled":
+                        import datetime as _dt2
+                        _when_txt = _dt2.datetime.fromtimestamp(_res["scheduled_at"]).strftime("%Y-%m-%d %H:%M")
+                        conv["messages"].append({"role": "assistant", "content":
+                            f"🗓️ **예약 완료** — {_pending['holder_name']}님에게 {_amt:,}원을 "
+                            f"{_when_txt}에 이체하도록 예약했어요. (거래번호 {_res['transfer_id']}) "
+                            f"실행 전까지 취소할 수 있어요."})
+                    elif _status == "delayed":
+                        import datetime as _dt2
+                        _when_txt = _dt2.datetime.fromtimestamp(_res["scheduled_at"]).strftime("%H:%M")
+                        conv["messages"].append({"role": "assistant", "content":
+                            f"⏳ **지연 이체 접수** — {_pending['holder_name']}님에게 {_amt:,}원을 "
+                            f"{_when_txt}에 이체합니다. (거래번호 {_res['transfer_id']}) "
+                            f"그 전까지 내 계좌·관리자 화면에서 취소할 수 있어요."})
+                    else:
+                        _bal = next((a["balance"] for a in _my_accounts(auth_token)
+                                     if a["account_no"] == _from), None)
+                        _tail = f" · 출금계좌({_from[-4:]}) 잔액 {_bal:,}원" if _bal is not None else ""
+                        conv["messages"].append({"role": "assistant", "content":
+                            f"✅ **이체 완료** — {_pending['holder_name']}님에게 {_amt:,}원을 보냈어요.{_tail}"})
+                        st.session_state["_show_txn_link"] = {"account_no": _from}
                     storage.save_conversation(conv)
                     st.rerun()
         if _c2.button("취소", key="tf_cancel"):

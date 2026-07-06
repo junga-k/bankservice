@@ -29,6 +29,8 @@ SYSTEM_PROMPT = (
     "출금계좌를 직접 선택하도록 안내하세요.\n"
     "- 이체 제안 시 신규 수취계좌(처음 보내는 계좌)이거나 100만원 이상 고액이면 사용자에게 주의를 환기하세요. "
     "실제 실행은 사용자가 예금주·금액을 확인하고 비밀번호를 입력해 승인해야만 이뤄집니다(자동 실행 금지).\n"
+    "- 이체는 확인 카드에서 '즉시/지연(취소 가능)/예약(지정 시각)' 중 선택할 수 있습니다. 사용자가 "
+    "'나중에', '예약', '지연' 이체를 원하면 propose_transfer로 제안한 뒤 확인 카드에서 시점을 선택하도록 안내하세요.\n"
     "- 상품 추천·비교 요청에는 반드시 search_products를 호출하고, 그 결과 products 목록(상품안내 "
     "페이지와 동일한 FSS 데이터) 안의 상품만 안내하세요. 목록에 없는 상품명·수치를 지어내지 마세요.\n"
     "- 금융상품 정보는 참고용이며 투자·금융 자문이 아님을 필요 시 안내하세요.\n"
@@ -118,14 +120,18 @@ def tool_propose_transfer(args, ctx):
             "note": "사용자 확인 후 실행됩니다. 아직 이체되지 않았습니다."}
 
 
-def execute_transfer(proposal: dict, token: str, password: str = "") -> dict:
-    """사용자 확인 + 비밀번호 재인증 후 실제 이체 실행(UI에서 호출)."""
+def execute_transfer(proposal: dict, token: str, password: str = "",
+                     scheduled_at: float | None = None, delay_minutes: int = 0) -> dict:
+    """사용자 확인 + 비밀번호 재인증 후 이체 실행(UI에서 호출).
+    scheduled_at(예약 epoch) 또는 delay_minutes(지연이체) 지정 시 미래 실행."""
     return _post("/api/transfer", token, {
         "from_account": proposal["from_account"],
         "to_account": proposal["to_account"],
         "amount": proposal["amount"],
         "memo": proposal.get("memo"),
         "password": password,
+        "scheduled_at": scheduled_at,
+        "delay_minutes": delay_minutes,
     })
 
 
