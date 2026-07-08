@@ -125,6 +125,30 @@ def elasticsearch_metrics() -> dict:
         }
 
 
+def scheduled_poller_metrics(started: bool, last_run: float, pending_count: int) -> dict:
+    """예약/지연 이체 폴러의 헬스. 인자는 backend.app 의 get_poller_status()·대기건수에서 주입.
+
+    - down: 미기동
+    - warn: 마지막 실행이 45초를 초과(정체 의심) — 폴링 주기 15초의 3배
+    - ok:   45초 이내 정상 순환
+    """
+    import time as _time
+
+    if not started or last_run <= 0:
+        return {
+            "status": "down",
+            "detail": "폴러가 기동되지 않았습니다. 예약/지연 이체가 실행되지 않습니다.",
+            "pending": pending_count,
+            "age_seconds": None,
+        }
+    age = _time.time() - last_run
+    status = "ok" if age <= 45 else "warn"
+    detail = f"마지막 실행 {int(age)}초 전 · 대기 {pending_count}건"
+    if status == "warn":
+        detail = f"정체 의심 — {detail}"
+    return {"status": status, "detail": detail, "pending": pending_count, "age_seconds": int(age)}
+
+
 def phoenix_metrics() -> dict:
     """Phoenix 에 기록된 최근 24시간 span 을 읽어 LLM/RAG/캐시 사용량을 집계한다.
 

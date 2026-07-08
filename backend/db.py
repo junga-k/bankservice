@@ -111,6 +111,16 @@ def init_db() -> None:
                 content    TEXT NOT NULL,
                 created_at REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS security_events (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type   TEXT NOT NULL,          -- password_fail | limit_once | limit_daily | new_payee
+                username     TEXT NOT NULL DEFAULT '',
+                from_account TEXT NOT NULL DEFAULT '',
+                to_account   TEXT NOT NULL DEFAULT '',
+                amount       INTEGER NOT NULL DEFAULT 0,
+                detail       TEXT NOT NULL DEFAULT '',
+                created_at   REAL NOT NULL
+            );
             """
         )
         # 기존 DB 마이그레이션: users에 name/role, transfers에 sender_memo,
@@ -719,8 +729,75 @@ def transfer_summary() -> dict:
         "completed": by_status.get("completed", 0),
         "failed": by_status.get("failed", 0),
         "pending": by_status.get("pending", 0),
+        "scheduled": by_status.get("scheduled", 0),
+        "delayed": by_status.get("delayed", 0),
+        "canceled": by_status.get("canceled", 0),
         "completed_amount": completed_amt,
     }
+
+
+def list_scheduled_pending() -> list[dict]:
+    """실행 대기 중인 예약/지연 이체를 예정 시각 오름차순으로 반환."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, from_account, to_account, to_bank, to_holder, amount, fee, "
+            "status, scheduled_at, created_at FROM transfers "
+            "WHERE status IN ('scheduled', 'delayed') "
+            "ORDER BY scheduled_at ASC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def log_security_event(event_type: str, username: str = "", from_account: str = "",
+                       to_account: str = "", amount: int = 0, detail: str = "") -> None:
+    """이체 보안 이벤트(거부·경고)를 기록. 실패해도 호출부 흐름을 막지 않는다."""
+    import time as _time
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO security_events "
+                "(event_type, username, from_account, to_account, amount, detail, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (event_type, username, from_account, to_account, int(amount or 0),
+                 detail, _time.time()),
+            )
+    except Exception:
+        pass
+
+
+def list_security_events(offset: int = 0, limit: int = 20, event_type: str = "") -> list[dict]:
+    """보안 이벤트 목록(최신순). event_type 지정 시 해당 유형만."""
+    with get_conn() as conn:
+        if event_type:
+            rows = conn.execute(
+                "SELECT * FROM security_events WHERE event_type = ? "
+                "ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (event_type, limit, offset),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM security_events ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def security_event_summary() -> dict:
+    """유형별 총 건수 + 최근 24시간 건수."""
+    import time as _time
+    since = _time.time() - 86400
+    with get_conn() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM security_events").fetchone()[0]
+        by_type = {
+            r["event_type"]: r["n"]
+            for r in conn.execute(
+                "SELECT event_type, COUNT(*) AS n FROM security_events GROUP BY event_type"
+            ).fetchall()
+        }
+        last24h = conn.execute(
+            "SELECT COUNT(*) FROM security_events WHERE created_at >= ?", (since,)
+        ).fetchone()[0]
+    return {"total": total, "by_type": by_type, "last_24h": last24h}
 
 
 def is_new_payee(user_id: int, to_account: str) -> bool:

@@ -855,6 +855,46 @@ main { min-height: calc(100vh - var(--header-h)); }
 .bo-cancel-btn:hover { background: #FCE8E6; border-color: #C5221F; }
 .bo-cancel-btn:disabled { opacity: .5; cursor: default; }
 
+/* 예약/지연 대기 큐 */
+.sched-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  border-bottom: 1px solid #EEF0F3;
+  font-size: 13px;
+}
+.sched-row:last-child { border-bottom: none; }
+.sched-when { color: #202124; font-weight: 600; white-space: nowrap; }
+.sched-info { color: #5F6368; flex: 1; }
+.sched-row .bo-cancel-btn { margin-left: 0; }
+
+/* 보안 이벤트 로그 */
+.sec-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 4px;
+  border-bottom: 1px solid #EEF0F3;
+  font-size: 13px;
+}
+.sec-row:last-child { border-bottom: none; }
+.sec-user { font-weight: 600; color: #202124; white-space: nowrap; }
+.sec-info { color: #5F6368; flex: 1; }
+.sec-when { color: #80868B; white-space: nowrap; font-size: 12px; }
+.sec-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.sec-password_fail { background: #FCE8E6; color: #C5221F; }
+.sec-limit_once,
+.sec-limit_daily  { background: #FEF3C7; color: #92400E; }
+.sec-new_payee    { background: #E8F0FE; color: #1A56DB; }
+
 /* ── 고객센터 ─────────────────────────────────────────────────────── */
 .support-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; }
 .support-tab {

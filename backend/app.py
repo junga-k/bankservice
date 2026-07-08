@@ -45,6 +45,7 @@ def _startup() -> None:
 
 # ── 예약/지연 이체 폴러 (백그라운드 스레드) ──────────────────────────
 _poller_started = False
+_poller_last_run = 0.0   # 마지막 폴링 사이클 완료 시각(하트비트)
 
 
 def _start_scheduled_poller() -> None:
@@ -57,6 +58,7 @@ def _start_scheduled_poller() -> None:
     import threading
 
     def _loop():
+        global _poller_last_run
         while True:
             try:
                 for tid in db.pop_due_scheduled(time.time()):
@@ -66,9 +68,15 @@ def _start_scheduled_poller() -> None:
                         pass
             except Exception:
                 pass
+            _poller_last_run = time.time()   # 하트비트 갱신
             time.sleep(15)
 
     threading.Thread(target=_loop, daemon=True).start()
+
+
+def get_poller_status() -> dict:
+    """예약 이체 폴러의 기동 여부와 마지막 실행 시각."""
+    return {"started": _poller_started, "last_run": _poller_last_run}
 
 
 # ── Kafka 프로듀서 (지연 초기화) ─────────────────────────────────────
@@ -245,6 +253,24 @@ def admin_transfers(
     }
 
 
+@app.get("/api/admin/scheduled-transfers")
+def admin_scheduled_transfers(user: dict = Depends(auth.require_admin)):
+    """예약/지연 이체 대기 큐(예정 시각 오름차순)."""
+    return {"transfers": db.list_scheduled_pending()}
+
+
+@app.get("/api/admin/security-events")
+def admin_security_events(
+    offset: int = 0, limit: int = 20, event_type: str = "",
+    user: dict = Depends(auth.require_admin),
+):
+    """이체 보안 이벤트(한도초과·비번실패·신규계좌) 로그 + 요약."""
+    return {
+        "events": db.list_security_events(offset, limit, event_type),
+        "summary": db.security_event_summary(),
+    }
+
+
 # ── Backoffice: 성능관리 ──────────────────────────────────────────────
 @app.get("/api/admin/health")
 def admin_health(user: dict = Depends(auth.require_admin)):
@@ -255,10 +281,14 @@ def admin_health(user: dict = Depends(auth.require_admin)):
 @app.get("/api/admin/infra-metrics")
 def admin_infra_metrics(user: dict = Depends(auth.require_admin)):
     cfg = config.load()
+    _ps = get_poller_status()
     return {
         "kafka": infra_metrics.kafka_metrics(),
         "elasticsearch": infra_metrics.elasticsearch_metrics(),
         "phoenix": infra_metrics.phoenix_metrics(),
+        "scheduled_poller": infra_metrics.scheduled_poller_metrics(
+            _ps["started"], _ps["last_run"], len(db.list_scheduled_pending())
+        ),
         "llm_config": {
             "provider": cfg.get("provider") or llm.DEFAULT_PROVIDER,
             "model": cfg.get("default_model", ""),
@@ -309,6 +339,35 @@ def update_chatbot_config(req: ChatbotConfigReq, user: dict = Depends(auth.requi
     return {"ok": True}
 
 
+# ── Backoffice: 이체 정책(한도/수수료) ────────────────────────────────
+@app.get("/api/admin/transfer-policy")
+def get_transfer_policy(user: dict = Depends(auth.require_admin)):
+    cfg = config.load()
+    return {
+        "transfer_limit": int(cfg.get("transfer_limit", TRANSFER_LIMIT)),
+        "daily_transfer_limit": int(cfg.get("daily_transfer_limit", DAILY_TRANSFER_LIMIT)),
+        "transfer_fee": int(cfg.get("transfer_fee", TRANSFER_FEE)),
+    }
+
+
+class TransferPolicyReq(BaseModel):
+    transfer_limit: int
+    daily_transfer_limit: int
+    transfer_fee: int
+
+
+@app.put("/api/admin/transfer-policy")
+def update_transfer_policy(req: TransferPolicyReq, user: dict = Depends(auth.require_admin)):
+    if req.transfer_limit <= 0 or req.daily_transfer_limit <= 0 or req.transfer_fee < 0:
+        raise HTTPException(400, "한도는 0보다 커야 하고 수수료는 음수가 될 수 없습니다.")
+    if req.transfer_limit > req.daily_transfer_limit:
+        raise HTTPException(400, "1회 한도는 1일 한도를 넘을 수 없습니다.")
+    cfg = config.load()
+    cfg.update(req.model_dump())
+    config.save(cfg)
+    return {"ok": True}
+
+
 # ── Backoffice: 이용통계 ──────────────────────────────────────────────
 @app.get("/api/admin/usage-stats")
 def admin_usage_stats(user: dict = Depends(auth.require_admin)):
@@ -340,7 +399,7 @@ def lookup_account(account_no: str, from_account: str | None = None,
     if from_account:
         src = db.lookup_account(from_account)
         if src is not None and src["bank_name"] != dst["bank_name"]:
-            fee = TRANSFER_FEE
+            fee = int(config.load().get("transfer_fee", TRANSFER_FEE))
     return {
         "account_no": dst["account_no"],
         "bank_name": dst["bank_name"],
@@ -353,12 +412,21 @@ def lookup_account(account_no: str, from_account: str | None = None,
 # ── 이체 ─────────────────────────────────────────────────────────────
 @app.post("/api/transfer")
 def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
+    # 이체 정책(관리자 설정) — 없으면 모듈 상수를 fallback 으로 사용
+    _cfg = config.load()
+    transfer_limit = int(_cfg.get("transfer_limit", TRANSFER_LIMIT))
+    daily_limit = int(_cfg.get("daily_transfer_limit", DAILY_TRANSFER_LIMIT))
+    transfer_fee = int(_cfg.get("transfer_fee", TRANSFER_FEE))
+
     if req.amount <= 0:
         raise HTTPException(status_code=400, detail="이체 금액이 올바르지 않습니다.")
-    if req.amount > TRANSFER_LIMIT:
+    if req.amount > transfer_limit:
+        db.log_security_event("limit_once", user["username"], req.from_account,
+                              req.to_account, req.amount,
+                              f"1회 한도 {transfer_limit:,}원 초과")
         raise HTTPException(
             status_code=400,
-            detail=f"1회 이체 한도({TRANSFER_LIMIT:,}원)를 초과했습니다.",
+            detail=f"1회 이체 한도({transfer_limit:,}원)를 초과했습니다.",
         )
     # 출금 계좌가 로그인한 사용자 소유인지 확인
     my = {a["account_no"]: a for a in db.list_accounts(user["id"])}
@@ -373,22 +441,27 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
     if req.to_account == req.from_account:
         raise HTTPException(status_code=400, detail="같은 계좌로는 이체할 수 없습니다.")
 
-    fee = 0 if src["bank_name"] == dst["bank_name"] else TRANSFER_FEE
+    fee = 0 if src["bank_name"] == dst["bank_name"] else transfer_fee
     if src["balance"] < req.amount + fee:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
 
     # 1일 누적 이체 한도(내 계좌들 오늘 completed+pending 합계 + 이번 금액)
     _today0 = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))
-    if db.sum_user_transfers_today(list(my.keys()), _today0) + req.amount > DAILY_TRANSFER_LIMIT:
+    if db.sum_user_transfers_today(list(my.keys()), _today0) + req.amount > daily_limit:
+        db.log_security_event("limit_daily", user["username"], req.from_account,
+                              req.to_account, req.amount,
+                              f"1일 한도 {daily_limit:,}원 초과")
         raise HTTPException(
             status_code=400,
-            detail=f"1일 이체 한도({DAILY_TRANSFER_LIMIT:,}원)를 초과했습니다.",
+            detail=f"1일 이체 한도({daily_limit:,}원)를 초과했습니다.",
         )
 
     # 본인 확인(비밀번호 재인증) — 버튼 클릭만으로 실행되지 않도록 서버가 재검증
     # get_current_user는 password_hash를 주지 않으므로 사용자 레코드를 다시 조회
     _acct = db.get_user_by_username(user["username"])
     if not req.password or _acct is None or not auth.verify_password(req.password, _acct["password_hash"]):
+        db.log_security_event("password_fail", user["username"], req.from_account,
+                              req.to_account, req.amount, "비밀번호 재인증 실패")
         raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다. 본인 확인에 실패했습니다.")
 
     # 예약/지연 이체 판별: 즉시 실행이 아니면 미래 시각에 폴러가 처리
@@ -399,6 +472,12 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
         sched_at, sched_status = float(req.scheduled_at), "scheduled"
     elif req.delay_minutes and req.delay_minutes > 0:          # 지연이체(취소 가능)
         sched_at, sched_status = now + req.delay_minutes * 60, "delayed"
+
+    # 신규 수취계좌로의 이체는 감사 로그에 기록(예외 아님, 참고용)
+    if db.is_new_payee(user["id"], dst["account_no"]):
+        db.log_security_event("new_payee", user["username"], req.from_account,
+                              req.to_account, req.amount,
+                              f"신규 수취계좌 이체 · 예금주 {dst['holder_name']}")
 
     transfer_id = db.create_transfer(
         req.from_account, req.to_account, req.amount,

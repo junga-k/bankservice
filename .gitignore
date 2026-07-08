@@ -13,3 +13,4 @@ bank.db-shm
 .coverage
 .pytest_cache/
 .ipynb_checkpoints/
+UI/reference/

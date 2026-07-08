@@ -98,6 +98,8 @@ document.addEventListener("click", (e) => {
 function navigate(name) {
   if (!SECTIONS.includes(name)) name = "home";
 
+  if (name !== "backoffice") stopBoAutoRefresh();   // 관리자 밖으로 나가면 자동 갱신 해제
+
   document.querySelectorAll(".section").forEach((s) => {
     s.classList.toggle("active", s.id === name);
   });
@@ -121,6 +123,8 @@ function navigate(name) {
       return;
     }
     ensureBoTabLoaded("dashboard");
+    const activeTab = document.querySelector(".bo-tab.active");
+    setBoAutoRefresh(activeTab ? activeTab.dataset.boTab : "dashboard");
   }
   if (name === "support") {
     const active = document.querySelector(".support-tab.active");
@@ -1347,6 +1351,37 @@ function boGoTab(name) {
     document.getElementById(`bo-panel-${t}`).style.display = t === name ? "block" : "none";
   });
   ensureBoTabLoaded(name);
+  setBoAutoRefresh(name);
+}
+
+// 대시보드/이체모니터링에서만 주기적 자동 갱신(10초). 그 외 탭·섹션에선 해제.
+const BO_REFRESH_MS = 10000;
+let boRefreshTimer = null;
+
+function stopBoAutoRefresh() {
+  if (boRefreshTimer) { clearInterval(boRefreshTimer); boRefreshTimer = null; }
+}
+
+function setBoAutoRefresh(name) {
+  stopBoAutoRefresh();
+  if (name === "dashboard") {
+    boRefreshTimer = setInterval(loadBoDashboard, BO_REFRESH_MS);
+  } else if (name === "transfers") {
+    boRefreshTimer = setInterval(refreshBoTransfersLive, BO_REFRESH_MS);
+  }
+}
+
+// 이체모니터링 라이브 갱신: 페이지네이션된 본 목록은 건드리지 않고
+// 요약·예약 큐·보안 이벤트(실시간성 높은 부분)만 새로고침.
+async function refreshBoTransfersLive() {
+  loadBoScheduledQueue();
+  loadBoSecurityEvents();
+  try {
+    const res = await apiFetch(`/api/admin/transfers?offset=0&limit=1&status=${boTransferStatus}`);
+    if (res.ok) renderBoTransferSummary((await res.json()).summary);
+  } catch (err) {
+    console.error("이체 요약 갱신 실패:", err);
+  }
 }
 
 function ensureBoTabLoaded(name) {
@@ -1360,7 +1395,7 @@ function ensureBoTabLoaded(name) {
     loadBankRanking("bo-stat-banks");
     loadTopProducts("bo-stat-products");
   }
-  if (name === "perf") { loadBoHealth(); loadBoBatchPerf(); loadBoChatbotConfig(); }
+  if (name === "perf") { loadBoHealth(); loadBoBatchPerf(); loadBoChatbotConfig(); loadBoTransferPolicy(); }
   if (name === "products") {
     loadBankRanking("bo-product-stat-banks");
     loadTopProducts("bo-product-stat-products");
@@ -1417,6 +1452,7 @@ async function loadBoDashboardInfra() {
       { name: "Kafka", ...data.kafka },
       { name: "Elasticsearch", ...data.elasticsearch },
       { name: "Phoenix (LLM 추적)", ...data.phoenix },
+      { name: "예약 이체 폴러", ...data.scheduled_poller },
     ];
     statusBox.innerHTML = cards
       .map(
@@ -1582,6 +1618,7 @@ async function loadBoTransfers(reset = true) {
     document.getElementById("bo-transfer-more").style.display =
       boTransferOffset + data.transfers.length < data.total ? "" : "none";
     boTransferOffset += data.transfers.length;
+    if (reset) { loadBoScheduledQueue(); loadBoSecurityEvents(); }
   } catch (err) {
     console.error("이체 내역 로드 실패:", err);
   }
@@ -1593,7 +1630,92 @@ function renderBoTransferSummary(s) {
     <div class="metric"><div class="value">${s.completed}</div><div class="label">완료</div></div>
     <div class="metric"><div class="value">${s.pending}</div><div class="label">대기</div></div>
     <div class="metric"><div class="value">${s.failed}</div><div class="label">실패</div></div>
+    <div class="metric"><div class="value" style="color:#1A56DB">${s.scheduled || 0}</div><div class="label">예약</div></div>
+    <div class="metric"><div class="value" style="color:#6D28D9">${s.delayed || 0}</div><div class="label">지연</div></div>
+    <div class="metric"><div class="value" style="color:#5F6368">${s.canceled || 0}</div><div class="label">취소</div></div>
     <div class="metric"><div class="value">${won(s.completed_amount)}</div><div class="label">완료 금액</div></div>`;
+}
+
+// 예약/지연 대기 큐 렌더 (예정 시각 오름차순)
+async function loadBoScheduledQueue() {
+  const box = document.getElementById("bo-scheduled-queue");
+  if (!box) return;
+  try {
+    const res = await apiFetch("/api/admin/scheduled-transfers");
+    if (!res.ok) throw new Error("예약 큐 조회 실패");
+    const { transfers } = await res.json();
+    if (!transfers.length) {
+      box.innerHTML = `<p class="tf-hint">대기 중인 예약/지연 이체가 없습니다.</p>`;
+      return;
+    }
+    const now = Date.now() / 1000;
+    box.innerHTML = transfers
+      .map((t) => {
+        const when = new Date(t.scheduled_at * 1000).toLocaleString("ko-KR",
+          { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+        const remain = t.scheduled_at - now;
+        const remainTxt = remain <= 0 ? "실행 임박"
+          : remain < 3600 ? `${Math.ceil(remain / 60)}분 후`
+          : `${Math.floor(remain / 3600)}시간 ${Math.ceil((remain % 3600) / 60)}분 후`;
+        const label = BO_STATUS_LABEL[t.status] || t.status;
+        return `<div class="sched-row">
+          <span class="tx-status tx-${escapeHtml(t.status)}">${label}</span>
+          <span class="sched-when">${when} · ${remainTxt}</span>
+          <span class="sched-info">${escapeHtml(t.to_bank || "")} ${escapeHtml(t.to_account)} · ${won(t.amount)}</span>
+          <button class="bo-cancel-btn" type="button" data-tf-id="${t.id}">취소</button>
+        </div>`;
+      })
+      .join("");
+  } catch (err) {
+    box.innerHTML = statError();
+    console.error("예약 큐 로드 실패:", err);
+  }
+}
+
+const SEC_EVENT_LABEL = {
+  password_fail: "비밀번호 실패",
+  limit_once: "1회 한도 초과",
+  limit_daily: "1일 한도 초과",
+  new_payee: "신규 수취계좌",
+};
+
+// 이체 보안 이벤트 목록 + 요약
+async function loadBoSecurityEvents() {
+  const box = document.getElementById("bo-security-events");
+  const sumBox = document.getElementById("bo-security-summary");
+  if (!box) return;
+  try {
+    const res = await apiFetch("/api/admin/security-events?limit=30");
+    if (!res.ok) throw new Error("보안 이벤트 조회 실패");
+    const { events, summary } = await res.json();
+
+    const bt = summary.by_type || {};
+    sumBox.innerHTML = `
+      <div class="metric"><div class="value">${summary.last_24h || 0}</div><div class="label">최근 24시간</div></div>
+      <div class="metric"><div class="value" style="color:#C5221F">${bt.password_fail || 0}</div><div class="label">비밀번호 실패</div></div>
+      <div class="metric"><div class="value" style="color:#92400E">${(bt.limit_once || 0) + (bt.limit_daily || 0)}</div><div class="label">한도 초과</div></div>
+      <div class="metric"><div class="value" style="color:#1A56DB">${bt.new_payee || 0}</div><div class="label">신규 수취계좌</div></div>`;
+
+    if (!events.length) {
+      box.innerHTML = `<p class="tf-hint">기록된 보안 이벤트가 없습니다.</p>`;
+      return;
+    }
+    box.innerHTML = events
+      .map((e) => {
+        const d = new Date(e.created_at * 1000).toLocaleString("ko-KR");
+        const label = SEC_EVENT_LABEL[e.event_type] || escapeHtml(e.event_type);
+        return `<div class="sec-row">
+          <span class="sec-badge sec-${escapeHtml(e.event_type)}">${label}</span>
+          <span class="sec-user">${escapeHtml(e.username || "-")}</span>
+          <span class="sec-info">${escapeHtml(e.to_account || "")} · ${won(e.amount)}</span>
+          <span class="sec-when">${d}</span>
+        </div>`;
+      })
+      .join("");
+  } catch (err) {
+    box.innerHTML = statError();
+    console.error("보안 이벤트 로드 실패:", err);
+  }
 }
 
 const BO_STATUS_LABEL = { completed: "완료", pending: "대기", failed: "실패",
@@ -1794,6 +1916,50 @@ document.addEventListener("submit", async (e) => {
         default_style: document.getElementById("bo-cc-style").value,
         system_prompt: document.getElementById("bo-cc-prompt").value,
         web_search: document.getElementById("bo-cc-websearch").checked,
+      }),
+    });
+    if (!res.ok) {
+      const { detail } = await res.json().catch(() => ({}));
+      throw new Error(detail || "저장에 실패했습니다.");
+    }
+    statusEl.className = "tf-status ok";
+    statusEl.textContent = "저장되었습니다.";
+  } catch (err) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = err.message;
+  }
+});
+
+/* ── Backoffice: 이체 정책(한도/수수료) ──────────────────────────── */
+async function loadBoTransferPolicy() {
+  const statusEl = document.getElementById("bo-tp-status");
+  try {
+    const res = await apiFetch("/api/admin/transfer-policy");
+    if (!res.ok) throw new Error("이체 정책 조회 실패");
+    const p = await res.json();
+    document.getElementById("bo-tp-once").value = p.transfer_limit;
+    document.getElementById("bo-tp-daily").value = p.daily_transfer_limit;
+    document.getElementById("bo-tp-fee").value = p.transfer_fee;
+  } catch (err) {
+    if (statusEl) { statusEl.className = "tf-status err"; statusEl.textContent = err.message; }
+    console.error("이체 정책 로드 실패:", err);
+  }
+}
+
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "bo-transfer-policy-form") return;
+  e.preventDefault();
+  const statusEl = document.getElementById("bo-tp-status");
+  statusEl.className = "tf-status";
+  statusEl.textContent = "저장 중…";
+  try {
+    const res = await apiFetch("/api/admin/transfer-policy", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transfer_limit: Number(document.getElementById("bo-tp-once").value),
+        daily_transfer_limit: Number(document.getElementById("bo-tp-daily").value),
+        transfer_fee: Number(document.getElementById("bo-tp-fee").value),
       }),
     });
     if (!res.ok) {

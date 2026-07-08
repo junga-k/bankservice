@@ -552,12 +552,26 @@
           <div class="metric-grid" id="bo-transfer-summary"><!-- JS 렌더 --></div>
 
           <div class="panel">
+            <h3>예약/지연 대기 큐</h3>
+            <div id="bo-scheduled-queue"><!-- JS 렌더 --></div>
+          </div>
+
+          <div class="panel">
+            <h3>보안 이벤트</h3>
+            <div class="metric-grid" id="bo-security-summary"><!-- JS 렌더 --></div>
+            <div id="bo-security-events"><!-- JS 렌더 --></div>
+          </div>
+
+          <div class="panel">
             <h3>이체 내역</h3>
             <div class="bo-toolbar" id="bo-transfer-filter">
               <button type="button" class="bo-filter-btn active" data-status="">전체</button>
               <button type="button" class="bo-filter-btn" data-status="completed">완료</button>
               <button type="button" class="bo-filter-btn" data-status="pending">대기</button>
               <button type="button" class="bo-filter-btn" data-status="failed">실패</button>
+              <button type="button" class="bo-filter-btn" data-status="scheduled">예약</button>
+              <button type="button" class="bo-filter-btn" data-status="delayed">지연</button>
+              <button type="button" class="bo-filter-btn" data-status="canceled">취소</button>
             </div>
             <table class="admin-table">
               <thead><tr><th>ID</th><th>출금</th><th>입금</th><th>금액</th><th>수수료</th><th>상태</th><th>일시</th></tr></thead>
@@ -629,6 +643,27 @@
                   </div>
                   <button class="btn btn-primary" type="submit">저장</button>
                   <span class="tf-status" id="bo-cc-status"></span>
+                </form>
+              </div>
+
+              <div class="panel">
+                <h3>이체 정책</h3>
+                <p class="section-desc">간편이체(비밀번호 인증) 기준 한도·수수료입니다. 저장 즉시 이후 이체에 반영됩니다.</p>
+                <form id="bo-transfer-policy-form">
+                  <div class="tf-field">
+                    <label for="bo-tp-once">1회 이체 한도 (원)</label>
+                    <input type="number" id="bo-tp-once" min="1" step="10000" />
+                  </div>
+                  <div class="tf-field">
+                    <label for="bo-tp-daily">1일 이체 한도 (원)</label>
+                    <input type="number" id="bo-tp-daily" min="1" step="10000" />
+                  </div>
+                  <div class="tf-field">
+                    <label for="bo-tp-fee">타행 이체 수수료 (원)</label>
+                    <input type="number" id="bo-tp-fee" min="0" step="100" />
+                  </div>
+                  <button class="btn btn-primary" type="submit">저장</button>
+                  <span class="tf-status" id="bo-tp-status"></span>
                 </form>
               </div>
             </div>
