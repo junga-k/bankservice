@@ -147,6 +147,21 @@ def main() -> None:
     print(f"\n완료: 총 {grand_total_docs}개 상품 / {grand_total_chunks}개 청크 인덱싱됨")
     print(f"Elasticsearch 인덱스: {ES_INDEX}")
 
+    # 마지막 수집 시각 기록(관리자 성능관리 'FSS 데이터 현황'에서 조회)
+    try:
+        import json
+        from datetime import datetime
+        data_dir = pathlib.Path(__file__).parent / "site" / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        (data_dir / "fss_ingest.json").write_text(json.dumps({
+            "ingested_at": datetime.now().isoformat(timespec="seconds"),
+            "product_count": grand_total_docs,
+            "chunk_count": grand_total_chunks,
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        print("수집 시각 기록: site/data/fss_ingest.json")
+    except Exception as e:
+        print(f"(수집 시각 기록 실패: {e})")
+
 
 if __name__ == "__main__":
     main()

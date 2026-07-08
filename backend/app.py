@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import time
@@ -581,6 +582,102 @@ def get_products(category: str):
     products.sort(key=lambda p: p["best_rate"] or 0, reverse=True)
     _PRODUCT_CACHE[category] = (now, products)
     return {"products": products}
+
+
+# ── Backoffice: FSS 데이터 신선도·업데이트 모니터링 ────────────────────
+_FSS_DATA_DIR = Path(__file__).resolve().parent.parent / "site" / "data"
+_FSS_SNAPSHOT = _FSS_DATA_DIR / "fss_snapshot.json"
+_FSS_INGEST = _FSS_DATA_DIR / "fss_ingest.json"
+
+
+def _fss_key(p: dict) -> str:
+    return f"{p['bank']}|{p['product_name']}|{p['category']}"
+
+
+def _load_json(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _fss_fetch_all(auth_key: str) -> list:
+    """예금+적금 구조화 상품(캐시 재사용)."""
+    now = time.time()
+    cached = _PRODUCT_CACHE.get("금리비교")
+    if cached and now - cached[0] < _PRODUCT_CACHE_TTL:
+        return cached[1]
+    products = fss_fetcher.fetch_category_structured(auth_key, "예금") + \
+        fss_fetcher.fetch_category_structured(auth_key, "적금")
+    products.sort(key=lambda p: p["best_rate"] or 0, reverse=True)
+    _PRODUCT_CACHE["금리비교"] = (now, products)
+    return products
+
+
+@app.get("/api/admin/fss-status")
+def admin_fss_status(user: dict = Depends(auth.require_admin)):
+    """FSS 키 상태 + 상품 수 + 최신 공시일 + 마지막 색인 + 스냅샷 대비 변경."""
+    ingest = _load_json(_FSS_INGEST)
+    auth_key = config.load().get("fss_api_key", "")
+    if not auth_key:
+        return {"status": "down", "detail": "FSS API 키가 설정되지 않았습니다.",
+                "products": 0, "by_category": {}, "latest_dcls": None,
+                "ingest": ingest, "changes_summary": None, "changes": None}
+    try:
+        products = _fss_fetch_all(auth_key)
+    except Exception as e:
+        return {"status": "down", "detail": f"FSS API 조회 실패: {e}",
+                "products": 0, "by_category": {}, "latest_dcls": None,
+                "ingest": ingest, "changes_summary": None, "changes": None}
+
+    by_cat: dict[str, int] = {}
+    for p in products:
+        by_cat[p["category"]] = by_cat.get(p["category"], 0) + 1
+    dcls = [p.get("dcls_date") for p in products if p.get("dcls_date")]
+    latest_dcls = max(dcls) if dcls else None
+
+    # 저장 스냅샷 대비 변경(신규/금리변경/삭제)
+    snap = _load_json(_FSS_SNAPSHOT) or {}
+    cur = {_fss_key(p): {"best_rate": p.get("best_rate"), "dcls_date": p.get("dcls_date")}
+           for p in products}
+    new, rate_changed, removed = [], [], []
+    for k, v in cur.items():
+        if k not in snap:
+            new.append(k)
+        elif snap[k].get("best_rate") != v["best_rate"]:
+            rate_changed.append({"key": k, "old": snap[k].get("best_rate"), "new": v["best_rate"]})
+    for k in snap:
+        if k not in cur:
+            removed.append(k)
+
+    return {
+        "status": "ok",
+        "detail": f"FSS 연결 정상 · 상품 {len(products)}건",
+        "products": len(products),
+        "by_category": by_cat,
+        "latest_dcls": latest_dcls,
+        "ingest": ingest,
+        "changes_summary": {"new": len(new), "rate_changed": len(rate_changed),
+                            "removed": len(removed), "has_snapshot": bool(snap)},
+        "changes": {"new": new[:20], "rate_changed": rate_changed[:20], "removed": removed[:20]},
+    }
+
+
+@app.post("/api/admin/fss-status/snapshot")
+def admin_fss_snapshot(user: dict = Depends(auth.require_admin)):
+    """현재 상품 상태를 기준 스냅샷으로 저장(이후 변경 감지의 기준)."""
+    auth_key = config.load().get("fss_api_key", "")
+    if not auth_key:
+        raise HTTPException(503, "FSS API 키가 설정되지 않았습니다.")
+    try:
+        products = _fss_fetch_all(auth_key)
+    except Exception as e:
+        raise HTTPException(502, f"FSS API 조회 실패: {e}")
+    snap = {_fss_key(p): {"best_rate": p.get("best_rate"), "dcls_date": p.get("dcls_date")}
+            for p in products}
+    _FSS_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _FSS_SNAPSHOT.write_text(json.dumps(snap, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"ok": True, "count": len(snap)}
 
 
 # ── 고객센터: 공지사항 / FAQ / 서식·약관·설명서 (공개) ────────────────

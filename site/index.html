@@ -467,15 +467,16 @@
 
         <div class="bo-layout">
         <aside class="bo-sidebar">
+          <p class="bo-menu-title">관리 메뉴</p>
           <nav class="bo-tabs">
-            <button type="button" class="bo-tab active" data-bo-tab="dashboard"><span class="bo-tab-icon">📈</span>대시보드</button>
-            <button type="button" class="bo-tab" data-bo-tab="members"><span class="bo-tab-icon">👤</span>회원관리</button>
-            <button type="button" class="bo-tab" data-bo-tab="transfers"><span class="bo-tab-icon">💸</span>이체모니터링</button>
-            <button type="button" class="bo-tab" data-bo-tab="usage"><span class="bo-tab-icon">📊</span>이용통계</button>
-            <button type="button" class="bo-tab" data-bo-tab="perf"><span class="bo-tab-icon">⚡</span>성능관리</button>
-            <button type="button" class="bo-tab" data-bo-tab="products"><span class="bo-tab-icon">🏦</span>금융상품관리</button>
-            <button type="button" class="bo-tab" data-bo-tab="faq"><span class="bo-tab-icon">📢</span>FAQ·공지사항 관리</button>
-            <button type="button" class="bo-tab" data-bo-tab="settings"><span class="bo-tab-icon">⚙️</span>시스템설정</button>
+            <button type="button" class="bo-tab active" data-bo-tab="dashboard">대시보드</button>
+            <button type="button" class="bo-tab" data-bo-tab="members">회원관리</button>
+            <button type="button" class="bo-tab" data-bo-tab="transfers">이체모니터링</button>
+            <button type="button" class="bo-tab" data-bo-tab="usage">이용통계</button>
+            <button type="button" class="bo-tab" data-bo-tab="perf">성능관리</button>
+            <button type="button" class="bo-tab" data-bo-tab="products">금융상품관리</button>
+            <button type="button" class="bo-tab" data-bo-tab="faq">FAQ·공지사항 관리</button>
+            <button type="button" class="bo-tab" data-bo-tab="settings">시스템설정</button>
           </nav>
         </aside>
 
@@ -511,7 +512,7 @@
           </div>
 
           <div class="panel">
-            <h3>🔌 인프라 연동 현황</h3>
+            <h3>인프라 연동 현황</h3>
             <div class="status-card-grid" id="bo-dash-infra-status"><!-- JS 렌더 --></div>
           </div>
           <div class="panel">
@@ -614,6 +615,16 @@
               <div class="panel">
                 <h3>최근 배치 테스트 성능</h3>
                 <div id="bo-batch-perf"><!-- JS 렌더 --></div>
+              </div>
+              <div class="panel">
+                <h3>FSS 데이터 현황</h3>
+                <p class="section-desc">금융감독원(FSS) 상품 데이터의 신선도와, 지난 기준 대비 변경(신규·금리변경·삭제)을 확인합니다.</p>
+                <div class="metric-grid" id="bo-fss-cards"><!-- JS 렌더 --></div>
+                <div id="bo-fss-changes"><!-- JS 렌더 --></div>
+                <div class="bo-toolbar">
+                  <button class="btn btn-ghost" type="button" id="bo-fss-snapshot-btn">현재 상태를 기준으로 저장</button>
+                  <span class="tf-status" id="bo-fss-snapshot-status"></span>
+                </div>
               </div>
             </div>
 

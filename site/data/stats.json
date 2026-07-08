@@ -3,6 +3,9 @@
     "total": 999,
     "success": 999,
     "success_rate": 100.0,
+    "graded": 0,
+    "correct": 0,
+    "accuracy": null,
     "avg_latency_ms": 1234,
     "provider": "OpenAI",
     "model": "gpt-4o-mini",
@@ -10,51 +13,80 @@
     "categories": [
       {
         "name": "상식",
-        "count": 100
+        "count": 100,
+        "graded": 0,
+        "correct": 0,
+        "accuracy": null
       },
       {
         "name": "세계지리",
-        "count": 100
+        "count": 100,
+        "graded": 0,
+        "correct": 0,
+        "accuracy": null
       },
       {
         "name": "수학",
-        "count": 100
+        "count": 100,
+        "graded": 0,
+        "correct": 0,
+        "accuracy": null
       },
       {
         "name": "영어",
-        "count": 100
+        "count": 100,
+        "graded": 0,
+        "correct": 0,
+        "accuracy": null
       },
       {
         "name": "문화예술",
-        "count": 100
+        "count": 100,
+        "graded": 0,
+        "correct": 0,
+        "accuracy": null
       },
       {
         "name": "한국역사",
-        "count": 100
+        "count": 100,
+        "graded": 0,
+        "correct": 0,
+        "accuracy": null
       },
       {
         "name": "논리",
-        "count": 100
+        "count": 100,
+        "graded": 0,
+        "correct": 0,
+        "accuracy": null
       },
       {
         "name": "경제",
-        "count": 100
+        "count": 100,
+        "graded": 0,
+        "correct": 0,
+        "accuracy": null
       },
       {
         "name": "파이썬코딩",
-        "count": 100
+        "count": 100,
+        "graded": 0,
+        "correct": 0,
+        "accuracy": null
       },
       {
         "name": "과학",
-        "count": 99
+        "count": 99,
+        "graded": 0,
+        "correct": 0,
+        "accuracy": null
       }
     ]
   },
   "recent_questions": [
-    "적금 금리 가장 높은 걸로 보여줘",
-    "현재 판매중인 적금 중 금리가 가장 높은 상품은 뭐가 …",
-    "카카오뱅크 적금 상품 알려줘",
-    "12개월 정기예금 금리 높은 상품 추천해줘"
+    "12개월 만기 적금 상품 중 가장 이자가 높은 순으로 …",
+    "6개월 만기 예금상품 보여줘",
+    "내 카카오뱅크의 잔액을 알려줘"
   ],
-  "conversation_count": 4
+  "conversation_count": 3
 }

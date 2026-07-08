@@ -1395,7 +1395,7 @@ function ensureBoTabLoaded(name) {
     loadBankRanking("bo-stat-banks");
     loadTopProducts("bo-stat-products");
   }
-  if (name === "perf") { loadBoHealth(); loadBoBatchPerf(); loadBoChatbotConfig(); loadBoTransferPolicy(); }
+  if (name === "perf") { loadBoHealth(); loadBoBatchPerf(); loadBoChatbotConfig(); loadBoTransferPolicy(); loadBoFssStatus(); }
   if (name === "products") {
     loadBankRanking("bo-product-stat-banks");
     loadTopProducts("bo-product-stat-products");
@@ -1654,14 +1654,20 @@ async function loadBoScheduledQueue() {
         const when = new Date(t.scheduled_at * 1000).toLocaleString("ko-KR",
           { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
         const remain = t.scheduled_at - now;
-        const remainTxt = remain <= 0 ? "실행 임박"
-          : remain < 3600 ? `${Math.ceil(remain / 60)}분 후`
-          : `${Math.floor(remain / 3600)}시간 ${Math.ceil((remain % 3600) / 60)}분 후`;
+        const mins = Math.ceil(remain / 60);
+        let remainTxt;
+        if (remain <= 0) remainTxt = "실행 임박";
+        else if (mins < 60) remainTxt = `${mins}분 후`;
+        else {
+          const h = Math.floor(mins / 60), m = mins % 60;
+          remainTxt = m ? `${h}시간 ${m}분 후` : `${h}시간 후`;
+        }
         const label = BO_STATUS_LABEL[t.status] || t.status;
         return `<div class="sched-row">
           <span class="tx-status tx-${escapeHtml(t.status)}">${label}</span>
           <span class="sched-when">${when} · ${remainTxt}</span>
-          <span class="sched-info">${escapeHtml(t.to_bank || "")} ${escapeHtml(t.to_account)} · ${won(t.amount)}</span>
+          <span class="sched-info">${escapeHtml(t.to_bank || "")} ${escapeHtml(t.to_account)}</span>
+          <span class="sched-amount">${won(t.amount)}</span>
           <button class="bo-cancel-btn" type="button" data-tf-id="${t.id}">취소</button>
         </div>`;
       })
@@ -1707,7 +1713,8 @@ async function loadBoSecurityEvents() {
         return `<div class="sec-row">
           <span class="sec-badge sec-${escapeHtml(e.event_type)}">${label}</span>
           <span class="sec-user">${escapeHtml(e.username || "-")}</span>
-          <span class="sec-info">${escapeHtml(e.to_account || "")} · ${won(e.amount)}</span>
+          <span class="sec-info">${escapeHtml(e.to_account || "")}</span>
+          <span class="sec-amount">${won(e.amount)}</span>
           <span class="sec-when">${d}</span>
         </div>`;
       })
@@ -1836,17 +1843,27 @@ async function loadBoBatchPerf() {
     const res = await fetch("data/stats.json");
     const { quality } = await res.json();
     if (!quality) { box.innerHTML = statEmpty(); return; }
+    const hasAcc = quality.accuracy !== null && quality.accuracy !== undefined;
+    const accCard = hasAcc
+      ? `<div class="metric"><div class="value" style="color:#0B8457">${quality.accuracy}%</div><div class="label">정답률</div></div>`
+      : `<div class="metric"><div class="value" style="color:#9AA0A6;font-size:16px">미측정</div><div class="label">정답률</div></div>`;
     const cats = (quality.categories || [])
-      .map((c) => `<li><span class="p-name">${escapeHtml(c.name)}</span><span class="p-count">${c.count}</span></li>`)
+      .map((c) => {
+        const acc = (c.accuracy !== null && c.accuracy !== undefined)
+          ? `<span class="p-acc">정답 ${c.accuracy}%</span>` : "";
+        return `<li><span class="p-name">${escapeHtml(c.name)}</span>${acc}<span class="p-count">${c.count}문항</span></li>`;
+      })
       .join("");
     box.innerHTML = `
       <div class="metric-grid">
         <div class="metric"><div class="value">${quality.total}</div><div class="label">총 테스트</div></div>
-        <div class="metric"><div class="value">${quality.success_rate}%</div><div class="label">성공률</div></div>
+        <div class="metric"><div class="value">${quality.success_rate}%</div><div class="label">응답 성공률</div></div>
+        ${accCard}
         <div class="metric"><div class="value">${quality.avg_latency_ms}ms</div><div class="label">평균 지연</div></div>
       </div>
-      <p class="tf-hint">${escapeHtml(quality.provider)} · ${escapeHtml(quality.model)} ·
-        ${escapeHtml(quality.tested_at)}</p>
+      <p class="tf-hint">모델 <b>${escapeHtml(quality.model || "-")}</b> · ${escapeHtml(quality.provider || "-")} ·
+        ${escapeHtml(quality.tested_at)}<br>
+        응답 성공률 = 에러 없이 응답을 받은 비율(가용성) · 정답률 = LLM 채점 기준 정답 비율${hasAcc ? "" : " (배치 재실행 시 측정)"}</p>
       <ol class="topcat-list">${cats}</ol>`;
   } catch (err) {
     box.innerHTML = statError();
@@ -1971,6 +1988,91 @@ document.addEventListener("submit", async (e) => {
   } catch (err) {
     statusEl.className = "tf-status err";
     statusEl.textContent = err.message;
+  }
+});
+
+/* ── Backoffice: FSS 데이터 현황 ─────────────────────────────────── */
+const FSS_STATUS_LABEL = { ok: "정상", down: "실패" };
+
+async function loadBoFssStatus() {
+  const cards = document.getElementById("bo-fss-cards");
+  const changesBox = document.getElementById("bo-fss-changes");
+  if (!cards) return;
+  cards.innerHTML = `<p class="tf-hint">불러오는 중… (FSS 실시간 조회)</p>`;
+  changesBox.innerHTML = "";
+  try {
+    const res = await apiFetch("/api/admin/fss-status");
+    if (!res.ok) throw new Error("FSS 현황 조회 실패");
+    const d = await res.json();
+
+    const byCat = d.by_category || {};
+    const catTxt = Object.keys(byCat).length
+      ? Object.entries(byCat).map(([k, v]) => `${escapeHtml(k)} ${v}`).join(" · ") : "-";
+    const ingestTxt = d.ingest && d.ingest.ingested_at
+      ? escapeHtml(d.ingest.ingested_at.replace("T", " ")) : "미색인";
+    cards.innerHTML = `
+      <div class="metric"><div class="value"><span class="status-badge ${d.status}">${FSS_STATUS_LABEL[d.status] || d.status}</span></div><div class="label">FSS 키 상태</div></div>
+      <div class="metric"><div class="value">${d.products || 0}</div><div class="label">총 상품 수</div></div>
+      <div class="metric"><div class="value" style="font-size:18px">${escapeHtml(d.latest_dcls || "-")}</div><div class="label">최신 공시일</div></div>
+      <div class="metric"><div class="value" style="font-size:15px">${ingestTxt}</div><div class="label">마지막 색인(RAG)</div></div>`;
+
+    if (d.status !== "ok") {
+      changesBox.innerHTML = `<p class="tf-hint" style="color:#C5221F">${escapeHtml(d.detail || "FSS 데이터를 불러오지 못했습니다.")}</p>`;
+      return;
+    }
+    if (Object.keys(byCat).length) {
+      changesBox.innerHTML = `<p class="tf-hint">카테고리: ${catTxt}</p>`;
+    }
+    const cs = d.changes_summary;
+    if (!cs || !cs.has_snapshot) {
+      changesBox.innerHTML += `<p class="tf-hint">기준 스냅샷이 없습니다. 아래 "현재 상태를 기준으로 저장"을 눌러 기준을 만들면, 이후 FSS 데이터 변경을 감지합니다.</p>`;
+      return;
+    }
+    changesBox.innerHTML += `
+      <div class="metric-grid" style="margin:12px 0">
+        <div class="metric"><div class="value" style="color:#1A56DB">${cs.new}</div><div class="label">신규</div></div>
+        <div class="metric"><div class="value" style="color:#92400E">${cs.rate_changed}</div><div class="label">금리 변경</div></div>
+        <div class="metric"><div class="value" style="color:#5F6368">${cs.removed}</div><div class="label">삭제</div></div>
+      </div>`;
+    const ch = d.changes || {};
+    const rows = [
+      ...(ch.rate_changed || []).map((c) => {
+        const [bank, name] = c.key.split("|");
+        return `<div class="sec-row"><span class="sec-badge sec-limit_once">금리변경</span><span class="sec-user">${escapeHtml(bank)}</span><span class="sec-info">${escapeHtml(name)}</span><span class="sec-amount">${c.old ?? "-"}% → ${c.new ?? "-"}%</span></div>`;
+      }),
+      ...(ch.new || []).map((k) => {
+        const [bank, name] = k.split("|");
+        return `<div class="sec-row"><span class="sec-badge sec-new_payee">신규</span><span class="sec-user">${escapeHtml(bank)}</span><span class="sec-info">${escapeHtml(name)}</span><span class="sec-amount"></span></div>`;
+      }),
+    ].join("");
+    if (rows) changesBox.innerHTML += `<div class="seclog">${rows}</div>`;
+  } catch (err) {
+    cards.innerHTML = statError();
+    console.error("FSS 현황 로드 실패:", err);
+  }
+}
+
+document.addEventListener("click", async (e) => {
+  if (e.target.id !== "bo-fss-snapshot-btn") return;
+  const statusEl = document.getElementById("bo-fss-snapshot-status");
+  e.target.disabled = true;
+  statusEl.className = "tf-status";
+  statusEl.textContent = "기준 저장 중… (FSS 조회)";
+  try {
+    const res = await apiFetch("/api/admin/fss-status/snapshot", { method: "POST" });
+    if (!res.ok) {
+      const { detail } = await res.json().catch(() => ({}));
+      throw new Error(detail || "저장 실패");
+    }
+    const { count } = await res.json();
+    statusEl.className = "tf-status ok";
+    statusEl.textContent = `기준 저장 완료 (${count}건)`;
+    loadBoFssStatus();
+  } catch (err) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = err.message;
+  } finally {
+    e.target.disabled = false;
   }
 });
 

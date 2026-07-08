@@ -54,17 +54,36 @@ def _build_quality_stats() -> dict:
     latencies = [r.get("latency_ms", 0) for r in results if r.get("latency_ms")]
     categories = Counter(r.get("category", "기타") for r in results)
 
+    # 정답 채점 집계(채점된 문항만): 전체 + 카테고리별
+    graded = [r for r in results if r.get("correct") is not None and r.get("graded_by")]
+    correct = sum(1 for r in graded if r.get("correct"))
+    cat_graded: Counter = Counter()
+    cat_correct: Counter = Counter()
+    for r in graded:
+        c = r.get("category", "기타")
+        cat_graded[c] += 1
+        if r.get("correct"):
+            cat_correct[c] += 1
+
+    def _cat_entry(name: str, count: int) -> dict:
+        g = cat_graded.get(name, 0)
+        e = {"name": name, "count": count, "graded": g, "correct": cat_correct.get(name, 0)}
+        e["accuracy"] = round(e["correct"] / g * 100, 1) if g else None
+        return e
+
     return {
         "total": total,
         "success": success,
         "success_rate": round(success / total * 100, 1) if total else 0,
+        "graded": len(graded),
+        "correct": correct,
+        "accuracy": round(correct / len(graded) * 100, 1) if graded else None,
         "avg_latency_ms": round(sum(latencies) / len(latencies)) if latencies else 0,
         "provider": meta.get("provider", ""),
         "model": meta.get("model", ""),
         "tested_at": meta.get("finished_at", ""),
         "categories": [
-            {"name": name, "count": count}
-            for name, count in categories.most_common()
+            _cat_entry(name, count) for name, count in categories.most_common()
         ],
     }
 

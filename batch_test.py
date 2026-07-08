@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import sys
 import time
 import tomllib
@@ -67,22 +68,25 @@ def _load_provider() -> tuple[str, str, str]:
 def _make_questions() -> list[dict]:
     qs: list[dict] = []
 
-    def add(category: str, questions: list[str]):
-        for q in questions:
-            qs.append({"category": category, "question": q})
+    def add(category: str, questions: list[str], expecteds: list | None = None):
+        for i, q in enumerate(questions):
+            item = {"category": category, "question": q,
+                    "expected": expecteds[i] if expecteds is not None else None}
+            qs.append(item)
 
-    # 1. 수학 (100)
-    math = []
+    # 1. 수학 (100) — 결정적 정답을 함께 저장(exact 채점)
+    math, math_ans = [], []
     ops = [("+", lambda a, b: a + b), ("×", lambda a, b: a * b),
            ("-", lambda a, b: a - b), ("÷", lambda a, b: a // b)]
-    for op_sym, _ in ops:
+    for op_sym, fn in ops:
         for _ in range(25):
             a = random.randint(2, 50)
             b = random.randint(2, 50) if op_sym != "÷" else random.randint(2, 10)
             if op_sym == "÷":
                 a = a * b
             math.append(f"{a} {op_sym} {b} = ?")
-    add("수학", math)
+            math_ans.append(str(fn(a, b)))
+    add("수학", math, math_ans)
 
     # 2. 파이썬 코딩 (100)
     coding_base = [
@@ -406,6 +410,40 @@ def _make_questions() -> list[dict]:
     return qs[:1000]
 
 
+# ── 정답 채점 ────────────────────────────────────────────────────────
+GRADE = True   # --no-grade 로 끌 수 있음
+JUDGE_SYSTEM = (
+    "너는 채점자다. 아래 [질문]과 [답변]을 보고 답변이 사실적으로 정확하면 'O', "
+    "부정확하거나 틀리면 'X' 한 글자만 출력해라. 다른 말은 절대 하지 마라."
+)
+
+
+def _normalize(s: str) -> str:
+    return re.sub(r"[\s,]", "", (s or "")).lower()
+
+
+def _grade(item: dict, response: str, provider: str, model: str, api_key: str):
+    """정답 여부 채점. 반환 (correct: bool|None, graded_by: 'exact'|'judge'|None)."""
+    expected = item.get("expected")
+    if expected is not None:  # 결정적 정답(수학 등): 응답의 숫자 토큰과 정확히 일치하는지
+        nums = re.findall(r"-?\d+", _normalize(response))
+        return (str(expected) in nums), "exact"
+    try:  # LLM-as-judge
+        out = "".join(llm.stream_chat(
+            provider=provider, api_key=api_key, model=model,
+            messages=[{"role": "user",
+                       "content": f"[질문]\n{item['question']}\n\n[답변]\n{response}"}],
+            temperature=0.0, system_prompt=JUDGE_SYSTEM,
+        )).strip().upper()
+        if "O" in out[:2]:
+            return True, "judge"
+        if "X" in out[:2]:
+            return False, "judge"
+        return None, "judge"
+    except Exception:
+        return None, "judge"
+
+
 # ── 단일 질문 실행 (재시도 포함) ────────────────────────────────────
 def run_one(idx: int, item: dict, provider: str, model: str, api_key: str) -> dict:
     t0 = time.time()
@@ -420,16 +458,21 @@ def run_one(idx: int, item: dict, provider: str, model: str, api_key: str) -> di
                 system_prompt=SYSTEM_PROMPT,
             ))
             response = "".join(chunks)
+            latency_ms = round((time.time() - t0) * 1000)  # 채점 호출 전에 응답 지연 확정
+            correct, graded_by = (_grade(item, response, provider, model, api_key)
+                                  if GRADE else (None, None))
             return {
                 "idx": idx,
                 "category": item["category"],
                 "question": item["question"],
                 "response": response,
-                "latency_ms": round((time.time() - t0) * 1000),
+                "latency_ms": latency_ms,
                 "model": model,
                 "provider": provider,
                 "success": True,
                 "error": None,
+                "correct": correct,
+                "graded_by": graded_by,
             }
         except Exception as e:
             err = str(e)
@@ -447,18 +490,31 @@ def run_one(idx: int, item: dict, provider: str, model: str, api_key: str) -> di
                 "provider": provider,
                 "success": False,
                 "error": err[:200],
+                "correct": False,
+                "graded_by": None,
             }
 
 
 # ── 메인 ─────────────────────────────────────────────────────────────
 def main():
+    global GRADE
+    import argparse
+    ap = argparse.ArgumentParser(description="AI 챗봇 배치 테스트(응답 성공률·지연 + 정답 채점)")
+    ap.add_argument("--no-grade", action="store_true", help="정답 채점 생략(응답 성공률·지연만)")
+    ap.add_argument("--limit", type=int, default=0, help="질문 수 제한(빠른 검증용)")
+    args = ap.parse_args()
+    if args.no_grade:
+        GRADE = False
+
     provider, model, api_key = _load_provider()
     questions = _make_questions()
+    if args.limit and args.limit > 0:
+        questions = questions[:args.limit]
 
     print(f"\n{'='*60}")
     print(f"  배치 테스트 시작")
     print(f"  제공자: {provider} / 모델: {model}")
-    print(f"  질문 수: {len(questions)} / 동시 요청: {MAX_WORKERS}")
+    print(f"  질문 수: {len(questions)} / 동시 요청: {MAX_WORKERS} / 채점: {'ON' if GRADE else 'OFF'}")
     print(f"  Phoenix: http://localhost:6006  (프로젝트: batch-test-1000)")
     print(f"{'='*60}\n")
 
@@ -500,23 +556,33 @@ def main():
     failed  = [r for r in results if not r["success"]]
     latencies = [r["latency_ms"] for r in success]
 
+    graded = [r for r in results if r.get("correct") is not None and r.get("graded_by")]
+    correct = [r for r in graded if r.get("correct")]
+
     by_cat: dict[str, dict] = {}
     for r in results:
         c = r["category"]
-        by_cat.setdefault(c, {"ok": 0, "fail": 0})
+        by_cat.setdefault(c, {"ok": 0, "fail": 0, "graded": 0, "correct": 0})
         by_cat[c]["ok" if r["success"] else "fail"] += 1
+        if r.get("correct") is not None and r.get("graded_by"):
+            by_cat[c]["graded"] += 1
+            if r.get("correct"):
+                by_cat[c]["correct"] += 1
 
     print(f"\n{'='*60}")
     print(f"  결과 요약")
     print(f"{'='*60}")
-    print(f"  성공: {len(success)} / 실패: {len(failed)} / 전체: {len(results)}")
+    print(f"  응답 성공: {len(success)} / 실패: {len(failed)} / 전체: {len(results)}")
+    if GRADE and graded:
+        print(f"  정답률: {len(correct)}/{len(graded)} ({len(correct)/len(graded)*100:.1f}%)")
     if latencies:
         print(f"  평균 응답 시간: {sum(latencies)//len(latencies)} ms")
         print(f"  최소 / 최대: {min(latencies)} ms / {max(latencies)} ms")
     print(f"\n  카테고리별 결과:")
     for cat, v in sorted(by_cat.items()):
+        acc = f" 정답 {v['correct']:3d}/{v['graded']:3d}" if v["graded"] else ""
         bar_s = "█" * v["ok"] + "░" * v["fail"]
-        print(f"    {cat:<12} 성공 {v['ok']:3d} / 실패 {v['fail']:3d}  {bar_s[:30]}")
+        print(f"    {cat:<12} 성공 {v['ok']:3d} / 실패 {v['fail']:3d}{acc}  {bar_s[:24]}")
     print(f"\n  결과 저장: {RESULTS_FILE}")
     print(f"  Phoenix 확인: http://localhost:6006")
     print(f"{'='*60}\n")
