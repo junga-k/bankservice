@@ -681,9 +681,10 @@
           </div>
 
           <div class="panel">
-            <h3>프롬프트 A/B 테스트</h3>
-            <p class="section-desc">같은 질문을 두 시스템 프롬프트로 각각 실행해 응답을 나란히 비교합니다.
-              마음에 드는 쪽을 '적용'하면 위 시스템 프롬프트로 반영됩니다. (제공자·모델·답변 스타일은 위 설정값을 사용)</p>
+            <h3>답변 스타일 A/B 테스트</h3>
+            <p class="section-desc">위 시스템 프롬프트를 A·B에 동일하게 적용한 상태에서, <strong>답변 스타일만 바꿔</strong>
+              같은 질문의 답변을 나란히 비교합니다. '이 스타일 적용'을 누르면 위 설정의 기본 답변 스타일로 반영됩니다.
+              (제공자·모델은 위 설정값을 사용)</p>
             <div class="bo-toolbar">
               <input id="bo-ab-question" placeholder="샘플 질문 (예: 적금 추천해줘)" />
               <button class="btn btn-primary" type="button" id="bo-ab-run">비교 실행</button>
@@ -691,21 +692,21 @@
             </div>
             <div class="ab-grid">
               <div class="ab-col">
-                <label for="bo-ab-prompt-a">A (현재 시스템 프롬프트)</label>
-                <textarea id="bo-ab-prompt-a" class="prompt-editor sm"></textarea>
+                <label for="bo-ab-style-a">A 답변 스타일</label>
+                <select id="bo-ab-style-a" class="ab-style"></select>
                 <div class="ab-response" id="bo-ab-resp-a"></div>
                 <div class="ab-foot">
                   <span class="ab-lat" id="bo-ab-lat-a"></span>
-                  <button class="btn btn-ghost" type="button" data-ab-apply="a">이 프롬프트 적용</button>
+                  <button class="btn btn-ghost" type="button" data-ab-apply-style="a">이 스타일 적용</button>
                 </div>
               </div>
               <div class="ab-col">
-                <label for="bo-ab-prompt-b">B (변형)</label>
-                <textarea id="bo-ab-prompt-b" class="prompt-editor sm"></textarea>
+                <label for="bo-ab-style-b">B 답변 스타일</label>
+                <select id="bo-ab-style-b" class="ab-style"></select>
                 <div class="ab-response" id="bo-ab-resp-b"></div>
                 <div class="ab-foot">
                   <span class="ab-lat" id="bo-ab-lat-b"></span>
-                  <button class="btn btn-ghost" type="button" data-ab-apply="b">이 프롬프트 적용</button>
+                  <button class="btn btn-ghost" type="button" data-ab-apply-style="b">이 스타일 적용</button>
                 </div>
               </div>
             </div>

@@ -340,14 +340,15 @@ def update_chatbot_config(req: ChatbotConfigReq, user: dict = Depends(auth.requi
     return {"ok": True}
 
 
-# ── Backoffice: 프롬프트 A/B 테스트 (같은 질문을 두 프롬프트로 실행) ────────
+# ── Backoffice: 답변 스타일 A/B 테스트 ────────────────────────────────
+# 시스템 프롬프트·질문은 고정(A·B 공유)하고, 답변 스타일(temperature)만 바꿔 비교한다.
 class PromptABTestReq(BaseModel):
     question: str
     provider: str
     model: str
-    style: str
-    prompt_a: str
-    prompt_b: str
+    system_prompt: str
+    style_a: str
+    style_b: str
 
 
 @app.post("/api/admin/prompt-ab-test")
@@ -358,16 +359,16 @@ def prompt_ab_test(req: PromptABTestReq, user: dict = Depends(auth.require_admin
         raise HTTPException(400, "지원하지 않는 제공자입니다.")
     if req.model not in llm.models_for(req.provider):
         raise HTTPException(400, "지원하지 않는 모델입니다.")
-    if req.style not in llm.TEMP_OPTIONS:
+    if req.style_a not in llm.TEMP_OPTIONS or req.style_b not in llm.TEMP_OPTIONS:
         raise HTTPException(400, "지원하지 않는 답변 스타일입니다.")
 
     cfg = config.load()
     api_key = (cfg.get("openai_api_key") or "").strip()
     if not api_key:
         raise HTTPException(400, "OpenAI API 키가 config.json에 없습니다.")
-    temp = llm.TEMP_OPTIONS[req.style]
+    sys_prompt = req.system_prompt.strip() or None
 
-    def _run_once(sys_prompt: str) -> dict:
+    def _run_once(style: str) -> dict:
         started = time.perf_counter()
         try:
             text = "".join(llm.stream_chat(
@@ -375,8 +376,8 @@ def prompt_ab_test(req: PromptABTestReq, user: dict = Depends(auth.require_admin
                 api_key=api_key,
                 model=req.model,
                 messages=[{"role": "user", "content": req.question}],
-                temperature=temp,
-                system_prompt=(sys_prompt.strip() or None),
+                temperature=llm.TEMP_OPTIONS[style],
+                system_prompt=sys_prompt,
             ))
             ok = True
         except Exception as e:  # 셀별 오류 표시(전체 500 대신)
@@ -386,10 +387,11 @@ def prompt_ab_test(req: PromptABTestReq, user: dict = Depends(auth.require_admin
             "response": text,
             "latency_ms": int((time.perf_counter() - started) * 1000),
             "ok": ok,
+            "style": style,
         }
 
     # A, B 순차 실행(데모 규모에서 충분)
-    return {"a": _run_once(req.prompt_a), "b": _run_once(req.prompt_b)}
+    return {"a": _run_once(req.style_a), "b": _run_once(req.style_b)}
 
 
 # ── Backoffice: 이체 정책(한도/수수료) ────────────────────────────────

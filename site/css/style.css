@@ -1263,7 +1263,15 @@ main { min-height: calc(100vh - var(--header-h)); }
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   resize: vertical;
 }
-.prompt-editor.sm { min-height: 150px; }
+.ab-style {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 15px;
+  font-family: inherit;
+  background: #fff;
+}
 
 .ab-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .ab-col > label {

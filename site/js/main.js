@@ -1899,9 +1899,19 @@ async function loadBoChatbotConfig() {
     document.getElementById("bo-cc-prompt").value = cfg.system_prompt || "";
     document.getElementById("bo-cc-websearch").checked = !!cfg.web_search;
 
-    // A/B 테스트의 A 프롬프트는 현재 시스템 프롬프트로 프리필(관리자가 편집 중이면 유지)
-    const abPromptA = document.getElementById("bo-ab-prompt-a");
-    if (abPromptA && !abPromptA.value) abPromptA.value = cfg.system_prompt || "";
+    // 답변 스타일 A/B 테스트: 두 스타일 select를 채우고 대비되는 기본값 지정
+    const styleOptions = styles
+      .map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`)
+      .join("");
+    const abStyleA = document.getElementById("bo-ab-style-a");
+    const abStyleB = document.getElementById("bo-ab-style-b");
+    if (abStyleA && abStyleB) {
+      abStyleA.innerHTML = styleOptions;
+      abStyleB.innerHTML = styleOptions;
+      abStyleA.value = cfg.default_style;                       // A = 현재 기본 스타일
+      const other = styles.find((s) => s !== cfg.default_style);
+      abStyleB.value = other || cfg.default_style;              // B = 대비되는 다른 스타일
+    }
   } catch (err) {
     if (statusEl) { statusEl.className = "tf-status err"; statusEl.textContent = err.message; }
     console.error("챗봇 설정 로드 실패:", err);
@@ -1973,7 +1983,7 @@ document.addEventListener("click", async (e) => {
   statusEl.className = "tf-status";
   statusEl.textContent = "실행 중…";
   try {
-    // 제공자·모델·스타일은 위 AI챗봇 설정의 현재 select 값을 사용
+    // 제공자·모델·시스템 프롬프트는 위 AI챗봇 설정의 현재 값을 공유하고, 답변 스타일만 A/B로 다르게
     const res = await apiFetch("/api/admin/prompt-ab-test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1981,9 +1991,9 @@ document.addEventListener("click", async (e) => {
         question,
         provider: document.getElementById("bo-cc-provider").value,
         model: document.getElementById("bo-cc-model").value,
-        style: document.getElementById("bo-cc-style").value,
-        prompt_a: document.getElementById("bo-ab-prompt-a").value,
-        prompt_b: document.getElementById("bo-ab-prompt-b").value,
+        system_prompt: document.getElementById("bo-cc-prompt").value,
+        style_a: document.getElementById("bo-ab-style-a").value,
+        style_b: document.getElementById("bo-ab-style-b").value,
       }),
     });
     if (!res.ok) {
@@ -2005,16 +2015,16 @@ document.addEventListener("click", async (e) => {
   }
 });
 
-// "이 프롬프트 적용" → 위 시스템 프롬프트에 반영(저장은 관리자가 직접)
+// "이 스타일 적용" → 위 설정의 기본 답변 스타일로 반영(저장은 관리자가 직접)
 document.addEventListener("click", (e) => {
-  const which = e.target.getAttribute && e.target.getAttribute("data-ab-apply");
+  const which = e.target.getAttribute && e.target.getAttribute("data-ab-apply-style");
   if (!which) return;
-  const src = document.getElementById(`bo-ab-prompt-${which}`);
-  document.getElementById("bo-cc-prompt").value = src.value;
+  const src = document.getElementById(`bo-ab-style-${which}`);
+  document.getElementById("bo-cc-style").value = src.value;
   document.getElementById("bo-chatbot-config-form").scrollIntoView({ behavior: "smooth", block: "start" });
   const statusEl = document.getElementById("bo-cc-status");
   statusEl.className = "tf-status";
-  statusEl.textContent = `${which.toUpperCase()} 프롬프트를 설정에 반영했습니다. '저장'을 눌러 적용하세요.`;
+  statusEl.textContent = `${which.toUpperCase()} 답변 스타일을 기본값으로 반영했습니다. '저장'을 눌러 적용하세요.`;
 });
 
 /* ── Backoffice: 이체 정책(한도/수수료) ──────────────────────────── */
