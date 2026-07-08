@@ -1253,6 +1253,47 @@ main { min-height: calc(100vh - var(--header-h)); }
 .tf-status.ok { color: #0B8457; font-weight: 600; }
 .tf-status.err { color: #D32F2F; font-weight: 600; }
 
+/* 프롬프트 엔지니어링: 필드 가로 배치 + 프롬프트 에디터 + A/B 비교 */
+.tf-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.tf-row .tf-field { margin-bottom: 18px; }
+.prompt-editor {
+  width: 100%;
+  min-height: 340px;
+  line-height: 1.6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+.prompt-editor.sm { min-height: 150px; }
+
+.ab-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.ab-col > label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-sub);
+}
+.ab-response {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  min-height: 120px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.6;
+  background: var(--bg-soft);
+  margin-top: 10px;
+}
+.ab-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.ab-lat { font-size: 13px; color: var(--text-sub); }
+
+@media (max-width: 900px) {
+  .tf-row { grid-template-columns: 1fr; }
+  .ab-grid { grid-template-columns: 1fr; }
+}
+
 /* 확인 화면 */
 .tf-confirm-box {
   border: 1px solid var(--border);

@@ -340,6 +340,58 @@ def update_chatbot_config(req: ChatbotConfigReq, user: dict = Depends(auth.requi
     return {"ok": True}
 
 
+# ── Backoffice: 프롬프트 A/B 테스트 (같은 질문을 두 프롬프트로 실행) ────────
+class PromptABTestReq(BaseModel):
+    question: str
+    provider: str
+    model: str
+    style: str
+    prompt_a: str
+    prompt_b: str
+
+
+@app.post("/api/admin/prompt-ab-test")
+def prompt_ab_test(req: PromptABTestReq, user: dict = Depends(auth.require_admin)):
+    if not req.question.strip():
+        raise HTTPException(400, "질문을 입력하세요.")
+    if req.provider not in llm.PROVIDERS:
+        raise HTTPException(400, "지원하지 않는 제공자입니다.")
+    if req.model not in llm.models_for(req.provider):
+        raise HTTPException(400, "지원하지 않는 모델입니다.")
+    if req.style not in llm.TEMP_OPTIONS:
+        raise HTTPException(400, "지원하지 않는 답변 스타일입니다.")
+
+    cfg = config.load()
+    api_key = (cfg.get("openai_api_key") or "").strip()
+    if not api_key:
+        raise HTTPException(400, "OpenAI API 키가 config.json에 없습니다.")
+    temp = llm.TEMP_OPTIONS[req.style]
+
+    def _run_once(sys_prompt: str) -> dict:
+        started = time.perf_counter()
+        try:
+            text = "".join(llm.stream_chat(
+                provider=req.provider,
+                api_key=api_key,
+                model=req.model,
+                messages=[{"role": "user", "content": req.question}],
+                temperature=temp,
+                system_prompt=(sys_prompt.strip() or None),
+            ))
+            ok = True
+        except Exception as e:  # 셀별 오류 표시(전체 500 대신)
+            text = f"(오류) {e}"
+            ok = False
+        return {
+            "response": text,
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "ok": ok,
+        }
+
+    # A, B 순차 실행(데모 규모에서 충분)
+    return {"a": _run_once(req.prompt_a), "b": _run_once(req.prompt_b)}
+
+
 # ── Backoffice: 이체 정책(한도/수수료) ────────────────────────────────
 @app.get("/api/admin/transfer-policy")
 def get_transfer_policy(user: dict = Depends(auth.require_admin)):

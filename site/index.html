@@ -474,6 +474,7 @@
             <button type="button" class="bo-tab" data-bo-tab="transfers">이체모니터링</button>
             <button type="button" class="bo-tab" data-bo-tab="usage">이용통계</button>
             <button type="button" class="bo-tab" data-bo-tab="perf">성능관리</button>
+            <button type="button" class="bo-tab" data-bo-tab="prompt">프롬프트 엔지니어링</button>
             <button type="button" class="bo-tab" data-bo-tab="products">금융상품관리</button>
             <button type="button" class="bo-tab" data-bo-tab="faq">FAQ·공지사항 관리</button>
             <button type="button" class="bo-tab" data-bo-tab="settings">시스템설정</button>
@@ -564,6 +565,27 @@
           </div>
 
           <div class="panel">
+            <h3>이체 정책</h3>
+            <p class="section-desc">간편이체(비밀번호 인증) 기준 한도·수수료입니다. 저장 시 확인 후 이후 이체에 반영되며, AI챗봇 유의사항 안내에도 자동 반영됩니다.</p>
+            <form id="bo-transfer-policy-form">
+              <div class="tf-field">
+                <label for="bo-tp-once">1회 이체 한도 (원)</label>
+                <input type="number" id="bo-tp-once" min="1" step="10000" />
+              </div>
+              <div class="tf-field">
+                <label for="bo-tp-daily">1일 이체 한도 (원)</label>
+                <input type="number" id="bo-tp-daily" min="1" step="10000" />
+              </div>
+              <div class="tf-field">
+                <label for="bo-tp-fee">타행 이체 수수료 (원)</label>
+                <input type="number" id="bo-tp-fee" min="0" step="100" />
+              </div>
+              <button class="btn btn-primary" type="submit">저장</button>
+              <span class="tf-status" id="bo-tp-status"></span>
+            </form>
+          </div>
+
+          <div class="panel">
             <h3>이체 내역</h3>
             <div class="bo-toolbar" id="bo-transfer-filter">
               <button type="button" class="bo-filter-btn active" data-status="">전체</button>
@@ -605,80 +627,88 @@
 
         <!-- 성능관리 (대시보드) -->
         <div class="bo-panel" id="bo-panel-perf" style="display:none">
-          <div class="perf-dashboard">
+          <div class="panel">
+            <h3>시스템 상태</h3>
+            <div class="status-card-grid" id="bo-health-cards"><!-- JS 렌더 --></div>
+          </div>
+          <div class="panel">
+            <h3>최근 배치 테스트 성능</h3>
+            <div id="bo-batch-perf"><!-- JS 렌더 --></div>
+          </div>
+          <div class="panel">
+            <h3>FSS 데이터 현황</h3>
+            <p class="section-desc">금융감독원(FSS) 상품 데이터의 신선도와, 지난 기준 대비 변경(신규·금리변경·삭제)을 확인합니다.</p>
+            <div class="metric-grid" id="bo-fss-cards"><!-- JS 렌더 --></div>
+            <div id="bo-fss-changes"><!-- JS 렌더 --></div>
+            <div class="bo-toolbar">
+              <button class="btn btn-ghost" type="button" id="bo-fss-snapshot-btn">현재 상태를 기준으로 저장</button>
+              <span class="tf-status" id="bo-fss-snapshot-status"></span>
+            </div>
+          </div>
+        </div>
 
-            <div class="perf-main">
-              <div class="panel">
-                <h3>시스템 상태</h3>
-                <div class="status-card-grid" id="bo-health-cards"><!-- JS 렌더 --></div>
+        <!-- 프롬프트 엔지니어링 -->
+        <div class="bo-panel" id="bo-panel-prompt" style="display:none">
+          <div class="panel">
+            <h3>AI챗봇 설정</h3>
+            <p class="section-desc">챗봇의 제공자·모델·답변 스타일·시스템 프롬프트를 관리합니다.
+              저장하면 새로 시작하는 대화부터 자동 반영됩니다. (이미 열려 있는 대화창은 새로고침 필요)</p>
+            <form id="bo-chatbot-config-form">
+              <div class="tf-row">
+                <div class="tf-field">
+                  <label for="bo-cc-provider">제공자</label>
+                  <select id="bo-cc-provider"></select>
+                </div>
+                <div class="tf-field">
+                  <label for="bo-cc-model">기본 모델</label>
+                  <select id="bo-cc-model"></select>
+                </div>
+                <div class="tf-field">
+                  <label for="bo-cc-style">답변 스타일</label>
+                  <select id="bo-cc-style"></select>
+                </div>
               </div>
-              <div class="panel">
-                <h3>최근 배치 테스트 성능</h3>
-                <div id="bo-batch-perf"><!-- JS 렌더 --></div>
+              <div class="tf-field">
+                <label for="bo-cc-prompt">시스템 프롬프트</label>
+                <textarea id="bo-cc-prompt" class="prompt-editor"></textarea>
               </div>
-              <div class="panel">
-                <h3>FSS 데이터 현황</h3>
-                <p class="section-desc">금융감독원(FSS) 상품 데이터의 신선도와, 지난 기준 대비 변경(신규·금리변경·삭제)을 확인합니다.</p>
-                <div class="metric-grid" id="bo-fss-cards"><!-- JS 렌더 --></div>
-                <div id="bo-fss-changes"><!-- JS 렌더 --></div>
-                <div class="bo-toolbar">
-                  <button class="btn btn-ghost" type="button" id="bo-fss-snapshot-btn">현재 상태를 기준으로 저장</button>
-                  <span class="tf-status" id="bo-fss-snapshot-status"></span>
+              <div class="tf-field">
+                <label><input type="checkbox" id="bo-cc-websearch" /> 웹 검색 사용</label>
+              </div>
+              <button class="btn btn-primary" type="submit">저장</button>
+              <span class="tf-status" id="bo-cc-status"></span>
+            </form>
+          </div>
+
+          <div class="panel">
+            <h3>프롬프트 A/B 테스트</h3>
+            <p class="section-desc">같은 질문을 두 시스템 프롬프트로 각각 실행해 응답을 나란히 비교합니다.
+              마음에 드는 쪽을 '적용'하면 위 시스템 프롬프트로 반영됩니다. (제공자·모델·답변 스타일은 위 설정값을 사용)</p>
+            <div class="bo-toolbar">
+              <input id="bo-ab-question" placeholder="샘플 질문 (예: 적금 추천해줘)" />
+              <button class="btn btn-primary" type="button" id="bo-ab-run">비교 실행</button>
+              <span class="tf-status" id="bo-ab-status"></span>
+            </div>
+            <div class="ab-grid">
+              <div class="ab-col">
+                <label for="bo-ab-prompt-a">A (현재 시스템 프롬프트)</label>
+                <textarea id="bo-ab-prompt-a" class="prompt-editor sm"></textarea>
+                <div class="ab-response" id="bo-ab-resp-a"></div>
+                <div class="ab-foot">
+                  <span class="ab-lat" id="bo-ab-lat-a"></span>
+                  <button class="btn btn-ghost" type="button" data-ab-apply="a">이 프롬프트 적용</button>
+                </div>
+              </div>
+              <div class="ab-col">
+                <label for="bo-ab-prompt-b">B (변형)</label>
+                <textarea id="bo-ab-prompt-b" class="prompt-editor sm"></textarea>
+                <div class="ab-response" id="bo-ab-resp-b"></div>
+                <div class="ab-foot">
+                  <span class="ab-lat" id="bo-ab-lat-b"></span>
+                  <button class="btn btn-ghost" type="button" data-ab-apply="b">이 프롬프트 적용</button>
                 </div>
               </div>
             </div>
-
-            <div class="perf-side">
-              <div class="panel">
-                <h3>AI챗봇 설정</h3>
-                <p class="section-desc">저장하면 새로 시작하는 대화부터 자동 반영됩니다. (이미 열려 있는 대화창은 새로고침 필요)</p>
-                <form id="bo-chatbot-config-form">
-                  <div class="tf-field">
-                    <label for="bo-cc-provider">제공자</label>
-                    <select id="bo-cc-provider"></select>
-                  </div>
-                  <div class="tf-field">
-                    <label for="bo-cc-model">기본 모델</label>
-                    <select id="bo-cc-model"></select>
-                  </div>
-                  <div class="tf-field">
-                    <label for="bo-cc-style">답변 스타일</label>
-                    <select id="bo-cc-style"></select>
-                  </div>
-                  <div class="tf-field">
-                    <label for="bo-cc-prompt">시스템 프롬프트</label>
-                    <textarea id="bo-cc-prompt" rows="4"></textarea>
-                  </div>
-                  <div class="tf-field">
-                    <label><input type="checkbox" id="bo-cc-websearch" /> 웹 검색 사용</label>
-                  </div>
-                  <button class="btn btn-primary" type="submit">저장</button>
-                  <span class="tf-status" id="bo-cc-status"></span>
-                </form>
-              </div>
-
-              <div class="panel">
-                <h3>이체 정책</h3>
-                <p class="section-desc">간편이체(비밀번호 인증) 기준 한도·수수료입니다. 저장 즉시 이후 이체에 반영됩니다.</p>
-                <form id="bo-transfer-policy-form">
-                  <div class="tf-field">
-                    <label for="bo-tp-once">1회 이체 한도 (원)</label>
-                    <input type="number" id="bo-tp-once" min="1" step="10000" />
-                  </div>
-                  <div class="tf-field">
-                    <label for="bo-tp-daily">1일 이체 한도 (원)</label>
-                    <input type="number" id="bo-tp-daily" min="1" step="10000" />
-                  </div>
-                  <div class="tf-field">
-                    <label for="bo-tp-fee">타행 이체 수수료 (원)</label>
-                    <input type="number" id="bo-tp-fee" min="0" step="100" />
-                  </div>
-                  <button class="btn btn-primary" type="submit">저장</button>
-                  <span class="tf-status" id="bo-tp-status"></span>
-                </form>
-              </div>
-            </div>
-
           </div>
         </div>
 

@@ -1334,7 +1334,7 @@ document.addEventListener("click", (e) => {
 });
 
 /* ── Backoffice (관리자 전용) ───────────────────────────────────────── */
-const BO_TABS = ["dashboard", "members", "transfers", "usage", "perf", "products", "faq", "settings"];
+const BO_TABS = ["dashboard", "members", "transfers", "usage", "perf", "prompt", "products", "faq", "settings"];
 const boLoaded = {};   // 탭별 최초 로드 여부(지연 로드)
 let boUserOffset = 0;
 let boUserQuery = "";
@@ -1389,13 +1389,14 @@ function ensureBoTabLoaded(name) {
   boLoaded[name] = true;
   if (name === "dashboard") loadBoDashboard();
   if (name === "members") loadBoUsers();
-  if (name === "transfers") loadBoTransfers();
+  if (name === "transfers") { loadBoTransfers(); loadBoTransferPolicy(); }
   if (name === "usage") {
     loadBoUsageStats();
     loadBankRanking("bo-stat-banks");
     loadTopProducts("bo-stat-products");
   }
-  if (name === "perf") { loadBoHealth(); loadBoBatchPerf(); loadBoChatbotConfig(); loadBoTransferPolicy(); loadBoFssStatus(); }
+  if (name === "perf") { loadBoHealth(); loadBoBatchPerf(); loadBoFssStatus(); }
+  if (name === "prompt") loadBoChatbotConfig();
   if (name === "products") {
     loadBankRanking("bo-product-stat-banks");
     loadTopProducts("bo-product-stat-products");
@@ -1897,6 +1898,10 @@ async function loadBoChatbotConfig() {
 
     document.getElementById("bo-cc-prompt").value = cfg.system_prompt || "";
     document.getElementById("bo-cc-websearch").checked = !!cfg.web_search;
+
+    // A/B 테스트의 A 프롬프트는 현재 시스템 프롬프트로 프리필(관리자가 편집 중이면 유지)
+    const abPromptA = document.getElementById("bo-ab-prompt-a");
+    if (abPromptA && !abPromptA.value) abPromptA.value = cfg.system_prompt || "";
   } catch (err) {
     if (statusEl) { statusEl.className = "tf-status err"; statusEl.textContent = err.message; }
     console.error("챗봇 설정 로드 실패:", err);
@@ -1947,6 +1952,71 @@ document.addEventListener("submit", async (e) => {
   }
 });
 
+/* ── Backoffice: 프롬프트 A/B 테스트 ──────────────────────────────── */
+document.addEventListener("click", async (e) => {
+  if (e.target.id !== "bo-ab-run") return;
+  const btn = e.target;
+  const statusEl = document.getElementById("bo-ab-status");
+  const question = document.getElementById("bo-ab-question").value.trim();
+  if (!question) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = "샘플 질문을 입력하세요.";
+    return;
+  }
+  const respA = document.getElementById("bo-ab-resp-a");
+  const respB = document.getElementById("bo-ab-resp-b");
+  const latA = document.getElementById("bo-ab-lat-a");
+  const latB = document.getElementById("bo-ab-lat-b");
+  respA.textContent = respB.textContent = "";
+  latA.textContent = latB.textContent = "";
+  btn.disabled = true;
+  statusEl.className = "tf-status";
+  statusEl.textContent = "실행 중…";
+  try {
+    // 제공자·모델·스타일은 위 AI챗봇 설정의 현재 select 값을 사용
+    const res = await apiFetch("/api/admin/prompt-ab-test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question,
+        provider: document.getElementById("bo-cc-provider").value,
+        model: document.getElementById("bo-cc-model").value,
+        style: document.getElementById("bo-cc-style").value,
+        prompt_a: document.getElementById("bo-ab-prompt-a").value,
+        prompt_b: document.getElementById("bo-ab-prompt-b").value,
+      }),
+    });
+    if (!res.ok) {
+      const { detail } = await res.json().catch(() => ({}));
+      throw new Error(detail || "비교 실행에 실패했습니다.");
+    }
+    const { a, b } = await res.json();
+    respA.textContent = a.response;
+    respB.textContent = b.response;
+    latA.textContent = `${a.latency_ms.toLocaleString()} ms`;
+    latB.textContent = `${b.latency_ms.toLocaleString()} ms`;
+    statusEl.className = "tf-status ok";
+    statusEl.textContent = "완료되었습니다.";
+  } catch (err) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// "이 프롬프트 적용" → 위 시스템 프롬프트에 반영(저장은 관리자가 직접)
+document.addEventListener("click", (e) => {
+  const which = e.target.getAttribute && e.target.getAttribute("data-ab-apply");
+  if (!which) return;
+  const src = document.getElementById(`bo-ab-prompt-${which}`);
+  document.getElementById("bo-cc-prompt").value = src.value;
+  document.getElementById("bo-chatbot-config-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  const statusEl = document.getElementById("bo-cc-status");
+  statusEl.className = "tf-status";
+  statusEl.textContent = `${which.toUpperCase()} 프롬프트를 설정에 반영했습니다. '저장'을 눌러 적용하세요.`;
+});
+
 /* ── Backoffice: 이체 정책(한도/수수료) ──────────────────────────── */
 async function loadBoTransferPolicy() {
   const statusEl = document.getElementById("bo-tp-status");
@@ -1967,6 +2037,24 @@ document.addEventListener("submit", async (e) => {
   if (e.target.id !== "bo-transfer-policy-form") return;
   e.preventDefault();
   const statusEl = document.getElementById("bo-tp-status");
+  const once = Number(document.getElementById("bo-tp-once").value);
+  const daily = Number(document.getElementById("bo-tp-daily").value);
+  const fee = Number(document.getElementById("bo-tp-fee").value);
+
+  // 저장 전 관리자 확인 팝업
+  const confirmed = window.confirm(
+    "이체 정책을 이 값으로 저장할까요?\n\n" +
+    `· 1회 한도: ${won(once)}\n` +
+    `· 1일 한도: ${won(daily)}\n` +
+    `· 타행 이체 수수료: ${won(fee)}\n\n` +
+    "저장하면 이후 이체에 즉시 반영되고, AI챗봇 유의사항 안내에도 새 한도가 반영됩니다."
+  );
+  if (!confirmed) {
+    statusEl.className = "tf-status";
+    statusEl.textContent = "저장을 취소했습니다.";
+    return;
+  }
+
   statusEl.className = "tf-status";
   statusEl.textContent = "저장 중…";
   try {
@@ -1974,9 +2062,9 @@ document.addEventListener("submit", async (e) => {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        transfer_limit: Number(document.getElementById("bo-tp-once").value),
-        daily_transfer_limit: Number(document.getElementById("bo-tp-daily").value),
-        transfer_fee: Number(document.getElementById("bo-tp-fee").value),
+        transfer_limit: once,
+        daily_transfer_limit: daily,
+        transfer_fee: fee,
       }),
     });
     if (!res.ok) {
@@ -1984,7 +2072,7 @@ document.addEventListener("submit", async (e) => {
       throw new Error(detail || "저장에 실패했습니다.");
     }
     statusEl.className = "tf-status ok";
-    statusEl.textContent = "저장되었습니다.";
+    statusEl.textContent = "저장되었습니다. AI챗봇 유의사항에도 반영됩니다.";
   } catch (err) {
     statusEl.className = "tf-status err";
     statusEl.textContent = err.message;
