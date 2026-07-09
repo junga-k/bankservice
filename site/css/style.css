@@ -1372,3 +1372,29 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 .scroll-top:hover { background: var(--blue-dark); }
 .scroll-top.show { opacity: 1; visibility: visible; transform: translateY(0); }
+
+/* ── 마이페이지 ─────────────────────────────────────────────────── */
+.btn-danger { background: #D93025; color: #fff; }
+.btn-danger:hover { background: #B31412; }
+/* 마이페이지 버튼은 폼용으로 작게(색상으로 이미 강조됨) */
+#mypage .btn { padding: 7px 16px; font-size: 13px; border-radius: 8px; }
+#mypage .btn-primary { box-shadow: none; }
+#mypage .mp-acct-actions .btn { padding: 6px 12px; font-size: 12px; }
+.auth-find-links { font-size: 13px; }
+#mypage .panel { margin-bottom: 16px; }
+#mypage .panel h3 { margin-bottom: 12px; }
+.mp-acct { border: 1px solid var(--line, #E3E6EA); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+.mp-acct-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.mp-primary-badge { background: #E8F0FE; color: #1A56DB; border-radius: 10px; padding: 1px 8px; font-size: 12px; font-weight: 700; }
+.mp-acct-bal { font-size: 18px; font-weight: 700; margin: 6px 0; }
+.mp-acct-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mp-acct-nick { flex: 1 1 140px; min-width: 120px; padding: 6px 8px; border: 1px solid var(--line, #E3E6EA); border-radius: 8px; }
+.mp-fav, .mp-sched, .mp-sec-item, .mp-inquiry { border-bottom: 1px solid var(--line, #EEF0F2); padding: 10px 0; }
+.mp-fav, .mp-sched { display: flex; align-items: center; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
+.mp-sched-time, .mp-sec-time { color: #80868B; font-size: 12px; }
+.mp-sec-item { display: flex; flex-direction: column; gap: 2px; }
+.mp-sec-type { font-weight: 700; }
+.mp-sec-detail { font-size: 13px; color: #5F6368; }
+.mp-inquiry-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.mp-inquiry-body { color: #5F6368; font-size: 14px; margin-top: 4px; white-space: pre-wrap; }
+#mp-limits .cf-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--line, #EEF0F2); }

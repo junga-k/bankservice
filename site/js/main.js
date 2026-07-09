@@ -6,7 +6,7 @@
  */
 
 const CHAT_URL = "http://localhost:8501/?embed=true&embedded=1";
-const SECTIONS = ["home", "account", "products", "chat", "support", "auth", "backoffice"];
+const SECTIONS = ["home", "account", "products", "chat", "support", "auth", "mypage", "backoffice"];
 
 /* ── 인증 상태 (localStorage) ───────────────────────────────────────
  * auth = { token, username, name, role }
@@ -63,8 +63,10 @@ function updateAuthSectionView() {
   const signupPanel = document.getElementById("signup-panel");
   document.getElementById("auth-welcome").style.display = logged ? "" : "none";
   if (logged) {
-    loginPanel.style.display = "none";
-    signupPanel.style.display = "none";
+    AUTH_PANELS.forEach((t) => {
+      const el = document.getElementById(`${t}-panel`);
+      if (el) el.style.display = "none";
+    });
     document.getElementById("auth-welcome-title").textContent = `환영합니다, ${auth.name}님`;
     return;
   }
@@ -74,11 +76,23 @@ function updateAuthSectionView() {
   }
 }
 
-/* 로그인 화면 ↔ 회원가입 화면 전환 (탭 제거 후 독립 패널 토글) */
+/* 로그인 ↔ 회원가입 ↔ 아이디찾기 ↔ 비번재설정 전환 (독립 패널 토글) */
+const AUTH_PANELS = ["login", "signup", "findid", "resetpw"];
 function setAuthTab(tab) {
-  document.getElementById("login-panel").style.display = tab === "login" ? "" : "none";
-  document.getElementById("signup-panel").style.display = tab === "signup" ? "" : "none";
+  if (!AUTH_PANELS.includes(tab)) tab = "login";
+  AUTH_PANELS.forEach((t) => {
+    const el = document.getElementById(`${t}-panel`);
+    if (el) el.style.display = t === tab ? "" : "none";
+  });
 }
+
+/* 로그인 패널 내부 링크(아이디 찾기/비번 재설정 등) 전환 */
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-auth-panel]");
+  if (!el) return;
+  e.preventDefault();
+  setAuthTab(el.dataset.authPanel);
+});
 
 /* ── 범용 모달 ───────────────────────────────────────────────────── */
 function showModal(html) {
@@ -115,6 +129,12 @@ function navigate(name) {
     document.getElementById("account-guest").style.display = logged ? "none" : "";
     document.getElementById("account-authed").style.display = logged ? "" : "none";
     if (logged) { accountGoTab("inquiry"); loadAccounts(); }
+  }
+  if (name === "mypage") {
+    const logged = isLoggedIn();
+    document.getElementById("mypage-guest").style.display = logged ? "none" : "";
+    document.getElementById("mypage-authed").style.display = logged ? "" : "none";
+    if (logged) { mypageGoTab("profile"); }
   }
   if (name === "backoffice") {
     const auth = getAuth();
@@ -1134,7 +1154,8 @@ function updateSignupButtonState() {
   const terms = document.getElementById("signup-agree-terms").checked;
   const privacy = document.getElementById("signup-agree-privacy").checked;
   const openbanking = document.getElementById("signup-agree-openbanking").checked;
-  btn.disabled = !(terms && privacy && openbanking && signupPhoneVerified && signupAccountVerified);
+  const pinOk = /^\d{6}$/.test(document.getElementById("signup-transfer-pw").value);
+  btn.disabled = !(terms && privacy && openbanking && pinOk && signupPhoneVerified && signupAccountVerified);
 }
 
 /* 폼 리셋 시 인증 상태·안내 초기화 */
@@ -1230,11 +1251,14 @@ document.addEventListener("input", (e) => {
     document.getElementById("signup-account-hint").textContent = "";
     updateSignupButtonState();
   }
+  if (id === "signup-transfer-pw") updateSignupButtonState();
 });
 
 document.addEventListener("submit", (e) => {
   if (e.target.id === "login-form") { e.preventDefault(); handleLogin(); }
   if (e.target.id === "signup-form") { e.preventDefault(); handleSignup(); }
+  if (e.target.id === "findid-form") { e.preventDefault(); handleFindId(); }
+  if (e.target.id === "resetpw-form") { e.preventDefault(); handleResetPw(); }
 });
 
 async function handleLogin() {
@@ -1289,8 +1313,15 @@ async function handleSignup() {
     statusEl.textContent = "휴대폰·계좌 인증을 완료해 주세요.";
     return;
   }
+  const transferPw = document.getElementById("signup-transfer-pw").value;
+  if (!/^\d{6}$/.test(transferPw)) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = "이체 비밀번호는 숫자 6자리로 입력해 주세요.";
+    return;
+  }
   const payload = {
     username, password, name,
+    transfer_password: transferPw,
     phone: document.getElementById("signup-phone").value.replace(/[^0-9]/g, ""),
     email: document.getElementById("signup-email").value.trim(),
     bank_name: document.getElementById("signup-bank").value,
@@ -1299,6 +1330,7 @@ async function handleSignup() {
     nickname: document.getElementById("signup-account-nickname").value.trim(),
     is_primary: document.getElementById("signup-account-primary").checked,
     agree_openbanking: document.getElementById("signup-agree-openbanking").checked,
+    agree_marketing: document.getElementById("signup-agree-marketing").checked,
   };
   statusEl.textContent = "가입 처리 중…";
   try {
@@ -1331,6 +1363,449 @@ document.addEventListener("click", (e) => {
   clearAuth();
   refreshAuthUI();
   navigate("home");
+});
+
+/* ── 로그아웃 상태: 아이디 찾기 / 비밀번호 재설정 ──────────────────── */
+async function handleFindId() {
+  const statusEl = document.getElementById("findid-status");
+  statusEl.className = "tf-status";
+  statusEl.textContent = "조회 중…";
+  try {
+    const res = await fetch("/api/find-username", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: document.getElementById("findid-name").value.trim(),
+        phone: document.getElementById("findid-phone").value.replace(/[^0-9]/g, ""),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "조회에 실패했습니다.");
+    statusEl.className = "tf-status ok";
+    statusEl.textContent = `회원님의 아이디는 "${data.username_masked}" 입니다.`;
+  } catch (err) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = err.message;
+  }
+}
+
+async function handleResetPw() {
+  const statusEl = document.getElementById("resetpw-status");
+  statusEl.className = "tf-status";
+  statusEl.textContent = "처리 중…";
+  try {
+    const res = await fetch("/api/reset-password", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: document.getElementById("resetpw-username").value.trim(),
+        name: document.getElementById("resetpw-name").value.trim(),
+        phone: document.getElementById("resetpw-phone").value.replace(/[^0-9]/g, ""),
+        new_password: document.getElementById("resetpw-new").value,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "재설정에 실패했습니다.");
+    document.getElementById("resetpw-form").reset();
+    statusEl.className = "tf-status ok";
+    statusEl.textContent = "비밀번호가 재설정되었습니다. 새 비밀번호로 로그인하세요.";
+  } catch (err) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = err.message;
+  }
+}
+
+/* ── 마이페이지 ─────────────────────────────────────────────────────── */
+const MYPAGE_TABS = ["profile", "security", "accounts", "favorites",
+                     "scheduled", "inquiries", "statement", "withdraw"];
+
+function mypageGoTab(name) {
+  if (!MYPAGE_TABS.includes(name)) name = "profile";
+  document.querySelectorAll(".mypage-tab").forEach((b) =>
+    b.classList.toggle("active", b.dataset.mypageTab === name)
+  );
+  MYPAGE_TABS.forEach((t) => {
+    document.getElementById(`mypage-panel-${t}`).style.display = t === name ? "block" : "none";
+  });
+  if (name === "profile") loadMyProfile();
+  if (name === "security") { loadMyTransferPwState(); loadMyConsents(); loadMyLimits(); loadMySecurityEvents(); }
+  if (name === "accounts") loadMyAccounts();
+  if (name === "favorites") loadMyFavorites();
+  if (name === "scheduled") loadMyScheduled();
+  if (name === "inquiries") loadMyInquiries();
+}
+
+document.addEventListener("click", (e) => {
+  const tab = e.target.closest(".mypage-tab");
+  if (tab) mypageGoTab(tab.dataset.mypageTab);
+});
+
+const mpFmtDate = (ts) => new Date(ts * 1000).toLocaleString("ko-KR");
+function mpStatus(id, msg, ok) {
+  const el = document.getElementById(id);
+  el.className = "tf-status" + (ok ? " ok" : msg ? " err" : "");
+  el.textContent = msg;
+}
+function fillBankOptions(id) {
+  const sel = document.getElementById(id);
+  if (sel && !sel.options.length) {
+    sel.innerHTML = TF_BANKS.map((b) => `<option value="${b}">${b}</option>`).join("");
+  }
+}
+
+/* 내 정보 */
+async function loadMyProfile() {
+  try {
+    const res = await apiFetch("/api/me/profile");
+    if (!res.ok) throw new Error("프로필 조회 실패");
+    const p = await res.json();
+    document.getElementById("mp-username").value = p.username;
+    document.getElementById("mp-name").value = p.name || "";
+    document.getElementById("mp-phone").value = p.phone || "";
+    document.getElementById("mp-email").value = p.email || "";
+  } catch (err) { mpStatus("mp-profile-status", err.message); }
+}
+async function saveMyProfile() {
+  mpStatus("mp-profile-status", "저장 중…");
+  try {
+    const res = await apiFetch("/api/me/profile", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: document.getElementById("mp-name").value.trim(),
+        phone: document.getElementById("mp-phone").value.replace(/[^0-9]/g, ""),
+        email: document.getElementById("mp-email").value.trim(),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "저장 실패");
+    mpStatus("mp-profile-status", "저장되었습니다.", true);
+  } catch (err) { mpStatus("mp-profile-status", err.message); }
+}
+
+/* 로그인 비밀번호 변경 */
+async function changeMyPassword() {
+  mpStatus("mp-password-status", "변경 중…");
+  try {
+    const res = await apiFetch("/api/me/password", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        current_password: document.getElementById("mp-cur-pw").value,
+        new_password: document.getElementById("mp-new-pw").value,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "변경 실패");
+    document.getElementById("mp-password-form").reset();
+    mpStatus("mp-password-status", "비밀번호가 변경되었습니다.", true);
+  } catch (err) { mpStatus("mp-password-status", err.message); }
+}
+
+/* 이체 비밀번호 설정/변경 */
+async function loadMyTransferPwState() {
+  try {
+    const res = await apiFetch("/api/me/profile");
+    if (!res.ok) return;
+    const p = await res.json();
+    document.getElementById("mp-tpw-state").textContent =
+      p.has_transfer_password ? "· 설정됨" : "· 미설정";
+  } catch { /* noop */ }
+}
+async function changeMyTransferPw() {
+  const pin = document.getElementById("mp-tpw-new").value;
+  if (!/^\d{6}$/.test(pin)) { mpStatus("mp-tpw-status", "이체 비밀번호는 숫자 6자리입니다."); return; }
+  mpStatus("mp-tpw-status", "저장 중…");
+  try {
+    const res = await apiFetch("/api/me/transfer-password", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        login_password: document.getElementById("mp-tpw-login").value,
+        new_transfer_password: pin,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "저장 실패");
+    document.getElementById("mp-tpw-form").reset();
+    loadMyTransferPwState();
+    mpStatus("mp-tpw-status", "이체 비밀번호가 저장되었습니다.", true);
+  } catch (err) { mpStatus("mp-tpw-status", err.message); }
+}
+
+/* 알림 동의 */
+async function loadMyConsents() {
+  try {
+    const res = await apiFetch("/api/me/consents");
+    if (!res.ok) return;
+    const c = await res.json();
+    document.getElementById("mp-agree-openbanking").checked = c.agree_openbanking;
+    document.getElementById("mp-agree-marketing").checked = c.agree_marketing;
+  } catch { /* noop */ }
+}
+async function saveMyConsents() {
+  mpStatus("mp-consent-status", "저장 중…");
+  try {
+    const res = await apiFetch("/api/me/consents", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agree_openbanking: document.getElementById("mp-agree-openbanking").checked,
+        agree_marketing: document.getElementById("mp-agree-marketing").checked,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "저장 실패");
+    mpStatus("mp-consent-status", "저장되었습니다.", true);
+  } catch (err) { mpStatus("mp-consent-status", err.message); }
+}
+
+/* 내 이체 한도(읽기전용) */
+async function loadMyLimits() {
+  const box = document.getElementById("mp-limits");
+  try {
+    const res = await apiFetch("/api/me/limits");
+    if (!res.ok) throw new Error("한도 조회 실패");
+    const l = await res.json();
+    box.innerHTML =
+      `<div class="cf-row"><span>1회 한도</span><b>${won(l.transfer_limit)}</b></div>` +
+      `<div class="cf-row"><span>1일 한도</span><b>${won(l.daily_transfer_limit)}</b></div>` +
+      `<div class="cf-row"><span>타행 수수료</span><b>${won(l.transfer_fee)}</b></div>` +
+      `<div class="cf-row"><span>오늘 사용액</span><b>${won(l.used_today)}</b></div>` +
+      `<div class="cf-row"><span>오늘 잔여 한도</span><b>${won(l.remaining_today)}</b></div>`;
+  } catch (err) { box.innerHTML = `<p class="tf-hint">${escapeHtml(err.message)}</p>`; }
+}
+
+/* 내 보안 이력 */
+const SEC_LABELS = { password_fail: "이체 비밀번호 오류", limit_once: "1회 한도 초과",
+                     limit_daily: "1일 한도 초과", new_payee: "신규 수취계좌 이체" };
+async function loadMySecurityEvents() {
+  const box = document.getElementById("mp-security-events");
+  try {
+    const res = await apiFetch("/api/me/security-events");
+    if (!res.ok) throw new Error("보안 이력 조회 실패");
+    const { events } = await res.json();
+    if (!events.length) { box.innerHTML = `<p class="tf-hint">보안 이벤트가 없습니다.</p>`; return; }
+    box.innerHTML = events.map((ev) =>
+      `<div class="mp-sec-item"><span class="mp-sec-type">${escapeHtml(SEC_LABELS[ev.event_type] || ev.event_type)}</span>` +
+      `<span class="mp-sec-detail">${escapeHtml(ev.detail || "")}</span>` +
+      `<span class="mp-sec-time">${mpFmtDate(ev.created_at)}</span></div>`
+    ).join("");
+  } catch (err) { box.innerHTML = `<p class="tf-hint">${escapeHtml(err.message)}</p>`; }
+}
+
+/* 계좌 관리 */
+async function loadMyAccounts() {
+  fillBankOptions("mp-acc-bank");
+  // 예금주명은 반드시 회원 이름과 일치해야 하므로 항상 현재 사용자 이름으로 채운다.
+  const holderEl = document.getElementById("mp-acc-holder");
+  if (holderEl) holderEl.value = getAuth()?.name || "";
+  const box = document.getElementById("mp-accounts");
+  try {
+    const res = await apiFetch("/api/accounts");
+    if (!res.ok) throw new Error("계좌 조회 실패");
+    const { accounts } = await res.json();
+    box.innerHTML = accounts.map((a) =>
+      `<div class="mp-acct" data-acc-id="${a.id}">
+         <div class="mp-acct-head">
+           <span>${bankBadge(a.bank_name)} ${escapeHtml(a.bank_name)} ${escapeHtml(a.account_no)}</span>
+           ${a.is_primary ? '<span class="mp-primary-badge">대표</span>' : ""}
+         </div>
+         <div class="mp-acct-bal">${won(a.balance)}</div>
+         <div class="mp-acct-actions">
+           <input type="text" class="mp-acct-nick" value="${escapeHtml(a.nickname || "")}" placeholder="별칭" maxlength="20" />
+           <button type="button" class="btn btn-ghost mp-acct-save" data-acc-id="${a.id}">별칭 저장</button>
+           ${a.is_primary ? "" : `<button type="button" class="btn btn-ghost mp-acct-primary" data-acc-id="${a.id}">대표 지정</button>`}
+           ${a.is_primary ? "" : `<button type="button" class="btn btn-ghost mp-acct-del" data-acc-id="${a.id}">해지</button>`}
+         </div>
+       </div>`
+    ).join("");
+  } catch (err) { box.innerHTML = `<p class="tf-hint">${escapeHtml(err.message)}</p>`; }
+}
+async function addMyAccount() {
+  mpStatus("mp-add-account-status", "추가 중…");
+  try {
+    const res = await apiFetch("/api/accounts", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bank_name: document.getElementById("mp-acc-bank").value,
+        account_no: document.getElementById("mp-acc-no").value.trim(),
+        account_holder: document.getElementById("mp-acc-holder").value.trim(),
+        nickname: document.getElementById("mp-acc-nickname").value.trim(),
+        is_primary: document.getElementById("mp-acc-primary").checked,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "추가 실패");
+    document.getElementById("mp-acc-no").value = "";
+    document.getElementById("mp-acc-nickname").value = "";
+    document.getElementById("mp-acc-primary").checked = false;
+    mpStatus("mp-add-account-status", "계좌가 추가되었습니다.", true);
+    loadMyAccounts();
+  } catch (err) { mpStatus("mp-add-account-status", err.message); }
+}
+
+/* 즐겨찾기 */
+async function loadMyFavorites() {
+  fillBankOptions("mp-fav-bank");
+  const box = document.getElementById("mp-favorites");
+  try {
+    const res = await apiFetch("/api/me/favorites");
+    if (!res.ok) throw new Error("즐겨찾기 조회 실패");
+    const { favorites } = await res.json();
+    if (!favorites.length) { box.innerHTML = `<p class="tf-hint">등록된 즐겨찾기가 없습니다.</p>`; return; }
+    box.innerHTML = favorites.map((f) =>
+      `<div class="mp-fav">
+         <span><b>${escapeHtml(f.nickname || f.holder_name || "-")}</b> · ${escapeHtml(f.bank_name)} ${escapeHtml(f.account_no)}</span>
+         <button type="button" class="btn btn-ghost mp-fav-del" data-fav-id="${f.id}">삭제</button>
+       </div>`
+    ).join("");
+  } catch (err) { box.innerHTML = `<p class="tf-hint">${escapeHtml(err.message)}</p>`; }
+}
+async function addMyFavorite() {
+  mpStatus("mp-add-fav-status", "추가 중…");
+  try {
+    const res = await apiFetch("/api/me/favorites", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bank_name: document.getElementById("mp-fav-bank").value,
+        account_no: document.getElementById("mp-fav-no").value.trim(),
+        holder_name: document.getElementById("mp-fav-holder").value.trim(),
+        nickname: document.getElementById("mp-fav-nickname").value.trim(),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "추가 실패");
+    document.getElementById("mp-add-fav-form").reset();
+    mpStatus("mp-add-fav-status", "추가되었습니다.", true);
+    loadMyFavorites();
+  } catch (err) { mpStatus("mp-add-fav-status", err.message); }
+}
+
+/* 예약/지연 이체 */
+async function loadMyScheduled() {
+  const box = document.getElementById("mp-scheduled");
+  try {
+    const res = await apiFetch("/api/me/scheduled-transfers");
+    if (!res.ok) throw new Error("예약이체 조회 실패");
+    const { transfers } = await res.json();
+    if (!transfers.length) { box.innerHTML = `<p class="tf-hint">대기 중인 예약/지연 이체가 없습니다.</p>`; return; }
+    box.innerHTML = transfers.map((t) =>
+      `<div class="mp-sched">
+         <span>${t.status === "scheduled" ? "예약" : "지연"} · ${escapeHtml(t.to_holder || "")} ${escapeHtml(t.to_account)} · ${won(t.amount)}</span>
+         <span class="mp-sched-time">${t.scheduled_at ? mpFmtDate(t.scheduled_at) : ""}</span>
+         <button type="button" class="btn btn-ghost mp-sched-cancel" data-tid="${t.id}">취소</button>
+       </div>`
+    ).join("");
+  } catch (err) { box.innerHTML = `<p class="tf-hint">${escapeHtml(err.message)}</p>`; }
+}
+
+/* 내 문의 내역 */
+async function loadMyInquiries() {
+  const box = document.getElementById("mp-inquiries");
+  try {
+    const res = await apiFetch("/api/inquiries");
+    if (!res.ok) throw new Error("문의 내역 조회 실패");
+    const { inquiries } = await res.json();
+    if (!inquiries.length) { box.innerHTML = `<p class="tf-hint">문의 내역이 없습니다.</p>`; return; }
+    box.innerHTML = inquiries.map((q) =>
+      `<div class="mp-inquiry">
+         <div class="mp-inquiry-head"><b>${escapeHtml(q.title)}</b><span class="mp-sec-time">${mpFmtDate(q.created_at)}</span></div>
+         <div class="mp-inquiry-body">${escapeHtml(q.content)}</div>
+       </div>`
+    ).join("");
+  } catch (err) { box.innerHTML = `<p class="tf-hint">${escapeHtml(err.message)}</p>`; }
+}
+
+/* 거래명세서 CSV 다운로드 (Bearer 헤더 필요 → blob 방식) */
+async function downloadMyStatement() {
+  mpStatus("mp-statement-status", "생성 중…");
+  try {
+    const res = await apiFetch("/api/me/transactions/export");
+    if (!res.ok) throw new Error("다운로드 실패");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "transactions.csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    mpStatus("mp-statement-status", "다운로드되었습니다.", true);
+  } catch (err) { mpStatus("mp-statement-status", err.message); }
+}
+
+/* 회원 탈퇴 */
+async function withdrawMe() {
+  mpStatus("mp-withdraw-status", "");
+  const pw = document.getElementById("mp-withdraw-pw").value;
+  if (!pw) { mpStatus("mp-withdraw-status", "비밀번호를 입력하세요."); return; }
+  if (!window.confirm("정말 탈퇴하시겠습니까? 탈퇴 후에는 로그인할 수 없습니다.")) return;
+  try {
+    const res = await apiFetch("/api/me/withdraw", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pw }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "탈퇴 실패");
+    alert("회원 탈퇴가 완료되었습니다.");
+    clearAuth();
+    refreshAuthUI();
+    navigate("home");
+  } catch (err) { mpStatus("mp-withdraw-status", err.message); }
+}
+
+/* 마이페이지 폼 submit 위임 */
+document.addEventListener("submit", (e) => {
+  const id = e.target.id;
+  if (id === "mp-profile-form") { e.preventDefault(); saveMyProfile(); }
+  if (id === "mp-password-form") { e.preventDefault(); changeMyPassword(); }
+  if (id === "mp-tpw-form") { e.preventDefault(); changeMyTransferPw(); }
+  if (id === "mp-consent-form") { e.preventDefault(); saveMyConsents(); }
+  if (id === "mp-add-account-form") { e.preventDefault(); addMyAccount(); }
+  if (id === "mp-add-fav-form") { e.preventDefault(); addMyFavorite(); }
+  if (id === "mp-withdraw-form") { e.preventDefault(); withdrawMe(); }
+});
+
+/* 마이페이지 클릭 위임 (계좌/즐겨찾기/예약이체 액션) */
+document.addEventListener("click", async (e) => {
+  const t = e.target;
+  if (t.id === "mp-download-csv") { downloadMyStatement(); return; }
+
+  const save = t.closest(".mp-acct-save");
+  if (save) {
+    const row = save.closest(".mp-acct");
+    const nick = row.querySelector(".mp-acct-nick").value.trim();
+    const res = await apiFetch(`/api/accounts/${save.dataset.accId}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nickname: nick }),
+    });
+    if (res.ok) loadMyAccounts();
+    return;
+  }
+  const prim = t.closest(".mp-acct-primary");
+  if (prim) {
+    const res = await apiFetch(`/api/accounts/${prim.dataset.accId}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_primary: true }),
+    });
+    if (res.ok) loadMyAccounts();
+    return;
+  }
+  const del = t.closest(".mp-acct-del");
+  if (del) {
+    if (!window.confirm("이 계좌를 해지하시겠습니까?")) return;
+    const res = await apiFetch(`/api/accounts/${del.dataset.accId}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { alert(data.detail || "해지할 수 없습니다."); return; }
+    loadMyAccounts();
+    return;
+  }
+  const favDel = t.closest(".mp-fav-del");
+  if (favDel) {
+    const res = await apiFetch(`/api/me/favorites/${favDel.dataset.favId}`, { method: "DELETE" });
+    if (res.ok) loadMyFavorites();
+    return;
+  }
+  const cancel = t.closest(".mp-sched-cancel");
+  if (cancel) {
+    if (!window.confirm("이 예약/지연 이체를 취소하시겠습니까?")) return;
+    const res = await apiFetch(`/api/transfers/${cancel.dataset.tid}/cancel`, { method: "POST" });
+    if (res.ok) loadMyScheduled();
+    return;
+  }
 });
 
 /* ── Backoffice (관리자 전용) ───────────────────────────────────────── */

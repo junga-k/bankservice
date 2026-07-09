@@ -6,13 +6,15 @@
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 import sqlite3
 import time
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -129,6 +131,7 @@ class SearchReq(BaseModel):
 class SignupReq(BaseModel):
     username: str
     password: str
+    transfer_password: str = ""    # 이체 비밀번호(숫자 6자리)
     name: str
     phone: str = ""
     email: str = ""
@@ -138,6 +141,7 @@ class SignupReq(BaseModel):
     nickname: str = ""
     is_primary: bool = True
     agree_openbanking: bool = False
+    agree_marketing: bool = False
 
 
 class InquiryReq(BaseModel):
@@ -186,6 +190,8 @@ def signup(req: SignupReq):
         raise HTTPException(status_code=400, detail="예금주명이 가입자 이름과 일치하지 않습니다.")
     if not req.agree_openbanking:
         raise HTTPException(status_code=400, detail="오픈뱅킹 이용에 동의해야 합니다.")
+    if not re.match(r"^\d{6}$", req.transfer_password or ""):
+        raise HTTPException(status_code=400, detail="이체 비밀번호는 숫자 6자리로 설정하세요.")
     # 계좌 중복은 회원 생성 전에 먼저 확인(중간 실패로 계정만 생성되는 것을 방지).
     # lookup_account는 숫자만 비교하므로 대시 표기 차이까지 잡아낸다.
     if db.lookup_account(account_no) is not None:
@@ -195,6 +201,8 @@ def signup(req: SignupReq):
     user_id = db.create_user(
         username, password_hash, name=name, phone=phone_digits, email=req.email.strip(),
     )
+    db.set_transfer_password_hash(user_id, auth.hash_password(req.transfer_password))
+    db.set_consents(user_id, 1 if req.agree_marketing else 0, 1 if req.agree_openbanking else 0)
     try:
         db.create_account(
             user_id, account_no, bank_name, name, balance=0,
@@ -213,6 +221,8 @@ def login(req: LoginReq):
     user = db.get_user_by_username(req.username.strip())
     if user is None or not user["password_hash"] or not auth.verify_password(req.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 올바르지 않습니다.")
+    if not user.get("is_active", 1):
+        raise HTTPException(status_code=401, detail="탈퇴한 계정입니다. 로그인할 수 없습니다.")
     token = auth.make_token(user)
     return {"token": token, "username": user["username"], "name": user["name"], "role": user["role"]}
 
@@ -220,6 +230,223 @@ def login(req: LoginReq):
 @app.get("/api/me")
 def me(user: dict = Depends(auth.get_current_user)):
     return user
+
+
+# ── 마이페이지: 프로필·보안 ──────────────────────────────────────────
+class ProfileReq(BaseModel):
+    name: str
+    phone: str = ""
+    email: str = ""
+
+
+class PasswordReq(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class TransferPwReq(BaseModel):
+    login_password: str          # 본인 확인은 로그인 비밀번호로
+    new_transfer_password: str   # 숫자 6자리
+
+
+class ConsentReq(BaseModel):
+    agree_marketing: bool = False
+    agree_openbanking: bool = True
+
+
+class WithdrawReq(BaseModel):
+    password: str
+
+
+@app.get("/api/me/profile")
+def get_my_profile(user: dict = Depends(auth.get_current_user)):
+    prof = db.get_profile(user["id"])
+    if prof is None:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    return prof
+
+
+@app.put("/api/me/profile")
+def update_my_profile(req: ProfileReq, user: dict = Depends(auth.get_current_user)):
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="이름을 입력하세요.")
+    phone_digits = re.sub(r"[^0-9]", "", req.phone)
+    if not (10 <= len(phone_digits) <= 11):
+        raise HTTPException(status_code=400, detail="전화번호를 정확히 입력하세요.")
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", req.email.strip()):
+        raise HTTPException(status_code=400, detail="이메일 형식이 올바르지 않습니다.")
+    db.update_user(user["id"], name, phone_digits, req.email.strip())
+    return {"ok": True}
+
+
+@app.put("/api/me/password")
+def change_my_password(req: PasswordReq, user: dict = Depends(auth.get_current_user)):
+    acct = db.get_user_by_username(user["username"])
+    if acct is None or not auth.verify_password(req.current_password, acct["password_hash"]):
+        raise HTTPException(status_code=401, detail="현재 비밀번호가 올바르지 않습니다.")
+    if len(req.new_password) < 4:
+        raise HTTPException(status_code=400, detail="새 비밀번호는 4자 이상 입력하세요.")
+    db.set_password_hash(user["id"], auth.hash_password(req.new_password))
+    return {"ok": True}
+
+
+@app.put("/api/me/transfer-password")
+def change_my_transfer_password(req: TransferPwReq, user: dict = Depends(auth.get_current_user)):
+    """이체 비밀번호 설정·변경·분실재설정 공용. 본인 확인은 로그인 비밀번호로."""
+    acct = db.get_user_by_username(user["username"])
+    if acct is None or not auth.verify_password(req.login_password, acct["password_hash"]):
+        raise HTTPException(status_code=401, detail="로그인 비밀번호가 올바르지 않습니다.")
+    if not re.match(r"^\d{6}$", req.new_transfer_password or ""):
+        raise HTTPException(status_code=400, detail="이체 비밀번호는 숫자 6자리로 설정하세요.")
+    db.set_transfer_password_hash(user["id"], auth.hash_password(req.new_transfer_password))
+    return {"ok": True}
+
+
+@app.get("/api/me/consents")
+def get_my_consents(user: dict = Depends(auth.get_current_user)):
+    prof = db.get_profile(user["id"])
+    if prof is None:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    return {"agree_marketing": bool(prof["agree_marketing"]),
+            "agree_openbanking": bool(prof["agree_openbanking"])}
+
+
+@app.put("/api/me/consents")
+def update_my_consents(req: ConsentReq, user: dict = Depends(auth.get_current_user)):
+    if not req.agree_openbanking:
+        raise HTTPException(status_code=400, detail="오픈뱅킹 동의를 철회하면 서비스를 이용할 수 없습니다.")
+    db.set_consents(user["id"], 1 if req.agree_marketing else 0, 1 if req.agree_openbanking else 0)
+    return {"ok": True}
+
+
+@app.get("/api/me/security-events")
+def my_security_events(offset: int = 0, limit: int = 30,
+                       user: dict = Depends(auth.get_current_user)):
+    return {"events": db.list_security_events(offset, limit, username=user["username"])}
+
+
+@app.get("/api/me/scheduled-transfers")
+def my_scheduled_transfers(user: dict = Depends(auth.get_current_user)):
+    return {"transfers": db.list_user_scheduled(user["id"])}
+
+
+@app.get("/api/me/limits")
+def my_limits(user: dict = Depends(auth.get_current_user)):
+    """읽기전용: 현재 적용 한도(전역 정책) + 오늘 사용액·잔여."""
+    cfg = config.load()
+    once = int(cfg.get("transfer_limit", TRANSFER_LIMIT))
+    daily = int(cfg.get("daily_transfer_limit", DAILY_TRANSFER_LIMIT))
+    fee = int(cfg.get("transfer_fee", TRANSFER_FEE))
+    today0 = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))
+    used = db.sum_user_transfers_today(db.user_account_nos(user["id"]), today0)
+    return {"transfer_limit": once, "daily_transfer_limit": daily, "transfer_fee": fee,
+            "used_today": used, "remaining_today": max(0, daily - used)}
+
+
+@app.get("/api/me/transactions/export")
+def export_my_transactions(user: dict = Depends(auth.get_current_user)):
+    """전 계좌 통합 거래내역 CSV 다운로드."""
+    rows = db.list_user_transactions(user["id"])
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["일시", "계좌번호", "은행", "구분", "금액", "거래후잔액", "상대"])
+    for r in rows:
+        dt = time.strftime("%Y-%m-%d %H:%M", time.localtime(r["created_at"]))
+        kind = "입금" if r["type"] == "in" else "출금"
+        w.writerow([dt, r["account_no"], r["bank_name"], kind, r["amount"],
+                    r["balance_after"] if r["balance_after"] is not None else "", r["counterparty"] or ""])
+    csv_bytes = ("﻿" + buf.getvalue()).encode("utf-8")   # BOM: 엑셀 한글 깨짐 방지
+    return Response(
+        content=csv_bytes, media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=transactions.csv"},
+    )
+
+
+# ── 마이페이지: 즐겨찾기 수취인 ──────────────────────────────────────
+class FavoriteReq(BaseModel):
+    bank_name: str = ""
+    account_no: str
+    holder_name: str = ""
+    nickname: str = ""
+
+
+@app.get("/api/me/favorites")
+def get_favorites(user: dict = Depends(auth.get_current_user)):
+    return {"favorites": db.list_favorites(user["id"])}
+
+
+@app.post("/api/me/favorites")
+def add_favorite(req: FavoriteReq, user: dict = Depends(auth.get_current_user)):
+    acct_no = req.account_no.strip()
+    if not acct_no:
+        raise HTTPException(status_code=400, detail="계좌번호를 입력하세요.")
+    fid = db.create_favorite(user["id"], req.bank_name.strip(), acct_no,
+                             req.holder_name.strip(), req.nickname.strip())
+    return {"id": fid}
+
+
+@app.delete("/api/me/favorites/{fav_id}")
+def remove_favorite(fav_id: int, user: dict = Depends(auth.get_current_user)):
+    if db.delete_favorite(fav_id, user["id"]):
+        return {"ok": True}
+    raise HTTPException(status_code=404, detail="즐겨찾기를 찾을 수 없습니다.")
+
+
+# ── 마이페이지: 회원 탈퇴(소프트 삭제) ───────────────────────────────
+@app.post("/api/me/withdraw")
+def withdraw(req: WithdrawReq, user: dict = Depends(auth.get_current_user)):
+    acct = db.get_user_by_username(user["username"])
+    if acct is None or not auth.verify_password(req.password, acct["password_hash"]):
+        raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다.")
+    if db.user_total_balance(user["id"]) != 0:
+        raise HTTPException(status_code=409,
+                            detail="잔액이 남은 계좌가 있어 탈퇴할 수 없습니다. 잔액을 먼저 정리하세요.")
+    if db.list_user_scheduled(user["id"]):
+        raise HTTPException(status_code=409,
+                            detail="진행 중인 예약/지연 이체가 있어 탈퇴할 수 없습니다. 먼저 취소하세요.")
+    db.deactivate_user(user["id"])
+    return {"ok": True}
+
+
+# ── 로그아웃 상태: 아이디 찾기 / 비밀번호 재설정 (데모 목업 인증) ──────
+class FindIdReq(BaseModel):
+    name: str
+    phone: str
+
+
+class ResetPwReq(BaseModel):
+    username: str
+    name: str
+    phone: str
+    new_password: str
+
+
+def _mask_username(u: str) -> str:
+    if len(u) <= 2:
+        return u[0] + "*"
+    return u[:2] + "*" * (len(u) - 3) + u[-1]
+
+
+@app.post("/api/find-username")
+def find_username(req: FindIdReq):
+    """데모: 이름+전화 일치 시 아이디를 부분 마스킹해 반환(실제 서비스는 SMS 인증 필요)."""
+    found = db.find_user_by_identity(req.name.strip(), req.phone)
+    if found is None:
+        raise HTTPException(status_code=404, detail="일치하는 회원 정보를 찾을 수 없습니다.")
+    return {"username_masked": _mask_username(found["username"])}
+
+
+@app.post("/api/reset-password")
+def reset_password(req: ResetPwReq):
+    """데모: 아이디+이름+전화 일치 시 비밀번호 재설정(실제 서비스는 이메일/SMS 인증 필요)."""
+    found = db.find_user_by_identity(req.name.strip(), req.phone)
+    if found is None or found["username"] != req.username.strip():
+        raise HTTPException(status_code=404, detail="회원 정보가 일치하지 않습니다.")
+    if len(req.new_password) < 4:
+        raise HTTPException(status_code=400, detail="새 비밀번호는 4자 이상 입력하세요.")
+    db.set_password_hash(found["id"], auth.hash_password(req.new_password))
+    return {"ok": True}
 
 
 @app.get("/api/admin/demo-account")
@@ -464,6 +691,59 @@ def lookup_account(account_no: str, from_account: str | None = None,
     }
 
 
+# ── 마이페이지: 계좌 관리(추가/수정/해지) ───────────────────────────
+class AccountCreateReq(BaseModel):
+    bank_name: str
+    account_no: str
+    account_holder: str
+    nickname: str = ""
+    is_primary: bool = False
+
+
+class AccountUpdateReq(BaseModel):
+    nickname: str | None = None
+    is_primary: bool | None = None
+
+
+@app.post("/api/accounts")
+def add_account(req: AccountCreateReq, user: dict = Depends(auth.get_current_user)):
+    bank_name = req.bank_name.strip()
+    account_no = req.account_no.strip()
+    if not bank_name or not account_no:
+        raise HTTPException(status_code=400, detail="등록할 계좌 정보를 입력하세요.")
+    acct = db.get_user_by_username(user["username"])
+    if acct is None or req.account_holder.strip() != acct["name"]:
+        raise HTTPException(status_code=400, detail="예금주명이 회원 이름과 일치하지 않습니다.")
+    if db.lookup_account(account_no) is not None:
+        raise HTTPException(status_code=400, detail="이미 등록된 계좌번호입니다.")
+    try:
+        acc_id = db.create_account(
+            user["id"], account_no, bank_name, acct["name"], balance=0,
+            nickname=req.nickname.strip(), is_primary=1 if req.is_primary else 0,
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="이미 등록된 계좌번호입니다.")
+    return {"id": acc_id}
+
+
+@app.put("/api/accounts/{account_id}")
+def edit_account(account_id: int, req: AccountUpdateReq,
+                 user: dict = Depends(auth.get_current_user)):
+    nickname = req.nickname.strip() if req.nickname is not None else None
+    is_primary = 1 if req.is_primary else None
+    if not db.update_account(account_id, user["id"], nickname, is_primary):
+        raise HTTPException(status_code=404, detail="계좌를 찾을 수 없습니다.")
+    return {"ok": True}
+
+
+@app.delete("/api/accounts/{account_id}")
+def close_account(account_id: int, user: dict = Depends(auth.get_current_user)):
+    ok, reason = db.delete_account(account_id, user["id"])
+    if not ok:
+        raise HTTPException(status_code=409, detail=reason)
+    return {"ok": True}
+
+
 # ── 이체 ─────────────────────────────────────────────────────────────
 @app.post("/api/transfer")
 def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
@@ -511,13 +791,18 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
             detail=f"1일 이체 한도({daily_limit:,}원)를 초과했습니다.",
         )
 
-    # 본인 확인(비밀번호 재인증) — 버튼 클릭만으로 실행되지 않도록 서버가 재검증
-    # get_current_user는 password_hash를 주지 않으므로 사용자 레코드를 다시 조회
+    # 본인 확인(이체 비밀번호 재인증) — 버튼 클릭만으로 실행되지 않도록 서버가 재검증.
+    # 별도 이체 비밀번호(6자리 PIN)로 검증하되, 미설정(레거시/시드) 계정은 로그인 비밀번호로 폴백.
     _acct = db.get_user_by_username(user["username"])
-    if not req.password or _acct is None or not auth.verify_password(req.password, _acct["password_hash"]):
+    _tpw_hash = (db.get_transfer_password_hash(user["id"]) or "").strip()
+    if _tpw_hash:
+        _ok = bool(req.password) and auth.verify_password(req.password, _tpw_hash)
+    else:
+        _ok = bool(req.password) and _acct is not None and auth.verify_password(req.password, _acct["password_hash"])
+    if not _ok:
         db.log_security_event("password_fail", user["username"], req.from_account,
-                              req.to_account, req.amount, "비밀번호 재인증 실패")
-        raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다. 본인 확인에 실패했습니다.")
+                              req.to_account, req.amount, "이체 비밀번호 재인증 실패")
+        raise HTTPException(status_code=401, detail="이체 비밀번호가 올바르지 않습니다. 본인 확인에 실패했습니다.")
 
     # 예약/지연 이체 판별: 즉시 실행이 아니면 미래 시각에 폴러가 처리
     now = time.time()

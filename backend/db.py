@@ -121,6 +121,15 @@ def init_db() -> None:
                 detail       TEXT NOT NULL DEFAULT '',
                 created_at   REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS favorites (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id      INTEGER NOT NULL,
+                bank_name    TEXT NOT NULL DEFAULT '',
+                account_no   TEXT NOT NULL,
+                holder_name  TEXT NOT NULL DEFAULT '',
+                nickname     TEXT NOT NULL DEFAULT '',
+                created_at   REAL NOT NULL
+            );
             """
         )
         # 기존 DB 마이그레이션: users에 name/role, transfers에 sender_memo,
@@ -135,6 +144,11 @@ def init_db() -> None:
             ("nickname", "ALTER TABLE accounts ADD COLUMN nickname TEXT NOT NULL DEFAULT ''"),
             ("is_primary", "ALTER TABLE accounts ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0"),
             ("scheduled_at", "ALTER TABLE transfers ADD COLUMN scheduled_at REAL"),
+            ("transfer_password_hash",
+             "ALTER TABLE users ADD COLUMN transfer_password_hash TEXT NOT NULL DEFAULT ''"),
+            ("is_active", "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1"),
+            ("agree_marketing", "ALTER TABLE users ADD COLUMN agree_marketing INTEGER NOT NULL DEFAULT 0"),
+            ("agree_openbanking", "ALTER TABLE users ADD COLUMN agree_openbanking INTEGER NOT NULL DEFAULT 1"),
         ):
             try:
                 conn.execute(ddl)
@@ -653,6 +667,8 @@ def create_account(user_id: int, account_no: str, bank_name: str,
                     nickname: str = "", is_primary: int = 0) -> int:
     """계좌 개설 후 id 반환. account_no 중복 시 sqlite3.IntegrityError."""
     with get_conn() as conn:
+        if is_primary:
+            conn.execute("UPDATE accounts SET is_primary = 0 WHERE user_id = ?", (user_id,))
         cur = conn.execute(
             "INSERT INTO accounts(user_id, account_no, bank_name, holder_name, balance, nickname, is_primary) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -661,15 +677,165 @@ def create_account(user_id: int, account_no: str, bank_name: str,
         return cur.lastrowid
 
 
-def get_user_by_username(username: str) -> dict | None:
-    """로그인 검증용(password_hash 포함)."""
+def update_account(account_id: int, user_id: int, nickname: str | None = None,
+                   is_primary: int | None = None) -> bool:
+    """본인 계좌의 별칭/대표계좌 변경. 대표 지정 시 나머지는 0으로. 성공 여부 반환."""
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT id, username, password_hash, name, role, created_at "
+            "SELECT id FROM accounts WHERE id = ? AND user_id = ?", (account_id, user_id),
+        ).fetchone()
+        if row is None:
+            return False
+        if nickname is not None:
+            conn.execute("UPDATE accounts SET nickname = ? WHERE id = ?", (nickname, account_id))
+        if is_primary:
+            conn.execute("UPDATE accounts SET is_primary = 0 WHERE user_id = ?", (user_id,))
+            conn.execute("UPDATE accounts SET is_primary = 1 WHERE id = ?", (account_id,))
+    return True
+
+
+def delete_account(account_id: int, user_id: int) -> tuple[bool, str]:
+    """본인 계좌 해지. 잔액 0 && 대표계좌 아님일 때만 허용. (성공여부, 사유)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT balance, is_primary FROM accounts WHERE id = ? AND user_id = ?",
+            (account_id, user_id),
+        ).fetchone()
+        if row is None:
+            return False, "계좌를 찾을 수 없습니다."
+        if row["is_primary"]:
+            return False, "대표계좌는 해지할 수 없습니다. 다른 계좌를 대표로 지정한 뒤 시도하세요."
+        if row["balance"] != 0:
+            return False, "잔액이 남아 있어 해지할 수 없습니다. 잔액을 먼저 이체/출금하세요."
+        conn.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+    return True, ""
+
+
+def user_account_nos(user_id: int) -> list[str]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT account_no FROM accounts WHERE user_id = ?", (user_id,),
+        ).fetchall()
+    return [r["account_no"] for r in rows]
+
+
+def user_total_balance(user_id: int) -> int:
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT COALESCE(SUM(balance), 0) FROM accounts WHERE user_id = ?", (user_id,),
+        ).fetchone()[0]
+
+
+# ── 자주 쓰는 계좌(즐겨찾기 수취인) ─────────────────────────────────
+def create_favorite(user_id: int, bank_name: str, account_no: str,
+                    holder_name: str = "", nickname: str = "") -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO favorites(user_id, bank_name, account_no, holder_name, nickname, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, bank_name, account_no, holder_name, nickname, time.time()),
+        )
+        return cur.lastrowid
+
+
+def list_favorites(user_id: int) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, bank_name, account_no, holder_name, nickname, created_at "
+            "FROM favorites WHERE user_id = ? ORDER BY id DESC",
+            (user_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_favorite(fav_id: int, user_id: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM favorites WHERE id = ? AND user_id = ?", (fav_id, user_id),
+        )
+    return cur.rowcount > 0
+
+
+def get_user_by_username(username: str) -> dict | None:
+    """로그인 검증용(password_hash·is_active 포함)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, username, password_hash, name, role, created_at, is_active "
             "FROM users WHERE username = ?",
             (username,),
         ).fetchone()
     return dict(row) if row else None
+
+
+def get_profile(user_id: int) -> dict | None:
+    """마이페이지용 프로필(로그인 비번 해시는 제외, 이체비번 존재 여부만)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, username, name, phone, email, role, created_at, is_active, "
+            "transfer_password_hash, agree_marketing, agree_openbanking "
+            "FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    d = dict(row)
+    d["has_transfer_password"] = bool((d.pop("transfer_password_hash") or "").strip())
+    return d
+
+
+def find_user_by_identity(name: str, phone: str) -> dict | None:
+    """아이디 찾기용: 이름+전화가 일치하는 사용자(활성만)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, username, name, phone, email FROM users "
+            "WHERE name = ? AND REPLACE(phone, '-', '') = ? AND is_active = 1",
+            (name, re.sub(r"[^0-9]", "", phone or "")),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_transfer_password_hash(user_id: int) -> str | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT transfer_password_hash FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+    return (row["transfer_password_hash"] if row else None) or ""
+
+
+def update_user(user_id: int, name: str, phone: str, email: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET name = ?, phone = ?, email = ? WHERE id = ?",
+            (name, phone, email, user_id),
+        )
+
+
+def set_password_hash(user_id: int, password_hash: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id),
+        )
+
+
+def set_transfer_password_hash(user_id: int, password_hash: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET transfer_password_hash = ? WHERE id = ?", (password_hash, user_id),
+        )
+
+
+def set_consents(user_id: int, agree_marketing: int, agree_openbanking: int) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET agree_marketing = ?, agree_openbanking = ? WHERE id = ?",
+            (int(agree_marketing), int(agree_openbanking), user_id),
+        )
+
+
+def deactivate_user(user_id: int) -> None:
+    """회원 탈퇴(소프트 삭제). 로그인·인증에서 is_active=0을 차단한다."""
+    with get_conn() as conn:
+        conn.execute("UPDATE users SET is_active = 0 WHERE id = ?", (user_id,))
 
 
 def list_users(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
@@ -748,6 +914,34 @@ def list_scheduled_pending() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def list_user_scheduled(user_id: int) -> list[dict]:
+    """본인 출금계좌의 예약/지연 대기 이체를 예정 시각 오름차순으로 반환(마이페이지용)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, from_account, to_account, to_bank, to_holder, amount, fee, "
+            "status, scheduled_at, created_at FROM transfers "
+            "WHERE status IN ('scheduled', 'delayed') "
+            "AND from_account IN (SELECT account_no FROM accounts WHERE user_id = ?) "
+            "ORDER BY scheduled_at ASC",
+            (user_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def list_user_transactions(user_id: int, since_epoch: float = 0.0) -> list[dict]:
+    """본인 전 계좌 통합 거래내역(최신순). 거래명세서 CSV용. since_epoch 이후만."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT a.account_no, a.bank_name, t.type, t.amount, t.counterparty, "
+            "t.balance_after, t.created_at "
+            "FROM transactions t JOIN accounts a ON a.id = t.account_id "
+            "WHERE a.user_id = ? AND t.created_at >= ? "
+            "ORDER BY t.created_at DESC, t.id DESC",
+            (user_id, since_epoch),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def log_security_event(event_type: str, username: str = "", from_account: str = "",
                        to_account: str = "", amount: int = 0, detail: str = "") -> None:
     """이체 보안 이벤트(거부·경고)를 기록. 실패해도 호출부 흐름을 막지 않는다."""
@@ -765,20 +959,23 @@ def log_security_event(event_type: str, username: str = "", from_account: str = 
         pass
 
 
-def list_security_events(offset: int = 0, limit: int = 20, event_type: str = "") -> list[dict]:
-    """보안 이벤트 목록(최신순). event_type 지정 시 해당 유형만."""
+def list_security_events(offset: int = 0, limit: int = 20, event_type: str = "",
+                         username: str = "") -> list[dict]:
+    """보안 이벤트 목록(최신순). event_type/username 지정 시 필터."""
+    where, params = [], []
+    if event_type:
+        where.append("event_type = ?")
+        params.append(event_type)
+    if username:
+        where.append("username = ?")
+        params.append(username)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
     with get_conn() as conn:
-        if event_type:
-            rows = conn.execute(
-                "SELECT * FROM security_events WHERE event_type = ? "
-                "ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                (event_type, limit, offset),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM security_events ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                (limit, offset),
-            ).fetchall()
+        rows = conn.execute(
+            f"SELECT * FROM security_events {clause} "
+            "ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ).fetchall()
     return [dict(r) for r in rows]
 
 

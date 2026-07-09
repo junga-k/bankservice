@@ -57,6 +57,8 @@ def get_current_user(authorization: str | None = Header(default=None)) -> dict:
     user = db.get_user_by_username(payload.get("sub", ""))
     if user is None:
         raise HTTPException(status_code=401, detail="사용자를 찾을 수 없습니다.")
+    if not user.get("is_active", 1):
+        raise HTTPException(status_code=401, detail="탈퇴한 계정입니다.")
     return {"id": user["id"], "username": user["username"], "name": user["name"], "role": user["role"]}
 
 

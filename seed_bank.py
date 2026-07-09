@@ -14,12 +14,26 @@ from backend import auth, db
 
 DEMO_USER = "demo"
 DEMO_PASSWORD = "demo1234"  # 관리자가 방문자 기능(계좌조회·이체·챗봇 등) 테스트에 쓰는 고정 비밀번호
+DEMO_TRANSFER_PIN = "246810"  # 데모 이체 비밀번호(숫자 6자리)
 DEMO_HOLDER = "홍길동"
 
 # 관리자 계정(고정): 데모 계정 정보를 확인할 수 있는 유일한 계정
 ADMIN_USER = "admin"
 ADMIN_PASSWORD = "admin1234"
+ADMIN_TRANSFER_PIN = "135790"  # 관리자 이체 비밀번호(숫자 6자리)
 ADMIN_HOLDER = "관리자"
+
+
+def _ensure_transfer_pin(conn, user_id: int, pin: str) -> None:
+    """transfer_password_hash가 비어있으면 채운다(멱등)."""
+    row = conn.execute(
+        "SELECT transfer_password_hash FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    if row is not None and not (row["transfer_password_hash"] or "").strip():
+        conn.execute(
+            "UPDATE users SET transfer_password_hash = ? WHERE id = ?",
+            (auth.hash_password(pin), user_id),
+        )
 
 # 관리자 본인 계좌: 관리자도 '내 계좌' 화면(조회·이체)을 온전히 볼 수 있도록 시드
 ADMIN_ACCOUNTS = [
@@ -89,8 +103,9 @@ def main() -> None:
                 conn.execute(
                     "UPDATE users SET name = ? WHERE id = ?", (DEMO_HOLDER, demo_row["id"]),
                 )
+            _ensure_transfer_pin(conn, demo_row["id"], DEMO_TRANSFER_PIN)
             _ensure_admin(conn, now)
-            print(f"이미 시드됨 (user '{DEMO_USER}' 존재) — 건너뜀")
+            print(f"이미 시드됨 (user '{DEMO_USER}' 존재) — 이체PIN/관리자 보정 후 건너뜀")
             return
 
         # ── 데모 사용자 + 내 계좌 ──
@@ -98,6 +113,7 @@ def main() -> None:
             "INSERT INTO users(id, username, password_hash, name, created_at) VALUES (?, ?, ?, ?, ?)",
             (db.DEMO_USER_ID, DEMO_USER, auth.hash_password(DEMO_PASSWORD), DEMO_HOLDER, now),
         )
+        _ensure_transfer_pin(conn, db.DEMO_USER_ID, DEMO_TRANSFER_PIN)
         for account_no, bank, balance in MY_ACCOUNTS:
             cur = conn.execute(
                 "INSERT INTO accounts(user_id, account_no, bank_name, holder_name, balance) "
@@ -144,6 +160,8 @@ def _ensure_admin(conn, now: float) -> None:
         )
         admin_id = cur.lastrowid
         print(f"'{ADMIN_USER}' 관리자 계정 생성 완료")
+
+    _ensure_transfer_pin(conn, admin_id, ADMIN_TRANSFER_PIN)
 
     # 관리자도 '내 계좌' 화면을 온전히 볼 수 있도록 계좌가 없으면 시드
     has_acct = conn.execute(

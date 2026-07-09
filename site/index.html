@@ -41,7 +41,7 @@
         <a data-nav="auth" data-auth="signup" class="nav-auth nav-signup">회원가입</a>
       </span>
       <span class="nav-auth-group" id="nav-auth-user" style="display:none">
-        <a href="#" class="nav-user-name" id="nav-user-name" data-nav="auth"></a>
+        <a href="#" class="nav-user-name" id="nav-user-name" data-nav="mypage"></a>
         <a href="#" id="nav-logout" class="nav-auth nav-login">로그아웃</a>
       </span>
     </nav>
@@ -315,9 +315,9 @@
               <span>받는 분(예금주명)과 금액을 확인했습니다</span>
             </label>
             <div class="tf-field">
-              <label for="tf-password">이체 비밀번호 (로그인 비밀번호)</label>
-              <input id="tf-password" type="password" autocomplete="current-password"
-                     placeholder="본인 확인을 위해 비밀번호를 입력하세요" />
+              <label for="tf-password">이체 비밀번호 (숫자 6자리)</label>
+              <input id="tf-password" type="password" inputmode="numeric" maxlength="6"
+                     autocomplete="off" placeholder="이체 비밀번호 6자리를 입력하세요" />
             </div>
             <div class="tf-confirm-actions">
               <button class="btn btn-ghost" id="tf-back" type="button">이전</button>
@@ -335,6 +335,229 @@
         </div><!-- /#account-panel-transfer -->
 
         </div><!-- /#account-authed -->
+      </div>
+    </section>
+
+    <!-- ── 마이페이지 (로그인 사용자) ──────────────────────────── -->
+    <section id="mypage" class="section">
+      <div class="container">
+        <h2 class="section-title">마이페이지</h2>
+        <p class="section-desc">내 정보·보안·계좌를 관리하세요. <span class="demo-badge">데모</span></p>
+
+        <div class="panel account-guest" id="mypage-guest" style="display:none">
+          <p>로그인이 필요한 서비스입니다.</p>
+          <button class="btn btn-primary" type="button" data-nav="auth">로그인 / 회원가입</button>
+        </div>
+
+        <div id="mypage-authed">
+          <div class="account-tabs mypage-tabs">
+            <button type="button" class="account-tab mypage-tab active" data-mypage-tab="profile">내 정보</button>
+            <button type="button" class="account-tab mypage-tab" data-mypage-tab="security">보안</button>
+            <button type="button" class="account-tab mypage-tab" data-mypage-tab="accounts">계좌 관리</button>
+            <button type="button" class="account-tab mypage-tab" data-mypage-tab="favorites">즐겨찾기</button>
+            <button type="button" class="account-tab mypage-tab" data-mypage-tab="scheduled">예약이체</button>
+            <button type="button" class="account-tab mypage-tab" data-mypage-tab="inquiries">문의내역</button>
+            <button type="button" class="account-tab mypage-tab" data-mypage-tab="statement">거래명세서</button>
+            <button type="button" class="account-tab mypage-tab" data-mypage-tab="withdraw">회원탈퇴</button>
+          </div>
+
+          <!-- 내 정보 -->
+          <div class="mypage-panel" id="mypage-panel-profile">
+            <div class="panel">
+              <h3>내 정보 수정</h3>
+              <form id="mp-profile-form">
+                <div class="tf-field">
+                  <label for="mp-username">아이디</label>
+                  <input id="mp-username" type="text" disabled />
+                </div>
+                <div class="tf-field">
+                  <label for="mp-name">이름</label>
+                  <input id="mp-name" type="text" required />
+                </div>
+                <div class="tf-field">
+                  <label for="mp-phone">전화번호</label>
+                  <input id="mp-phone" type="tel" inputmode="numeric" placeholder="숫자만 입력" />
+                </div>
+                <div class="tf-field">
+                  <label for="mp-email">이메일</label>
+                  <input id="mp-email" type="email" />
+                </div>
+                <button class="btn btn-primary" type="submit">저장</button>
+                <span id="mp-profile-status" class="tf-status"></span>
+              </form>
+            </div>
+          </div>
+
+          <!-- 보안 -->
+          <div class="mypage-panel" id="mypage-panel-security" style="display:none">
+            <div class="panel">
+              <h3>로그인 비밀번호 변경</h3>
+              <form id="mp-password-form">
+                <div class="tf-field">
+                  <label for="mp-cur-pw">현재 비밀번호</label>
+                  <input id="mp-cur-pw" type="password" autocomplete="current-password" required />
+                </div>
+                <div class="tf-field">
+                  <label for="mp-new-pw">새 비밀번호</label>
+                  <input id="mp-new-pw" type="password" autocomplete="new-password" required />
+                </div>
+                <button class="btn btn-primary" type="submit">변경</button>
+                <span id="mp-password-status" class="tf-status"></span>
+              </form>
+            </div>
+
+            <div class="panel">
+              <h3>이체 비밀번호 <span id="mp-tpw-state" class="tf-optional"></span></h3>
+              <p class="section-desc">이체 시 사용하는 숫자 6자리 PIN입니다. 본인 확인을 위해 로그인 비밀번호가 필요합니다.
+                (PIN을 잊었다면 여기서 재설정하세요.)</p>
+              <form id="mp-tpw-form">
+                <div class="tf-field">
+                  <label for="mp-tpw-login">로그인 비밀번호</label>
+                  <input id="mp-tpw-login" type="password" autocomplete="current-password" required />
+                </div>
+                <div class="tf-field">
+                  <label for="mp-tpw-new">새 이체 비밀번호 (숫자 6자리)</label>
+                  <input id="mp-tpw-new" type="password" inputmode="numeric" maxlength="6" autocomplete="off" required />
+                </div>
+                <button class="btn btn-primary" type="submit">설정 / 변경</button>
+                <span id="mp-tpw-status" class="tf-status"></span>
+              </form>
+            </div>
+
+            <div class="panel">
+              <h3>알림 수신 동의</h3>
+              <form id="mp-consent-form">
+                <div class="auth-agree-row">
+                  <label><input type="checkbox" id="mp-agree-openbanking" checked /> <span>(필수) 오픈뱅킹 이용 동의</span></label>
+                </div>
+                <div class="auth-agree-row">
+                  <label><input type="checkbox" id="mp-agree-marketing" /> <span>(선택) 마케팅 정보 수신 동의</span></label>
+                </div>
+                <button class="btn btn-primary" type="submit">저장</button>
+                <span id="mp-consent-status" class="tf-status"></span>
+              </form>
+            </div>
+
+            <div class="panel">
+              <h3>내 이체 한도</h3>
+              <div id="mp-limits"><!-- JS 렌더 --></div>
+            </div>
+
+            <div class="panel">
+              <h3>내 보안 이력</h3>
+              <div id="mp-security-events"><!-- JS 렌더 --></div>
+            </div>
+          </div>
+
+          <!-- 계좌 관리 -->
+          <div class="mypage-panel" id="mypage-panel-accounts" style="display:none">
+            <div class="panel">
+              <h3>내 계좌</h3>
+              <div id="mp-accounts"><!-- JS 렌더 --></div>
+            </div>
+            <div class="panel">
+              <h3>계좌 추가</h3>
+              <form id="mp-add-account-form">
+                <div class="tf-field">
+                  <label for="mp-acc-bank">은행 선택</label>
+                  <select id="mp-acc-bank"></select>
+                </div>
+                <div class="tf-field">
+                  <label for="mp-acc-no">계좌번호</label>
+                  <input id="mp-acc-no" type="text" inputmode="numeric" placeholder="- 없이 입력 가능" required />
+                </div>
+                <div class="tf-field">
+                  <label for="mp-acc-holder">예금주명 (회원 이름과 동일)</label>
+                  <input id="mp-acc-holder" type="text" required />
+                </div>
+                <div class="tf-field">
+                  <label for="mp-acc-nickname">계좌 별칭 <span class="tf-optional">(선택)</span></label>
+                  <input id="mp-acc-nickname" type="text" maxlength="20" />
+                </div>
+                <div class="auth-agree-row">
+                  <label><input type="checkbox" id="mp-acc-primary" /> <span>대표계좌로 지정</span></label>
+                </div>
+                <button class="btn btn-primary" type="submit">계좌 추가</button>
+                <span id="mp-add-account-status" class="tf-status"></span>
+              </form>
+            </div>
+          </div>
+
+          <!-- 즐겨찾기 -->
+          <div class="mypage-panel" id="mypage-panel-favorites" style="display:none">
+            <div class="panel">
+              <h3>자주 쓰는 계좌</h3>
+              <div id="mp-favorites"><!-- JS 렌더 --></div>
+            </div>
+            <div class="panel">
+              <h3>즐겨찾기 추가</h3>
+              <form id="mp-add-fav-form">
+                <div class="tf-field">
+                  <label for="mp-fav-bank">은행</label>
+                  <select id="mp-fav-bank"></select>
+                </div>
+                <div class="tf-field">
+                  <label for="mp-fav-no">계좌번호</label>
+                  <input id="mp-fav-no" type="text" inputmode="numeric" required />
+                </div>
+                <div class="tf-field">
+                  <label for="mp-fav-holder">예금주명 <span class="tf-optional">(선택)</span></label>
+                  <input id="mp-fav-holder" type="text" />
+                </div>
+                <div class="tf-field">
+                  <label for="mp-fav-nickname">별칭 <span class="tf-optional">(선택)</span></label>
+                  <input id="mp-fav-nickname" type="text" maxlength="20" placeholder="예: 엄마" />
+                </div>
+                <button class="btn btn-primary" type="submit">추가</button>
+                <span id="mp-add-fav-status" class="tf-status"></span>
+              </form>
+            </div>
+          </div>
+
+          <!-- 예약이체 -->
+          <div class="mypage-panel" id="mypage-panel-scheduled" style="display:none">
+            <div class="panel">
+              <h3>예약/지연 이체</h3>
+              <div id="mp-scheduled"><!-- JS 렌더 --></div>
+            </div>
+          </div>
+
+          <!-- 문의내역 -->
+          <div class="mypage-panel" id="mypage-panel-inquiries" style="display:none">
+            <div class="panel">
+              <h3>내 문의 내역</h3>
+              <div id="mp-inquiries"><!-- JS 렌더 --></div>
+            </div>
+          </div>
+
+          <!-- 거래명세서 -->
+          <div class="mypage-panel" id="mypage-panel-statement" style="display:none">
+            <div class="panel">
+              <h3>거래명세서 다운로드</h3>
+              <p class="section-desc">전 계좌 통합 거래내역을 CSV 파일로 내려받습니다.</p>
+              <button class="btn btn-primary" type="button" id="mp-download-csv">CSV 다운로드</button>
+              <span id="mp-statement-status" class="tf-status"></span>
+            </div>
+          </div>
+
+          <!-- 회원탈퇴 -->
+          <div class="mypage-panel" id="mypage-panel-withdraw" style="display:none">
+            <div class="panel">
+              <h3>회원 탈퇴</h3>
+              <p class="section-desc">탈퇴 시 계정이 비활성화되어 로그인할 수 없습니다.
+                잔액이 남은 계좌나 진행 중인 예약이체가 있으면 먼저 정리해야 합니다.</p>
+              <form id="mp-withdraw-form">
+                <div class="tf-field">
+                  <label for="mp-withdraw-pw">비밀번호 확인</label>
+                  <input id="mp-withdraw-pw" type="password" autocomplete="current-password" required />
+                </div>
+                <button class="btn btn-danger" type="submit">회원 탈퇴</button>
+                <span id="mp-withdraw-status" class="tf-status"></span>
+              </form>
+            </div>
+          </div>
+
+        </div><!-- /#mypage-authed -->
       </div>
     </section>
 
@@ -359,6 +582,55 @@
           </form>
           <p class="auth-switch">아직 회원이 아니신가요?
             <a data-nav="auth" data-auth="signup">회원가입</a></p>
+          <p class="auth-switch auth-find-links">
+            <a data-auth-panel="findid">아이디 찾기</a> ·
+            <a data-auth-panel="resetpw">비밀번호 재설정</a></p>
+        </div>
+
+        <!-- 비로그인: 아이디 찾기 -->
+        <div class="panel auth-panel" id="findid-panel" style="display:none">
+          <h2 class="auth-heading">아이디 찾기</h2>
+          <p class="section-desc">가입 시 등록한 이름과 전화번호로 아이디를 찾습니다. <span class="demo-badge">데모</span></p>
+          <form id="findid-form" class="auth-form">
+            <div class="tf-field">
+              <label for="findid-name">이름</label>
+              <input id="findid-name" type="text" autocomplete="name" required />
+            </div>
+            <div class="tf-field">
+              <label for="findid-phone">전화번호</label>
+              <input id="findid-phone" type="tel" inputmode="numeric" placeholder="숫자만 입력" required />
+            </div>
+            <button class="btn btn-primary" type="submit">아이디 찾기</button>
+            <div id="findid-status" class="tf-status"></div>
+          </form>
+          <p class="auth-switch"><a data-auth-panel="login">로그인으로 돌아가기</a></p>
+        </div>
+
+        <!-- 비로그인: 비밀번호 재설정 -->
+        <div class="panel auth-panel" id="resetpw-panel" style="display:none">
+          <h2 class="auth-heading">비밀번호 재설정</h2>
+          <p class="section-desc">아이디·이름·전화번호 확인 후 새 비밀번호를 설정합니다. <span class="demo-badge">데모</span></p>
+          <form id="resetpw-form" class="auth-form">
+            <div class="tf-field">
+              <label for="resetpw-username">아이디</label>
+              <input id="resetpw-username" type="text" autocomplete="username" required />
+            </div>
+            <div class="tf-field">
+              <label for="resetpw-name">이름</label>
+              <input id="resetpw-name" type="text" autocomplete="name" required />
+            </div>
+            <div class="tf-field">
+              <label for="resetpw-phone">전화번호</label>
+              <input id="resetpw-phone" type="tel" inputmode="numeric" placeholder="숫자만 입력" required />
+            </div>
+            <div class="tf-field">
+              <label for="resetpw-new">새 비밀번호</label>
+              <input id="resetpw-new" type="password" autocomplete="new-password" required />
+            </div>
+            <button class="btn btn-primary" type="submit">비밀번호 재설정</button>
+            <div id="resetpw-status" class="tf-status"></div>
+          </form>
+          <p class="auth-switch"><a data-auth-panel="login">로그인으로 돌아가기</a></p>
         </div>
 
         <!-- 비로그인: 회원가입 화면 -->
@@ -398,6 +670,13 @@
             <div class="tf-field">
               <label for="signup-email">이메일</label>
               <input id="signup-email" type="email" autocomplete="email" required />
+            </div>
+
+            <div class="tf-field">
+              <label for="signup-transfer-pw">이체 비밀번호 (숫자 6자리)</label>
+              <input id="signup-transfer-pw" type="password" inputmode="numeric" maxlength="6"
+                     autocomplete="off" placeholder="이체 시 사용할 6자리 숫자" />
+              <div class="tf-hint">계좌 이체를 실행할 때 로그인 비밀번호 대신 이 번호로 본인 확인합니다.</div>
             </div>
 
             <div class="auth-subhead">계좌 등록</div>
@@ -441,6 +720,9 @@
               <div class="auth-agree-row">
                 <label><input type="checkbox" id="signup-agree-openbanking" /> <span>(필수) 오픈뱅킹 이용 동의</span></label>
                 <button type="button" class="auth-agree-view" data-terms="openbanking">보기</button>
+              </div>
+              <div class="auth-agree-row">
+                <label><input type="checkbox" id="signup-agree-marketing" /> <span>(선택) 마케팅 정보 수신 동의</span></label>
               </div>
             </div>
 
