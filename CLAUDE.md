@@ -63,7 +63,15 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # 키 입력
 - 단일 오케스트레이터가 OpenAI function-calling으로 백엔드 REST API를 **도구**로 호출. 도구는 도메인별 그룹(`ACCOUNT_TOOLS`/`TRANSFER_TOOLS`/`PRODUCT_TOOLS`/`SUPPORT_TOOLS`)으로 정의 → 추후 다중에이전트 전환 대비.
 - 도구는 `BACKEND_URL`(:8000)로 HTTP 호출하며, 인증 필요한 도구는 사용자 JWT를 Bearer로 전달.
 - **`propose_transfer`는 이체를 실행하지 않는다.** 예금주·수수료만 확인한 '제안'을 반환하고, 실제 실행은 `app.py`의 확인 카드에서 사용자가 버튼을 눌러야 `execute_transfer`→`POST /api/transfer`가 호출된다.
-- 상품 추천은 `search_products`가 `/api/products`(상품안내 페이지와 동일 소스)를 조회 → 반환 목록 안의 상품만 안내하도록 지시.
+- 상품 추천은 `search_products`가 `/api/products`(상품안내 페이지와 동일 소스, 예금/적금/주택담보대출/전세자금대출/신용대출 5종)를 조회 → 반환 목록 안의 상품만 안내하도록 지시.
+- `tool_search_products`의 카테고리 자동판별: 명시값 → 질의어 키워드("전세"/"주택담보"/"신용대출"/"적금"/"예금"/"대출") → 기본 "금리비교"(예금+적금). 대출 카테고리는 `best_rate`가 최저금리 기준이라 예금/적금(최고금리 기준)과 의미가 반대임을 도구 응답 `note`에 명시해 LLM에게 알려준다.
+
+### `fss_fetcher.py` — FSS 상품 데이터 파싱
+- `PRODUCT_TYPES`에 예금/적금/주택담보대출/전세자금대출/신용대출 5개 카테고리가 모두 등록돼 있고, 전부 FSS Open API(`finlife.fss.or.kr`)에서 실시간 조회한다(더미 데이터 아님).
+- **예금·적금과 대출 3종은 `optionList` 스키마가 완전히 다르다.** 예금/적금은 `save_trm`/`intr_rate`/`intr_rate2` 필드를 쓰지만, 대출은 `lend_rate_min`/`lend_rate_max`(주택담보대출·전세자금대출) 또는 `crdt_grad_1~13`+`crdt_grad_avg`(신용대출, 신용점수 구간별 금리)를 쓴다. 그래서 `fetch_category_structured()`는 `category in LOAN_CATEGORIES`면 별도 파싱 함수 `_fetch_loan_structured()`로 분기한다.
+- 신용대출 `optionList`에는 `crdt_lend_rate_type_nm`이 "대출금리" 외에 "기준금리"/"가산금리"/"가감조정금리"(대출금리를 구성하는 요소)도 섞여 있다. 실제 적용금리만 쓰려면 `crdt_lend_rate_type_nm == "대출금리"`인 행만 필터링해야 한다(안 하면 가감조정금리 같은 작은 값이 최저금리로 잘못 집계됨).
+- `_group_options()`는 옵션을 `(fin_co_no, fin_prdt_cd)` 복합키로 묶는다. `fin_prdt_cd`는 은행마다 독립적으로 매기는 코드라 다른 은행끼리 우연히 같은 코드를 쓰는 경우가 실제로 있어서(`fin_prdt_cd` 단독 매칭 시 서로 다른 은행의 금리 옵션이 섞임), 반드시 은행코드까지 포함해서 묶어야 한다.
+- `backend/app.py`의 `/api/products`는 대출 카테고리면 `best_rate` 오름차순(최저금리 우선), 예금/적금은 내림차순(최고금리 우선)으로 정렬 — 대출은 금리가 낮을수록 유리해서 방향이 반대다.
 
 ### 이체 흐름 (동기 API + 비동기 워커)
 `POST /api/transfer` → `db.create_transfer`(status=`pending`) → Kafka 발행. **`transfer_consumer.py`** 가 소비해 `db.process_transfer`로 출금계좌 차감 + 거래내역(`transactions`) 기록 + 상태를 `completed`/`failed`로 갱신한다. 즉 **잔액·거래내역 반영은 워커가 해야 일어난다.**
@@ -75,6 +83,8 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # 키 입력
 ### 프런트엔드 (`site/`)
 - 정적 SPA(`index.html` + `js/main.js` + `css/style.css`). 섹션 토글 방식, 인증은 localStorage(JWT). Backoffice(관리자) 탭에 대시보드·이체모니터링·이용통계·성능관리 등.
 - `bankBadge()`가 은행명 옆 배지 렌더 — `site/img/banks/<파일>` 로고가 있으면 로고, 없으면 색상 배지로 자동 대체.
+- 헤더 로고는 `site/img/logo-mark.svg`(아이콘만)/`site/img/logo.svg`(아이콘+워드마크) — 파비콘 등 다른 곳에서도 재사용 가능하도록 파일로 분리돼 있다(헤더 자체는 `logo-mark.svg`만 씀).
+- `#products` 카테고리는 카드가 아니라 알약형 탭바(`.cat-tabs`/`.cat-tab`, 5개: 예금/적금/주택담보대출/전세자금대출/신용대출) — 설명 문구는 탭이 아니라 클릭 시 펼쳐지는 상품 목록 패널(`#product-list-desc`)에 표시된다. 목록이 길면 `renderProductList()`가 상위 `PRODUCT_LIST_PAGE_SIZE`(8)개만 보여주고 "더보기/접기" 토글로 나머지를 펼친다(`site/js/main.js`).
 
 ### 사이트 ↔ 챗봇 로그인 연동
 사이트는 로그인 JWT를 챗봇 iframe URL에 `?token=`으로 전달(`main.js` `chatSrc`/`syncChatAuth`). 챗봇(`app.py`)은 `_SITE_EMBEDDED`일 때 이 토큰을 **단일 기준**으로 매 실행 동기화한다(로그인=토큰/로그아웃=빈값). 그래서 에이전트가 로그인 사용자 자격으로 은행 API를 호출한다. `:8501` 직접 접속 시에만 사이드바 수동 로그인 노출.

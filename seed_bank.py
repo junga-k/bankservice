@@ -13,7 +13,7 @@ import time
 from backend import auth, db
 
 DEMO_USER = "demo"
-DEMO_PASSWORD = "demo1234"  # 관리자가 방문자 기능(계좌조회·이체·챗봇 등) 테스트에 쓰는 고정 비밀번호
+DEMO_PASSWORD = "demo1234"  # 관리자가 방문자 기능(계좌조회·이체·은행원 등) 테스트에 쓰는 고정 비밀번호
 DEMO_TRANSFER_PIN = "246810"  # 데모 이체 비밀번호(숫자 6자리)
 DEMO_HOLDER = "홍길동"
 

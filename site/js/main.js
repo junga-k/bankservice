@@ -1,6 +1,6 @@
 /* ── 매치뱅크 홈페이지 클라이언트 로직 ───────────────────────────
  * - 네비게이션: 헤더 고정, 본문 <section>만 토글 (SPA형)
- * - AI챗봇: 최초 진입 시 iframe 1회 생성 후 유지 (대화 상태 보존)
+ * - AI은행원: 최초 진입 시 iframe 1회 생성 후 유지 (대화 상태 보존)
  * - 대시보드/은행 목록: data/*.json fetch 후 렌더
  * - FAQ: 아코디언 토글
  */
@@ -53,7 +53,7 @@ function refreshAuthUI() {
   document.getElementById("nav-backoffice-sep").style.display = isAdmin ? "" : "none";
   document.getElementById("nav-backoffice-link").style.display = isAdmin ? "" : "none";
   updateAuthSectionView();
-  syncChatAuth();   // 로그인/로그아웃을 챗봇 iframe에 반영(사이트 로그인과 연동)
+  syncChatAuth();   // 로그인/로그아웃을 은행원 iframe에 반영(사이트 로그인과 연동)
 }
 
 function updateAuthSectionView() {
@@ -215,11 +215,11 @@ if (bannerEl) {
   startBannerAuto();
 }
 
-/* ── AI챗봇 iframe: 최초 1회만 생성 ─────────────────────────────── */
+/* ── AI은행원 iframe: 최초 1회만 생성 ─────────────────────────────── */
 let chatLoaded = false;
 
-/* 챗봇 iframe URL: 사이트 로그인 토큰을 항상 token 파라미터로 전달(로그아웃 시 빈 값).
-   → 챗봇(:8501)이 사이트 로그인 상태를 단일 기준으로 삼아 동기화한다.
+/* 은행원 iframe URL: 사이트 로그인 토큰을 항상 token 파라미터로 전달(로그아웃 시 빈 값).
+   → 은행원(:8501)이 사이트 로그인 상태를 단일 기준으로 삼아 동기화한다.
    (로컬 데모용. 프로덕션에서는 URL 대신 postMessage 등 안전한 방식 권장) */
 function chatSrc() {
   const token = getAuth()?.token || "";
@@ -232,13 +232,13 @@ function ensureChatLoaded() {
   const iframe = document.createElement("iframe");
   iframe.id = "chat-frame";
   iframe.src = chatSrc();
-  iframe.title = "AI 금융상담 챗봇";
+  iframe.title = "AI 금융상담 은행원";
   iframe.allow = "clipboard-write";
   wrap.appendChild(iframe);
   chatLoaded = true;
 }
 
-/* 로그인/로그아웃 시 챗봇 iframe을 현재 토큰으로 재로딩 → 로그인 상태 연동 */
+/* 로그인/로그아웃 시 은행원 iframe을 현재 토큰으로 재로딩 → 로그인 상태 연동 */
 function syncChatAuth() {
   const iframe = document.getElementById("chat-frame");
   if (iframe) iframe.src = chatSrc();
@@ -734,11 +734,11 @@ function renderReceipt(tr) {
 
 /* ── 인기 통계 (상품안내 상단: 은행 순위 + 카테고리별 Top 5) ──────── */
 async function loadProductStats() {
-  loadBankRanking("stat-banks", 5, false);   // 상품안내: 조회수 숨김
+  loadBankRanking("stat-banks", 5, false, false);   // 상품안내: 조회수·프로그레스바 숨김
   loadTopProductsCarousel("stat-products");
 }
 
-async function loadBankRanking(targetId = "stat-banks", limit = 10, showNum = true) {
+async function loadBankRanking(targetId = "stat-banks", limit = 10, showNum = true, showBar = true) {
   const box = document.getElementById(targetId);
   try {
     const res = await fetch(`/api/stats/banks?limit=${limit}`);
@@ -755,7 +755,7 @@ async function loadBankRanking(targetId = "stat-banks", limit = 10, showNum = tr
           `<span class="rank">${i + 1}</span>` +
           bankBadge(b.name) +
           `<span class="name">${escapeHtml(b.name)}</span>` +
-          `<div class="bar-track"><div class="bar-fill" style="width:${(b.count / max) * 100}%"></div></div>` +
+          (showBar ? `<div class="bar-track"><div class="bar-fill" style="width:${(b.count / max) * 100}%"></div></div>` : ``) +
           (showNum ? `<span class="num">${b.count}</span>` : ``) +
           `</div>`
       )
@@ -887,7 +887,7 @@ document.addEventListener("click", (e) => {
 });
 
 function statEmpty() {
-  return '<p class="stat-empty">아직 데이터가 없습니다 — 상품을 조회하거나 AI챗봇에 질문해 보세요.</p>';
+  return '<p class="stat-empty">아직 데이터가 없습니다 — 상품을 조회하거나 AI은행원에 질문해 보세요.</p>';
 }
 function statError() {
   return '<p class="stat-empty">통계를 불러오지 못했습니다 (백엔드 :8000 확인).</p>';
@@ -945,23 +945,26 @@ function trackView(payload) {
   }).catch(() => {});
 }
 
-/* 상품 카드 클릭 → track/view(category) → FSS 상품 목록 표시. 카테고리별 인기상품 순위는
+/* 카테고리 탭 클릭 → track/view(category) → FSS 상품 목록 표시. 카테고리별 인기상품 순위는
    실제 상품 클릭(아래 product-list-row 확장) 기준으로 집계하므로 여기선 product를 보내지 않는다. */
 document.addEventListener("click", async (e) => {
-  const card = e.target.closest(".prod-card");
-  if (!card) return;
-  loadProductList(card.dataset.category);
-  await trackView({ category: card.dataset.category });
+  const tab = e.target.closest(".cat-tab");
+  if (!tab) return;
+  document.querySelectorAll("#cat-tabs .cat-tab").forEach((t) => t.classList.toggle("active", t === tab));
+  loadProductList(tab.dataset.category, tab.dataset.desc);
+  await trackView({ category: tab.dataset.category });
   loadProductStats();
 });
 
 /* FSS(금융감독원) 상품 목록 조회/렌더 */
-async function loadProductList(category) {
+async function loadProductList(category, desc) {
   const panel = document.getElementById("product-list-panel");
   const titleEl = document.getElementById("product-list-title");
+  const descEl = document.getElementById("product-list-desc");
   const listEl = document.getElementById("product-list");
   panel.style.display = "block";
   titleEl.textContent = `${category} 상품 목록`;
+  descEl.textContent = desc || "";
   listEl.innerHTML = '<p class="product-list-empty">불러오는 중…</p>';
   panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
   try {
@@ -971,18 +974,46 @@ async function loadProductList(category) {
       throw new Error(detail || "상품 목록을 불러오지 못했습니다.");
     }
     const { products } = await res.json();
-    listEl.innerHTML = products.length
-      ? products.map(renderProductRow).join("")
-      : '<p class="product-list-empty">조회된 상품이 없습니다.</p>';
+    productListExpanded = false;
+    renderProductList(products);
   } catch (err) {
     listEl.innerHTML = `<p class="product-list-empty">${escapeHtml(err.message)}</p>`;
   }
 }
 
+/* 상품 목록이 길면 상위 N개만 보여주고 "더보기/접기"로 나머지를 펼치고 접는다 */
+const PRODUCT_LIST_PAGE_SIZE = 8;
+let productListAll = [];
+let productListExpanded = false;
+
+function renderProductList(products) {
+  productListAll = products;
+  const listEl = document.getElementById("product-list");
+  if (!productListAll.length) {
+    listEl.innerHTML = '<p class="product-list-empty">조회된 상품이 없습니다.</p>';
+    return;
+  }
+  const overflow = productListAll.length > PRODUCT_LIST_PAGE_SIZE;
+  const visible = productListExpanded || !overflow
+    ? productListAll
+    : productListAll.slice(0, PRODUCT_LIST_PAGE_SIZE);
+  const toggleBtn = overflow
+    ? `<button class="product-list-toggle" type="button">${
+        productListExpanded
+          ? "접기 ▲"
+          : `더보기 (${productListAll.length - PRODUCT_LIST_PAGE_SIZE}개 더 보기) ▼`
+      }</button>`
+    : "";
+  listEl.innerHTML = visible.map(renderProductRow).join("") + toggleBtn;
+}
+
+const LOAN_CATEGORIES = ["주택담보대출", "전세자금대출", "신용대출"];
+
 function renderProductRow(p) {
-  const rates = p.options
-    .map((o) => (o.max_rate != null ? o.max_rate : o.base_rate))
-    .filter((r) => r != null);
+  const isLoan = LOAN_CATEGORIES.includes(p.category);
+  const rates = isLoan
+    ? p.options.flatMap((o) => [o.min_rate, o.max_rate]).filter((r) => r != null)
+    : p.options.map((o) => (o.max_rate != null ? o.max_rate : o.base_rate)).filter((r) => r != null);
   const minRate = rates.length ? Math.min(...rates) : null;
   const maxRate = rates.length ? Math.max(...rates) : null;
   const rateText =
@@ -991,14 +1022,24 @@ function renderProductRow(p) {
       : minRate === maxRate
       ? `<span class="pl-rate-label">연</span><span class="pl-rate-max">${maxRate}%</span>`
       : `<span class="pl-rate-label">연</span><span class="pl-rate-min">${minRate}%</span><span class="pl-rate-sep">~</span><span class="pl-rate-max">${maxRate}%</span>`;
-  const termRates = p.options
-    .map(
-      (o) =>
-        `<span class="pl-term">${o.term_months}개월 ${o.max_rate ?? o.base_rate ?? "-"}%${
-          o.save_type ? ` · ${escapeHtml(o.save_type)}` : ""
-        }</span>`
-    )
-    .join("");
+  const termRates = isLoan
+    ? p.options
+        .map((o) => {
+          const rate =
+            o.min_rate != null && o.max_rate != null && o.min_rate !== o.max_rate
+              ? `${o.min_rate}~${o.max_rate}%`
+              : `${o.min_rate ?? o.max_rate ?? o.avg_rate ?? "-"}%`;
+          return `<span class="pl-term">${escapeHtml(o.rate_type || "금리")} 연 ${rate}</span>`;
+        })
+        .join("")
+    : p.options
+        .map(
+          (o) =>
+            `<span class="pl-term">${o.term_months}개월 ${o.max_rate ?? o.base_rate ?? "-"}%${
+              o.save_type ? ` · ${escapeHtml(o.save_type)}` : ""
+            }</span>`
+        )
+        .join("");
   const catBadge = p.category ? `<span class="pl-cat">${escapeHtml(p.category)}</span>` : "";
   const denyBadge = p.join_deny_label
     ? `<span class="pl-badge${p.join_deny_label === "가입제한 없음" ? " ok" : ""}">${escapeHtml(p.join_deny_label)}</span>`
@@ -1006,13 +1047,19 @@ function renderProductRow(p) {
   const linkBtn = p.url
     ? `<a class="btn btn-ghost pl-link" href="${p.url}" target="_blank" rel="noopener">공식 상품 페이지 ↗</a>`
     : "";
-  const detailRows = [
-    ["가입방법", p.join_way],
-    ["가입대상", p.join_member],
-    ["우대조건", p.spcl_cnd && p.spcl_cnd !== "해당사항 없음" ? p.spcl_cnd : ""],
-    ["기타 유의사항", p.etc_note],
-    ["만기 후 이자율", p.mtrt_int],
-  ].filter(([, v]) => v);
+  const detailRows = isLoan
+    ? [
+        ["가입방법", p.join_way],
+        ["대출한도", p.loan_limit],
+        ["중도상환수수료", p.early_repay_fee],
+      ].filter(([, v]) => v)
+    : [
+        ["가입방법", p.join_way],
+        ["가입대상", p.join_member],
+        ["우대조건", p.spcl_cnd && p.spcl_cnd !== "해당사항 없음" ? p.spcl_cnd : ""],
+        ["기타 유의사항", p.etc_note],
+        ["만기 후 이자율", p.mtrt_int],
+      ].filter(([, v]) => v);
   const detailBody = detailRows.length
     ? detailRows
         .map(
@@ -1045,6 +1092,14 @@ function renderProductRow(p) {
    카테고리별 인기상품 TOP5는 이 조회수를 기준으로 순위가 매겨진다. */
 document.addEventListener("click", async (e) => {
   if (e.target.closest(".pl-link")) return;
+  if (e.target.closest(".product-list-toggle")) {
+    productListExpanded = !productListExpanded;
+    renderProductList(productListAll);
+    if (!productListExpanded) {
+      document.getElementById("product-list-panel").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    return;
+  }
   const row = e.target.closest("#product-list .product-list-row");
   if (!row) return;
   const opening = !row.classList.contains("open");
@@ -1089,7 +1144,7 @@ document.addEventListener("click", async (e) => {
   if (!chip) return;
   // 새 탭 이동은 브라우저가 처리(target=_blank), 현재 탭에서 추적·갱신
   await trackView({ bank: chip.dataset.bank });
-  loadBankRanking("stat-banks", 5);
+  loadBankRanking("stat-banks", 5, false, false);
 });
 
 /* ── 인증: 로그인 / 회원가입 / 로그아웃 ─────────────────────────────── */
@@ -2347,14 +2402,14 @@ async function loadBoBatchPerf() {
   }
 }
 
-/* AI챗봇 설정 (제공자/모델/답변스타일/시스템프롬프트/웹검색) — Backoffice 성능관리 */
+/* AI은행원 설정 (제공자/모델/답변스타일/시스템프롬프트/웹검색) — Backoffice 성능관리 */
 let boChatbotProviders = {};
 
 async function loadBoChatbotConfig() {
   const statusEl = document.getElementById("bo-cc-status");
   try {
     const res = await apiFetch("/api/admin/chatbot-config");
-    if (!res.ok) throw new Error("챗봇 설정을 불러오지 못했습니다.");
+    if (!res.ok) throw new Error("은행원 설정을 불러오지 못했습니다.");
     const { config: cfg, providers, styles } = await res.json();
     boChatbotProviders = providers;
 
@@ -2389,7 +2444,7 @@ async function loadBoChatbotConfig() {
     }
   } catch (err) {
     if (statusEl) { statusEl.className = "tf-status err"; statusEl.textContent = err.message; }
-    console.error("챗봇 설정 로드 실패:", err);
+    console.error("은행원 설정 로드 실패:", err);
   }
 }
 
@@ -2458,7 +2513,7 @@ document.addEventListener("click", async (e) => {
   statusEl.className = "tf-status";
   statusEl.textContent = "실행 중…";
   try {
-    // 제공자·모델·시스템 프롬프트는 위 AI챗봇 설정의 현재 값을 공유하고, 답변 스타일만 A/B로 다르게
+    // 제공자·모델·시스템 프롬프트는 위 AI은행원 설정의 현재 값을 공유하고, 답변 스타일만 A/B로 다르게
     const res = await apiFetch("/api/admin/prompt-ab-test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2532,7 +2587,7 @@ document.addEventListener("submit", async (e) => {
     `· 1회 한도: ${won(once)}\n` +
     `· 1일 한도: ${won(daily)}\n` +
     `· 타행 이체 수수료: ${won(fee)}\n\n` +
-    "저장하면 이후 이체에 즉시 반영되고, AI챗봇 유의사항 안내에도 새 한도가 반영됩니다."
+    "저장하면 이후 이체에 즉시 반영되고, AI은행원 유의사항 안내에도 새 한도가 반영됩니다."
   );
   if (!confirmed) {
     statusEl.className = "tf-status";
@@ -2557,7 +2612,7 @@ document.addEventListener("submit", async (e) => {
       throw new Error(detail || "저장에 실패했습니다.");
     }
     statusEl.className = "tf-status ok";
-    statusEl.textContent = "저장되었습니다. AI챗봇 유의사항에도 반영됩니다.";
+    statusEl.textContent = "저장되었습니다. AI은행원 유의사항에도 반영됩니다.";
   } catch (err) {
     statusEl.className = "tf-status err";
     statusEl.textContent = err.message;
@@ -3138,7 +3193,7 @@ function escapeHtml(s) {
   toggle();
 })();
 
-/* ── 챗봇 iframe → 부모 SPA 이동 (이체내역 조회하기 등) ───────────── */
+/* ── 은행원 iframe → 부모 SPA 이동 (이체내역 조회하기 등) ───────────── */
 window.addEventListener("message", (e) => {
   const d = e.data;
   if (!d || d.type !== "goto-account") return;   // 내부 네비게이션 메시지만 처리

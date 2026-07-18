@@ -155,12 +155,12 @@ class LoginReq(BaseModel):
 
 
 # ── 인증 ─────────────────────────────────────────────────────────────
-# 관리자가 방문자 입장에서 계좌조회·거래내역·이체·AI챗봇 등 사이트 기능을
+# 관리자가 방문자 입장에서 계좌조회·거래내역·이체·AI은행원 등 사이트 기능을
 # 테스트할 때 쓰는 데모 계정(seed_bank.py에서 생성). 고정값이라 여기서만 노출.
 DEMO_ACCOUNT_INFO = {
     "username": "demo",
     "password": "demo1234",
-    "note": "계좌조회·거래내역·이체·AI챗봇 등 방문자 기능 테스트용 계정입니다.",
+    "note": "계좌조회·거래내역·이체·AI은행원 등 방문자 기능 테스트용 계정입니다.",
 }
 
 
@@ -528,7 +528,7 @@ def admin_infra_metrics(user: dict = Depends(auth.require_admin)):
     }
 
 
-# ── Backoffice: AI챗봇 설정 (성능관리 탭) ──────────────────────────────
+# ── Backoffice: AI은행원 설정 (성능관리 탭) ──────────────────────────────
 @app.get("/api/admin/chatbot-config")
 def get_chatbot_config(user: dict = Depends(auth.require_admin)):
     cfg = config.load()
@@ -899,7 +899,7 @@ _PRODUCT_CACHE_TTL = 3600  # 1시간
 
 @app.get("/api/products")
 def get_products(category: str):
-    if category not in ("예금", "적금", "금리비교"):
+    if category not in ("예금", "적금", "금리비교", *fss_fetcher.LOAN_CATEGORIES):
         raise HTTPException(400, "지원하지 않는 카테고리입니다.")
     now = time.time()
     cached = _PRODUCT_CACHE.get(category)
@@ -918,7 +918,11 @@ def get_products(category: str):
     except Exception as e:
         raise HTTPException(502, f"FSS API 조회 실패: {e}")
 
-    products.sort(key=lambda p: p["best_rate"] or 0, reverse=True)
+    # 대출은 금리가 낮을수록 유리하므로 오름차순(최저금리 우선), 예금/적금은 내림차순(최고금리 우선)
+    if category in fss_fetcher.LOAN_CATEGORIES:
+        products.sort(key=lambda p: p["best_rate"] if p["best_rate"] is not None else float("inf"))
+    else:
+        products.sort(key=lambda p: p["best_rate"] or 0, reverse=True)
     _PRODUCT_CACHE[category] = (now, products)
     return {"products": products}
 

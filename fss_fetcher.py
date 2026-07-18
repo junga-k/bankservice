@@ -180,12 +180,14 @@ def _fetch_pages(
     return base_all, opt_all
 
 
-def _group_options(option_list: list[dict]) -> dict[str, list[dict]]:
-    grouped: dict[str, list[dict]] = collections.defaultdict(list)
+def _group_options(option_list: list[dict]) -> dict[tuple[str, str], list[dict]]:
+    """fin_prdt_cd만으로 묶으면 은행마다 독립적으로 매기는 상품코드가 우연히 겹칠 때
+    서로 다른 은행의 옵션이 섞인다. fin_co_no까지 포함해 묶는다."""
+    grouped: dict[tuple[str, str], list[dict]] = collections.defaultdict(list)
     for opt in option_list:
         code = opt.get("fin_prdt_cd", "")
         if code:
-            grouped[code].append(opt)
+            grouped[(opt.get("fin_co_no", ""), code)].append(opt)
     return dict(grouped)
 
 
@@ -250,7 +252,7 @@ def fetch_category(
     options_by_code = _group_options(opt_all)
     result = []
     for base in base_all:
-        code = base.get("fin_prdt_cd", "")
+        code = (base.get("fin_co_no", ""), base.get("fin_prdt_cd", ""))
         company = base.get("kor_co_nm", "")
         name = base.get("fin_prdt_nm", "")
         doc_name = f"FSS_{category}_{company}_{name}"
@@ -274,12 +276,22 @@ def _format_dcls_day(raw: str | None) -> str | None:
     return f"{raw[:4]}.{raw[4:6]}.{raw[6:8]}"
 
 
+LOAN_CATEGORIES = {"주택담보대출", "전세자금대출", "신용대출"}
+_CREDIT_GRADE_FIELDS = (
+    "crdt_grad_1", "crdt_grad_4", "crdt_grad_5", "crdt_grad_6",
+    "crdt_grad_10", "crdt_grad_11", "crdt_grad_12", "crdt_grad_13",
+)
+
+
 def fetch_category_structured(
     auth: str,
     category: str,
     fin_groups: list[str] | None = None,
 ) -> list[dict]:
     """지정한 카테고리의 금융 상품을 구조화된 dict 목록으로 반환한다 (사이트 상품안내용)."""
+    if category in LOAN_CATEGORIES:
+        return _fetch_loan_structured(auth, category, fin_groups)
+
     if fin_groups is None:
         fin_groups = _DEFAULT_GROUPS
     endpoint = PRODUCT_TYPES[category]
@@ -295,7 +307,7 @@ def fetch_category_structured(
     options_by_code = _group_options(opt_all)
     result = []
     for base in base_all:
-        code = base.get("fin_prdt_cd", "")
+        code = (base.get("fin_co_no", ""), base.get("fin_prdt_cd", ""))
         bank = _clean_bank_name(base.get("kor_co_nm", ""))
         name = base.get("fin_prdt_nm", "")
         sorted_opts = sorted(options_by_code.get(code, []), key=lambda o: int(o.get("save_trm") or 0))
@@ -325,6 +337,85 @@ def fetch_category_structured(
             "options": options,
             "best_rate": max(rates) if rates else None,
             "url": _BANK_PRODUCT_URLS.get(bank, {}).get(category),
+        })
+    return result
+
+
+def _fetch_loan_structured(
+    auth: str,
+    category: str,
+    fin_groups: list[str] | None = None,
+) -> list[dict]:
+    """대출 3종(주택담보대출/전세자금대출/신용대출) 전용 파싱.
+    예금/적금과 달리 optionList 스키마가 다르다:
+    - 주택담보대출/전세자금대출: rpay_type_nm(상환방식)·lend_rate_type_nm(금리유형)·lend_rate_min/max/avg
+    - 신용대출: crdt_lend_rate_type_nm(금리유형) + crdt_grad_1~13(신용점수구간별 금리)·crdt_grad_avg
+    best_rate는 대출상품 특성상 '가장 낮은 금리(최저 연 X%)'가 기준이다(예금과 반대)."""
+    if fin_groups is None:
+        fin_groups = _DEFAULT_GROUPS
+    endpoint = PRODUCT_TYPES[category]
+    base_all: list[dict] = []
+    opt_all: list[dict] = []
+    for grp in fin_groups:
+        try:
+            b, o = _fetch_pages(auth, endpoint, grp)
+            base_all.extend(b)
+            opt_all.extend(o)
+        except Exception:
+            pass
+    options_by_code = _group_options(opt_all)
+    is_credit = category == "신용대출"
+    result = []
+    for base in base_all:
+        code = (base.get("fin_co_no", ""), base.get("fin_prdt_cd", ""))
+        bank = _clean_bank_name(base.get("kor_co_nm", ""))
+        name = base.get("fin_prdt_nm", "")
+        opts = options_by_code.get(code, [])
+        if is_credit:
+            options = []
+            for o in opts:
+                # 기준금리·가산금리·가감조정금리는 대출금리를 구성하는 요소일 뿐 실제 적용금리가
+                # 아니므로 제외한다(섞으면 가감조정금리 같은 작은 값이 최저금리로 잘못 집계된다).
+                if o.get("crdt_lend_rate_type_nm") != "대출금리":
+                    continue
+                grades = [o.get(f) for f in _CREDIT_GRADE_FIELDS]
+                grades = [g for g in grades if g is not None]
+                avg = o.get("crdt_grad_avg")
+                options.append({
+                    "rate_type": "대출금리",
+                    "min_rate": min(grades) if grades else avg,
+                    "max_rate": max(grades) if grades else avg,
+                    "avg_rate": avg,
+                })
+        else:
+            options = [
+                {
+                    "rate_type": " · ".join(
+                        v for v in (o.get("rpay_type_nm"), o.get("lend_rate_type_nm")) if v
+                    ),
+                    "min_rate": o.get("lend_rate_min"),
+                    "max_rate": o.get("lend_rate_max"),
+                    "avg_rate": o.get("lend_rate_avg"),
+                }
+                for o in opts
+            ]
+        min_rates = [o["min_rate"] for o in options if o["min_rate"] is not None]
+        result.append({
+            "bank": bank,
+            "product_name": name,
+            "category": category,
+            "join_way": (base.get("join_way") or "").strip(),
+            "join_member": "",
+            "spcl_cnd": "",
+            "etc_note": "",
+            "mtrt_int": "",
+            "join_deny_label": "",
+            "dcls_date": _format_dcls_day(base.get("dcls_strt_day")),
+            "options": options,
+            "best_rate": min(min_rates) if min_rates else None,
+            "url": _BANK_PRODUCT_URLS.get(bank, {}).get(category),
+            "loan_limit": (base.get("loan_lmt") or "").strip(),
+            "early_repay_fee": (base.get("erly_rpay_fee") or "").strip(),
         })
     return result
 

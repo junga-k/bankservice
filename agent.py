@@ -135,32 +135,50 @@ def execute_transfer(proposal: dict, token: str, password: str = "",
     })
 
 
+_PRODUCT_CATEGORIES = ("예금", "적금", "금리비교", "주택담보대출", "전세자금대출", "신용대출")
+_LOAN_CATEGORIES = ("주택담보대출", "전세자금대출", "신용대출")
+
+
 def tool_search_products(args, ctx):
     """상품안내 페이지와 동일한 FSS 상품 목록(/api/products)에서 검색·추천.
     반환된 products 목록 안의 상품만 안내해야 한다(목록 밖 상품 생성 금지)."""
     q = args.get("query", "") or ""
     cat = (args.get("category") or "").strip()
     # 카테고리 결정: 명시값 우선 → 질의어 추정 → 기본은 금리비교(예금+적금)
-    if cat not in ("예금", "적금", "금리비교"):
-        if "적금" in q:
+    if cat not in _PRODUCT_CATEGORIES:
+        if "전세" in q:
+            cat = "전세자금대출"
+        elif "주택담보" in q:
+            cat = "주택담보대출"
+        elif "신용대출" in q:
+            cat = "신용대출"
+        elif "적금" in q:
             cat = "적금"
         elif "예금" in q:
             cat = "예금"
+        elif "대출" in q:
+            cat = "신용대출"  # 대출 종류를 특정할 수 없으면 가장 범용적인 신용대출로 추정
         else:
             cat = "금리비교"
     data = _get("/api/products", params={"category": cat})
     if "error" in data:
         return data
-    products = data.get("products", [])[:12]  # best_rate 내림차순 정렬됨, 상위만
+    products = data.get("products", [])[:12]  # 정렬 상위만(예금·적금은 최고금리, 대출은 최저금리 순)
     if not products:
         return {"category": cat, "products": [],
-                "result": "해당 조건의 상품이 없습니다. (예금·적금만 안내 가능)"}
+                "result": "해당 조건의 상품이 없습니다."}
+    is_loan = cat in _LOAN_CATEGORIES
     items = []
     for p in products:
-        rates = [o.get("max_rate") if o.get("max_rate") is not None else o.get("base_rate")
-                 for o in p.get("options", [])]
-        rates = [r for r in rates if r is not None]
-        terms = sorted({o.get("term_months") for o in p.get("options", []) if o.get("term_months")})
+        options = p.get("options", [])
+        if is_loan:
+            rates = [o.get("min_rate") for o in options if o.get("min_rate") is not None]
+            terms = []  # 대출 상품은 예금/적금과 달리 가입기간(개월) 개념이 없다
+        else:
+            rates = [o.get("max_rate") if o.get("max_rate") is not None else o.get("base_rate")
+                     for o in options]
+            rates = [r for r in rates if r is not None]
+            terms = sorted({o.get("term_months") for o in options if o.get("term_months")})
         items.append({
             "bank": p.get("bank"),
             "name": p.get("product_name"),
@@ -175,7 +193,8 @@ def tool_search_products(args, ctx):
         "count": len(items),
         "products": items,
         "note": "위 products 는 상품안내 페이지와 동일한 FSS 데이터다. 반드시 이 목록 안의 상품만 "
-                "추천·비교하고, 목록에 없는 상품명은 만들어내지 마라. 대출 상품은 현재 목록에 없다.",
+                "추천·비교하고, 목록에 없는 상품명은 만들어내지 마라. 예금/적금은 best_rate가 최고금리, "
+                "대출(주택담보대출/전세자금대출/신용대출)은 best_rate가 최저금리 기준이다.",
     }
 
 
@@ -245,7 +264,8 @@ def _build_lc_tools(ctx: dict):
         (propose_transfer, "propose_transfer",
          "이체를 '제안'한다(실행하지 않음). 예금주·수수료를 확인해 반환하며, 실제 이체는 사용자가 확인 버튼을 눌러야 실행된다."),
         (search_products, "search_products",
-         "상품안내 페이지와 동일한 FSS 예금·적금 상품 목록을 가져온다. 상품 추천·비교 시 반드시 이 도구를 호출하고, 반환된 products 목록 안의 상품만 안내한다."),
+         "상품안내 페이지와 동일한 FSS 상품 목록을 가져온다(예금/적금/주택담보대출/전세자금대출/신용대출). "
+         "상품 추천·비교 시 반드시 이 도구를 호출하고, 반환된 products 목록 안의 상품만 안내한다."),
         (get_faqs, "get_faqs", "자주 묻는 질문(FAQ)을 검색한다."),
         (get_notices, "get_notices", "공지사항을 검색한다."),
         (get_documents, "get_documents", "서식·약관·설명서를 검색한다."),

@@ -81,13 +81,13 @@ st.markdown("""<style>
     background-color: #F8FAFD;
     border-right: 1px solid #DDE3EA;
 }
-/* 사이드바 상단 헤더(숨기기 버튼 행) 왼쪽에 'AI챗봇' 제목 삽입 */
+/* 사이드바 상단 헤더(숨기기 버튼 행) 왼쪽에 'AI은행원' 제목 삽입 */
 [data-testid="stSidebarHeader"] {
     display: flex !important;
     align-items: center !important;
 }
 [data-testid="stSidebarHeader"]::before {
-    content: "AI챗봇";
+    content: "AI은행원";
     font-size: 18px;
     font-weight: 700;
     color: #1A73E8;
@@ -418,7 +418,7 @@ def process_files(files) -> list[dict]:
 
 
 # ── 사이드바 ────────────────────────────────────────────────────────
-# 상단 'AI챗봇' 제목은 CSS(stSidebarHeader::before)로 숨기기 버튼 행에 표시된다.
+# 상단 'AI은행원' 제목은 CSS(stSidebarHeader::before)로 숨기기 버튼 행에 표시된다.
 with st.sidebar:
     if st.button("새 채팅", icon=":material/add:", use_container_width=True):
         storage.save_conversation(st.session_state.conversation)
@@ -490,7 +490,7 @@ with st.sidebar:
                         st.error(f"백엔드(:8000) 연결 실패: {_e}")
 
     st.divider()
-    with st.expander("ℹ️ AI 챗봇 유의사항", expanded=False):
+    with st.expander("ℹ️ AI은행원 유의사항", expanded=False):
         # 이체 한도 문구는 관리자가 저장한 이체 정책(config.json)을 그대로 반영한다.
         _pol = config.load()
 

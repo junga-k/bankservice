@@ -284,7 +284,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 .mock-product-chip b { color: var(--blue); }
 
-/* AI챗봇 목업 */
+/* AI은행원 목업 */
 .mock-chat { padding: 22px; display: flex; flex-direction: column; gap: 10px; }
 .mock-bubble { max-width: 82%; padding: 12px 16px; border-radius: 16px; font-size: 13px; line-height: 1.6; }
 .mock-bubble.user { align-self: flex-end; background: var(--blue); color: #fff; border-bottom-right-radius: 4px; }
@@ -431,9 +431,27 @@ main { min-height: calc(100vh - var(--header-h)); }
 .donut-legend .lg-name { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .donut-legend .lg-pct { color: var(--text-sub); font-size: 12px; width: 40px; text-align: right; flex-shrink: 0; }
 
-/* ── FSS 상품 목록 (상품안내 카드 클릭 시) ───────────────────────── */
+/* ── 상품안내 카테고리 탭바 ──────────────────────────────────────── */
+.cat-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.cat-tab {
+  flex-shrink: 0;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text-sub);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cat-tab:hover { background: var(--bg-soft); color: var(--text); }
+.cat-tab.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+/* ── FSS 상품 목록 (상품안내 탭 클릭 시) ───────────────────────── */
 .product-list-panel { margin: 32px 0; }
 .product-list-panel h3 { font-size: 18px; margin: 0 0 14px; }
+.product-list-desc { color: var(--text-sub); font-size: 14px; margin: -6px 0 14px; }
 .product-list-empty { color: var(--text-sub); font-size: 14px; margin: 4px 0; }
 .product-list-row {
   padding: 16px 18px;
@@ -442,6 +460,21 @@ main { min-height: calc(100vh - var(--header-h)); }
   margin-bottom: 10px;
   cursor: pointer;
 }
+.product-list-toggle {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin-top: 4px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--blue);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+.product-list-toggle:hover { background: var(--blue-soft); border-color: var(--blue-line); border-style: solid; }
 .pl-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .pl-badge {
   font-size: 11px;
@@ -499,9 +532,12 @@ main { min-height: calc(100vh - var(--header-h)); }
 .stat-note { font-size: 12px; color: var(--text-sub); opacity: 0.75; }
 .stat-grid {
   display: grid;
-  grid-template-columns: 1fr 1.2fr;
+  /* minmax(0, ..)로 감싸지 않으면 트랙의 자동 최소 크기가 콘텐츠 기준(auto)이 되어
+     아래 캐러셀 블로우아웃이 fr 비율을 깨고 트랙을 그대로 늘려버린다 */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 18px;
 }
+.stat-grid > .panel { min-width: 0; }
 .stat-empty { color: var(--text-sub); font-size: 14px; margin: 4px 0; }
 
 /* 카테고리별 Top 5 */
@@ -548,8 +584,8 @@ main { min-height: calc(100vh - var(--header-h)); }
 #bo-infra-config .p-count { margin-left: auto; white-space: nowrap; }
 
 /* 카테고리별 인기 상품 캐러셀 (흰 패널 배경 — 이벤트 배너와 달리 어두운 dot 사용) */
-.stat-products-carousel { position: relative; overflow: hidden; }
-.stat-products-track { display: flex; transition: transform 0.4s ease; }
+.stat-products-carousel { position: relative; overflow: hidden; min-width: 0; }
+.stat-products-track { display: flex; min-width: 0; transition: transform 0.4s ease; }
 .stat-products-slide { flex: 0 0 100%; min-width: 0; padding: 0 38px; }
 .stat-products-slide .topcat { margin-bottom: 0; }
 .stat-products-dots {

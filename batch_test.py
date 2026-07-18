@@ -499,7 +499,7 @@ def run_one(idx: int, item: dict, provider: str, model: str, api_key: str) -> di
 def main():
     global GRADE
     import argparse
-    ap = argparse.ArgumentParser(description="AI 챗봇 배치 테스트(응답 성공률·지연 + 정답 채점)")
+    ap = argparse.ArgumentParser(description="AI은행원 배치 테스트(응답 성공률·지연 + 정답 채점)")
     ap.add_argument("--no-grade", action="store_true", help="정답 채점 생략(응답 성공률·지연만)")
     ap.add_argument("--limit", type=int, default=0, help="질문 수 제한(빠른 검증용)")
     args = ap.parse_args()
