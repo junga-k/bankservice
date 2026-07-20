@@ -68,14 +68,25 @@ def load_conversation(conv_id: str) -> dict | None:
         return json.load(f)
 
 
-def list_conversations() -> list[dict]:
-    """최신순 대화 메타 목록 [{"id", "title", "updated_at"}, ...]."""
+def list_conversations(query: str = "") -> list[dict]:
+    """최신순 대화 메타 목록 [{"id", "title", "updated_at"}, ...].
+
+    query가 있으면 제목 또는 메시지 본문에 포함된 대화만 반환한다.
+    """
     _ensure_dir()
+    q = query.strip().lower()
     items = []
     for p in CONV_DIR.glob("*.json"):
         try:
             with open(p, encoding="utf-8") as f:
                 conv = json.load(f)
+            if q:
+                title = conv.get("title", "").lower()
+                hit = q in title or any(
+                    q in m.get("content", "").lower() for m in conv.get("messages", [])
+                )
+                if not hit:
+                    continue
             items.append(
                 {
                     "id": conv["id"],

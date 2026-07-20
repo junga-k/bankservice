@@ -397,6 +397,13 @@ main { min-height: calc(100vh - var(--header-h)); }
 
 /* 순수 CSS 막대 차트 */
 .bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+/* 은행 URL이 있으면 <a>로 렌더링됨 — 클릭 가능함을 표시(URL 없는 <div> 행은 그대로 둠) */
+a.bar-row {
+  text-decoration: none; color: inherit; cursor: pointer;
+  border-radius: 8px; transition: background 0.15s;
+}
+a.bar-row:hover { background: var(--blue-soft); }
+a.bar-row:hover .name { color: var(--blue); }
 .bar-row .rank {
   width: 20px; flex-shrink: 0; text-align: center;
   font-size: 13px; font-weight: 700; color: var(--text-sub);
@@ -554,6 +561,10 @@ main { min-height: calc(100vh - var(--header-h)); }
   font-size: 14px;
 }
 .topcat-list li:last-child { border-bottom: none; }
+/* 인기 상품 랭킹(카테고리별 Top5)만 클릭 가능 — data-product 있는 항목만 대상 */
+.topcat-list li[data-product] { cursor: pointer; transition: background 0.15s; border-radius: 6px; }
+.topcat-list li[data-product]:hover { background: var(--blue-soft); }
+.topcat-list li[data-product]:hover .p-name { color: var(--blue); }
 .topcat-list .rank {
   width: 20px; text-align: center; flex-shrink: 0;
   font-weight: 700; color: var(--text-sub);

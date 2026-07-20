@@ -749,16 +749,20 @@ async function loadBankRanking(targetId = "stat-banks", limit = 10, showNum = tr
     }
     const max = Math.max(1, ...banks.map((b) => b.count));
     box.innerHTML = banks
-      .map(
-        (b, i) =>
-          `<div class="bar-row">` +
+      .map((b, i) => {
+        const url = banksData.find((d) => d.name === b.name)?.url;
+        const tag = url ? "a" : "div";
+        const link = url ? ` href="${url}" target="_blank" rel="noopener"` : "";
+        return (
+          `<${tag} class="bar-row"${link}>` +
           `<span class="rank">${i + 1}</span>` +
           bankBadge(b.name) +
           `<span class="name">${escapeHtml(b.name)}</span>` +
           (showBar ? `<div class="bar-track"><div class="bar-fill" style="width:${(b.count / max) * 100}%"></div></div>` : ``) +
           (showNum ? `<span class="num">${b.count}</span>` : ``) +
-          `</div>`
-      )
+          `</${tag}>`
+        );
+      })
       .join("");
   } catch (err) {
     box.innerHTML = statError();
@@ -816,7 +820,8 @@ async function loadTopProductsCarousel(targetId = "stat-products") {
         const rows = categories[cat]
           .map(
             (p, i) =>
-              `<li><span class="rank">${i + 1}</span>` +
+              `<li data-category="${escapeHtml(cat)}" data-product="${escapeHtml(p.product)}">` +
+              `<span class="rank">${i + 1}</span>` +
               `<span class="p-name">${escapeHtml(p.product)}</span></li>`
           )
           .join("");
@@ -884,7 +889,34 @@ document.addEventListener("click", (e) => {
   if (dot) { goStatProductsSlide(Number(dot.dataset.slide)); return; }
   if (e.target.closest(".stat-products-nav.prev")) { goStatProductsSlide(statProductsIndex - 1); return; }
   if (e.target.closest(".stat-products-nav.next")) { goStatProductsSlide(statProductsIndex + 1); return; }
+  const item = e.target.closest("#stat-products .topcat-list li[data-product]");
+  if (item) { goToProductInList(item.dataset.category, item.dataset.product); return; }
 });
+
+/* 인기 상품 랭킹 클릭 → 상품안내 탭 전환 후 목록에서 해당 상품을 찾아 펼쳐 보여준다.
+   목록 로드가 비동기라 goto-account 메시지 처리와 동일한 폴링 방식을 쓴다. */
+function goToProductInList(category, productName) {
+  navigate("products");
+  const tab = document.querySelector(`.cat-tab[data-category="${CSS.escape(category)}"]`);
+  if (tab && !tab.classList.contains("active")) tab.click();
+  let tries = 0;
+  const tryFind = () => {
+    if (productListAll.length > PRODUCT_LIST_PAGE_SIZE && !productListExpanded) {
+      productListExpanded = true;
+      renderProductList(productListAll);
+    }
+    const row = document.querySelector(
+      `.product-list-row[data-category="${CSS.escape(category)}"][data-product="${CSS.escape(productName)}"]`
+    );
+    if (row) {
+      row.classList.add("open");
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else if (tries++ < 25) {
+      setTimeout(tryFind, 150);
+    }
+  };
+  tryFind();
+}
 
 function statEmpty() {
   return '<p class="stat-empty">아직 데이터가 없습니다 — 상품을 조회하거나 AI은행원에 질문해 보세요.</p>';
@@ -1112,12 +1144,14 @@ document.addEventListener("click", async (e) => {
 
 /* ── 은행 바로가기 ───────────────────────────────────────────────── */
 let banksLoaded = false;
+let banksData = []; // [{name, url}, ...] — 은행 순위 등 다른 곳에서도 이름→URL 조회용으로 재사용
 async function ensureBanksLoaded() {
   if (banksLoaded) return;
   banksLoaded = true;
   try {
     const res = await fetch("data/banks.json");
     const banks = await res.json();
+    banksData = banks;
     // 중복 URL(별칭) 제거
     const seen = new Set();
     const unique = banks.filter((b) => {

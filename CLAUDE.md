@@ -92,6 +92,7 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # 키 입력
 ## 설정 파일 이원화 (자주 헷갈리는 부분)
 
 - **`.streamlit/secrets.toml`** — Streamlit 챗봇 + 루트 스크립트(`ingest_fss.py` 등)가 읽음. `GEMINI_API_KEY`/`OPENAI_API_KEY`.
+  - 키 발급: Gemini(무료 등급 있음) https://aistudio.google.com/app/apikey , OpenAI https://platform.openai.com/api-keys — 사용할 제공자 키만 있으면 됨(둘 다 필요 없음).
 - **`config.json`** — 백엔드/`config.py`가 읽음. `fss_api_key`, `openai_api_key`, `rag_top_k`, `es_host`, `redis_*`, 챗봇 기본 설정 등. Backoffice 성능관리에서 편집.
 - ⚠️ **주의**: `ingest_fss.py`는 FSS 키를 `secrets.toml`(또는 `--fss-key`)에서 찾는다. 키가 `config.json`에만 있으면 `--fss-key "$(...config...)"`로 넘기거나 secrets에 추가해야 한다.
 - 둘 다 `.gitignore` 대상(`config.json`, `.streamlit/secrets.toml*`). 커밋 시 `git add -A` 대신 파일을 명시적으로 스테이징한다.
@@ -101,3 +102,31 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # 키 입력
 - **Temperature preset**: 슬라이더 대신 "정확/균형/창의" selectbox(`llm.TEMP_OPTIONS`).
 - **웹 검색 컨텍스트 분리**: 검색 결과는 LLM 메시지에만 주입, 대화 JSON(`conversations/<uuid>.json`)에는 원본 질문만 저장.
 - **Phoenix 선택적**: 없어도 앱 동작. OpenAI는 `OpenAIInstrumentor` 자동계측, `rag`/`cache`는 수동 스팬. `batch_test.py`는 별도 프로젝트명으로 `phoenix.otel.register()` 직접 호출.
+
+## 작업 기록
+
+세션마다 진행한 변경을 날짜순으로 아래에 추가한다.
+
+### 2026-07-20
+
+**챗봇 사이드바 리디자인 (Gemini 스타일 flat list)** — 대상: `app.py`, `storage.py`
+- "새 채팅"을 펜 아이콘 + 음영 있는 둥근 사각형 행으로 변경.
+- "채팅 검색" 입력창 신규 추가 — 대화 제목뿐 아니라 메시지 본문까지 포함해 실시간 필터링(`storage.list_conversations(query=...)`).
+- "이전 대화" 목록을 테두리 박스 없는 flat list로 정리, 삭제 아이콘은 행에 마우스를 올렸을 때만 표시.
+- "AI은행원 유의사항" expander는 접고 펼치는 구조 유지, 정보 아이콘으로 통일하고 여백/폰트 축소.
+- 버그 수정: 1차 구현에서 테두리가 제거되지 않던 문제 — Streamlit 프런트엔드 번들을 직접 분석해 원인 파악. `st-key-<key>` 클래스가 위젯이 아니라 바깥 `stElementContainer`에 붙는다는 점을 반영해 CSS 선택자를 후손 결합자로 교정하고, 존재하지 않는 testid(`stVerticalBlockBorderWrapper`)를 실제 testid(`stVerticalBlock`)로 교체.
+
+**입력창 "+" 파일 업로드** — 대상: `app.py`
+- Streamlit 네이티브 `st.chat_input(accept_file="multiple", file_type=[...])`로 구현(커스텀 팝업 대신 채택 — 위치/스타일을 Streamlit이 직접 보장해 신뢰성이 더 높음).
+- 기존 지원 파일 형식(txt/md/py/js/ts/csv/json/html/css/pdf/png/jpg/jpeg/gif/webp)과 200MB 제한(서버 기본값) 그대로 유지.
+- `chat_input`이 문자열 대신 `ChatInputValue(text, files)`를 반환하도록 API가 바뀌어 prompt/attachment 처리 로직도 함께 리팩터링.
+- 사이드바의 중복되던 "파일 첨부" 섹션(`st.file_uploader`) 제거, 관련 CSS(`stFileUploaderDropzone`)도 정리.
+
+**상단 메뉴 순서 변경** — 대상: `site/index.html`
+- 홈 → 내 계좌 → 상품안내 → AI은행원 → 고객센터 순서를 홈 → AI은행원 → 내 계좌 → 상품안내 → 고객센터로 변경.
+- 메뉴 밑줄 인디케이터는 클릭된 요소의 위치를 JS에서 동적으로 계산하는 방식이라 순서 변경과 무관하게 정상 동작(코드 변경 불필요).
+
+**`#products` 인기 통계 랭킹 클릭 가능하게** — 대상: `site/js/main.js`, `site/css/style.css`
+- 은행 순위 클릭 → 해당 은행 공식 사이트로 새 탭 이동. `site/data/banks.json`(은행명→URL) 매핑을 `banksData`로 캐시해 재사용, 매칭되는 은행만 `<a>`로 렌더링.
+- 카테고리별 인기 상품 TOP5 클릭 → 상품안내 목록에서 해당 카테고리 탭을 자동 선택하고, 그 상품 행을 찾아 스크롤 + 상세 아코디언 펼침(`goToProductInList()`, 기존 `goto-account` 폴링 패턴 재사용). "더보기" 뒤에 숨어 있는 상품도 자동으로 펼쳐서 찾음.
+- 두 기능 모두 백엔드/DB 변경 없이 프런트엔드만으로 구현(상품 랭킹 데이터엔 은행명이 없다는 것을 확인 후, 기존 두 개의 분리된 패널—은행 순위 / 카테고리별 인기 상품—구조에 맞춰 설계).

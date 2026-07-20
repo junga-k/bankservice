@@ -96,18 +96,68 @@ st.markdown("""<style>
 }
 /* 사이드바 상단 여백 축소 → 대화 목록 공간 확보 */
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
-    padding-top: 0.75rem !important;
+    padding-top: 0.5rem !important;
 }
+
+/* ── 새 채팅: 음영 있는 둥근 행 (Gemini 스타일) ───────────────────── */
+/* st-key-<key> 클래스는 stElementContainer(바깥 래퍼)에 붙고, stButton/버튼은
+   그 안쪽 자손이므로 반드시 후손 결합자( )를 쓴다 (직계 자식 > 은 매치 안 됨) */
+[data-testid="stSidebar"] .st-key-sidebar_new_chat [data-testid="stButton"] button {
+    border: none !important;
+    outline: none !important;
+    border-radius: 20px !important;
+    background: #F0F2F5 !important;
+    box-shadow: 0 1px 2px rgba(60,64,67,0.08) !important;
+    justify-content: flex-start !important;
+    min-height: 0 !important;
+    padding: 0.55rem 0.9rem !important;
+    color: #3C4043 !important;
+}
+[data-testid="stSidebar"] .st-key-sidebar_new_chat [data-testid="stButton"] button:hover {
+    background: #E4E7EB !important;
+}
+[data-testid="stSidebar"] .st-key-sidebar_new_chat [data-testid="stButton"] button p { font-size: 14px !important; }
+
+/* ── 채팅 검색: 테두리 없는 평평한 행 ──────────────────────────────── */
+[data-testid="stSidebar"] .st-key-sidebar_search { margin-top: 4px !important; margin-bottom: 0 !important; }
+[data-testid="stSidebar"] .st-key-sidebar_search [data-testid="stTextInputRootElement"] {
+    border: none !important;
+    outline: none !important;
+    background: transparent !important;
+    border-radius: 20px !important;
+    box-shadow: none !important;
+}
+[data-testid="stSidebar"] .st-key-sidebar_search [data-testid="stTextInputRootElement"]:focus-within {
+    background: #F0F2F5 !important;
+    box-shadow: none !important;
+}
+[data-testid="stSidebar"] .st-key-sidebar_search input {
+    font-size: 14px !important;
+    background: transparent !important;
+}
+[data-testid="stSidebar"] .st-key-sidebar_search [data-testid="stTextInputIcon"] { color: #5F6368 !important; }
+
+/* ── "이전 대화" 소제목: 절제된 스타일 ─────────────────────────────── */
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: #5F6368 !important;
+    letter-spacing: 0.02em !important;
+    margin-top: 10px !important;
+    margin-bottom: 2px !important;
+}
+
 /* 이전 대화 버튼: 한 줄 말줄임 + 컴팩트하게 (더 많이 보이도록) */
 [data-testid="stSidebar"] [data-testid="stButton"] > button {
     min-height: 0 !important;
-    padding-top: 0.35rem !important;
-    padding-bottom: 0.35rem !important;
+    padding-top: 0.3rem !important;
+    padding-bottom: 0.3rem !important;
 }
 [data-testid="stSidebar"] [data-testid="stButton"] > button p {
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+    font-size: 13.5px !important;
 }
 /* 대화 목록(제목·삭제): 배경·테두리 제거. columns 내부(stHorizontalBlock)만 타겟 */
 [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stButton"] > button {
@@ -137,9 +187,55 @@ st.markdown("""<style>
     justify-content: flex-start !important;
     width: 100% !important;
 }
-/* 대화 목록 스크롤 컨테이너: 테두리 제거 */
-[data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] {
+/* 삭제 아이콘: 평소엔 흐리게, 행에 마우스를 올렸을 때만 또렷하게 */
+[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:last-child
+  [data-testid="stButton"] > button {
+    opacity: 0.32;
+    transition: opacity 0.15s;
+}
+[data-testid="stSidebar"] [data-testid="stHorizontalBlock"]:hover [data-testid="stColumn"]:last-child
+  [data-testid="stButton"] > button {
+    opacity: 1;
+}
+/* 대화 목록 스크롤 컨테이너: 테두리 제거
+   (stVerticalBlockBorderWrapper는 이 Streamlit 버전엔 존재하지 않는 testid였음 — 실제로는
+   stVerticalBlock. box-shadow 링으로 테두리를 구현하는 경우도 있어 함께 리셋) */
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
     border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* ── 구분선: 존재감 낮춤 ───────────────────────────────────────────── */
+[data-testid="stSidebar"] hr {
+    border-color: #E8EAED !important;
+    margin: 0.6rem 0 !important;
+}
+
+/* ── expander(은행 에이전트 / 유의사항): 박스 느낌 제거 + 절제된 폰트 ── */
+/* 실제 테두리/배경은 컨테이너가 아니라 summary(헤더)에 있어 둘 다 리셋 */
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+    padding: 0.4rem 0.2rem !important;
+    font-size: 13.5px !important;
+    font-weight: 500 !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
+    background: #EEF3FB !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpanderDetails"] {
+    font-size: 13px !important;
+    line-height: 1.6 !important;
+    padding-top: 0.2rem !important;
 }
 [data-testid="stChatMessage"] {
     background-color: transparent !important;
@@ -259,16 +355,6 @@ st.markdown("""<style>
 }
 [data-testid="stPopoverBody"] [data-testid="stButton"] > button[kind="primary"]:hover {
     background: #D3E3FD !important; color: #1565C0 !important;
-}
-/* 파일 첨부: 안내 영역 아래에 버튼이 오도록 세로 배치 */
-[data-testid="stFileUploaderDropzone"] {
-    flex-direction: column !important;
-    align-items: stretch !important;
-    gap: 8px !important;
-}
-[data-testid="stFileUploaderDropzone"] button {
-    width: 100% !important;
-    margin-left: 0 !important;
 }
 /* 추천 질문(제안) 버튼: 문장 크기에 맞춘 칩. 컬럼 폭을 채우지 않고 내용만큼만. */
 [class*="st-key-sugg_"] { width: fit-content !important; }
@@ -420,16 +506,25 @@ def process_files(files) -> list[dict]:
 # ── 사이드바 ────────────────────────────────────────────────────────
 # 상단 'AI은행원' 제목은 CSS(stSidebarHeader::before)로 숨기기 버튼 행에 표시된다.
 with st.sidebar:
-    if st.button("새 채팅", icon=":material/add:", use_container_width=True):
+    if st.button("새 채팅", icon=":material/edit_square:", use_container_width=True,
+                 key="sidebar_new_chat"):
         storage.save_conversation(st.session_state.conversation)
         st.session_state.conversation = storage.new_conversation()
         st.rerun()
 
+    st.text_input(
+        "채팅 검색", icon=":material/search:", placeholder="채팅 검색",
+        label_visibility="collapsed", key="sidebar_search",
+    )
+
     st.caption("이전 대화")
     current_id = st.session_state.conversation["id"]
-    _convos = storage.list_conversations()
+    _query = (st.session_state.get("sidebar_search") or "").strip()
+    _convos = storage.list_conversations(query=_query)
     # 대화가 많으면 독립 스크롤 영역으로 → 목록이 늘어나도 더 많이 탐색 가능.
     # (적을 때는 자연 높이로 두어 빈 상자가 생기지 않게 함)
+    if _query and not _convos:
+        st.caption("검색 결과가 없습니다")
     _list_box = st.container(height=340) if len(_convos) > 7 else st.container()
     with _list_box:
         for meta in _convos:
@@ -453,15 +548,7 @@ with st.sidebar:
                     st.session_state.conversation = storage.new_conversation()
                 st.rerun()
 
-    st.divider()
-
-    uploaded_files = st.file_uploader(
-        ":material/attach_file: 파일 첨부",
-        accept_multiple_files=True,
-        type=["txt", "md", "py", "js", "ts", "csv", "json", "html", "css",
-              "pdf", "png", "jpg", "jpeg", "gif", "webp"],
-        help="텍스트·PDF는 내용을 추출해 LLM에 전달, 이미지는 멀티모달로 전달합니다.",
-    )
+    # 파일 첨부는 입력창의 "+" 버튼(st.chat_input accept_file)으로 이동했다.
 
     # 은행 에이전트 로그인 — 사이트 iframe 임베드 시에는 사이트 로그인과 자동 연동되므로
     # 사이드바에 노출하지 않고, :8501 직접 접속 시에만 수동 로그인 UI를 보여준다.
@@ -490,7 +577,7 @@ with st.sidebar:
                         st.error(f"백엔드(:8000) 연결 실패: {_e}")
 
     st.divider()
-    with st.expander("ℹ️ AI은행원 유의사항", expanded=False):
+    with st.expander("AI은행원 유의사항", icon=":material/info:", expanded=False):
         # 이체 한도 문구는 관리자가 저장한 이체 정책(config.json)을 그대로 반영한다.
         _pol = config.load()
 
@@ -550,7 +637,12 @@ conv = st.session_state.conversation
 # 입력창은 항상 하단 고정 위젯 — 먼저 호출해 '제출 여부'를 조기에 판단한다.
 # (제출 직후 run에서는 블로킹 처리 동안 메시지 버블이 늦게 그려지므로, 빈화면 레이아웃을
 #  건너뛰어야 입력창이 위로 떴다가 내려오는 깜빡임이 없다.)
-_chat_input = st.chat_input("메시지를 입력하세요…")
+_chat_input = st.chat_input(
+    "메시지를 입력하세요…",
+    accept_file="multiple",
+    file_type=["txt", "md", "py", "js", "ts", "csv", "json", "html", "css",
+               "pdf", "png", "jpg", "jpeg", "gif", "webp"],
+)
 _pending_input = bool(_chat_input or st.session_state.get("_retry_prompt"))
 
 if not conv["messages"] and not _pending_input:
@@ -935,8 +1027,10 @@ if model not in _models:
 
 # ── 사용자 입력 처리 ─────────────────────────────────────────────────
 # _chat_input 은 위(대화 렌더링 앞)에서 이미 생성했다. 여기서는 재사용만 한다.
+# accept_file=True라 chat_input은 문자열이 아니라 ChatInputValue(text, files)를 반환한다.
 _retry_prompt = st.session_state.pop("_retry_prompt", None)
-prompt = _chat_input or _retry_prompt
+prompt = (_chat_input.text if _chat_input else None) or _retry_prompt
+uploaded_files = _chat_input.files if _chat_input else []
 
 if prompt:
     st.session_state.pop("_show_txn_link", None)  # 새 메시지 입력 시 이체내역 링크 정리
