@@ -806,12 +806,23 @@ def get_profile(user_id: int) -> dict | None:
 
 
 def find_user_by_identity(name: str, phone: str) -> dict | None:
-    """아이디 찾기용: 이름+전화가 일치하는 사용자(활성만)."""
+    """비밀번호 찾기용: 이름+전화가 일치하는 사용자(활성만)."""
     with get_conn() as conn:
         row = conn.execute(
             "SELECT id, username, name, phone, email FROM users "
             "WHERE name = ? AND REPLACE(phone, '-', '') = ? AND is_active = 1",
             (name, re.sub(r"[^0-9]", "", phone or "")),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def find_user_by_name_email(name: str, email: str) -> dict | None:
+    """아이디 찾기용: 이름+이메일이 일치하는 사용자(활성만)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, username, name, phone, email FROM users "
+            "WHERE name = ? AND email = ? AND is_active = 1",
+            (name, (email or "").strip()),
         ).fetchone()
     return dict(row) if row else None
 

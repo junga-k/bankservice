@@ -412,7 +412,7 @@ def withdraw(req: WithdrawReq, user: dict = Depends(auth.get_current_user)):
 # ── 로그아웃 상태: 아이디 찾기 / 비밀번호 재설정 (데모 목업 인증) ──────
 class FindIdReq(BaseModel):
     name: str
-    phone: str
+    email: str
 
 
 class ResetPwReq(BaseModel):
@@ -430,8 +430,8 @@ def _mask_username(u: str) -> str:
 
 @app.post("/api/find-username")
 def find_username(req: FindIdReq):
-    """데모: 이름+전화 일치 시 아이디를 부분 마스킹해 반환(실제 서비스는 SMS 인증 필요)."""
-    found = db.find_user_by_identity(req.name.strip(), req.phone)
+    """데모: 이름+이메일 일치 시 아이디를 부분 마스킹해 반환(이메일 인증은 프런트에서 선행)."""
+    found = db.find_user_by_name_email(req.name.strip(), req.email)
     if found is None:
         raise HTTPException(status_code=404, detail="일치하는 회원 정보를 찾을 수 없습니다.")
     return {"username_masked": _mask_username(found["username"])}

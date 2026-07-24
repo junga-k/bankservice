@@ -42,6 +42,7 @@
     <!-- ── 홈 ──────────────────────────────────────────────────── -->
     <section id="home" class="section active">
       <div class="hero">
+        <div class="hero-3d" id="hero-3d" aria-hidden="true"></div>
         <div class="hero-inner">
           <h1>은행 금융상품을 <span class="accent">한눈에</span>,<br />AI에게 물어보세요</h1>
           <p>예금·적금부터 은행 업무까지. 질문하면 AI가 찾아 안내합니다.</p>
@@ -49,6 +50,21 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             AI은행원에게 물어보기
           </button>
+
+          <div class="hero-trust">
+            <div class="hero-trust-item">
+              <strong>16개 은행</strong>
+              <span>상품 한눈에 비교</span>
+            </div>
+            <div class="hero-trust-item">
+              <strong>5종 금융상품</strong>
+              <span>예금·적금·대출 전체</span>
+            </div>
+            <div class="hero-trust-item">
+              <strong>금융감독원 공식 데이터</strong>
+              <span>실시간 연동</span>
+            </div>
+          </div>
         </div>
       </div>
       <div class="container">
@@ -77,15 +93,15 @@
         <div class="event-banner">
           <div class="banner-track" id="banner-track">
             <div class="banner-slide" style="background:linear-gradient(135deg,#0FA968,#0B8457)">
-              <span class="banner-emoji">🎉</span>
+              <span class="banner-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v4M12 17v4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M3 12h4M17 12h4M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></svg></span>
               <div><b>매치뱅크 오픈 기념</b><p>지금 가입하면 계좌 개설 바로 가능해요</p></div>
             </div>
             <div class="banner-slide" style="background:linear-gradient(135deg,#4C8DFF,#2F5FD6)">
-              <span class="banner-emoji">📢</span>
+              <span class="banner-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6l-4 4H4a1 1 0 0 0-1 1z"/><path d="M15 8a4 4 0 0 1 0 8"/><path d="M18 5a8 8 0 0 1 0 14"/></svg></span>
               <div><b>AI은행원 업데이트</b><p>더 정확해진 금융상품 비교를 경험해보세요</p></div>
             </div>
             <div class="banner-slide" style="background:linear-gradient(135deg,#FF8A3D,#F9AB00)">
-              <span class="banner-emoji">💰</span>
+              <span class="banner-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 9.8c0-1.1 1.1-1.8 2.5-1.8s2.5.7 2.5 1.6c0 2.2-5 1.1-5 3.4 0 .9 1.1 1.6 2.5 1.6s2.5-.7 2.5-1.8"/></svg></span>
               <div><b>청년미래적금</b><p>지금 가입 가능한 적금 상품을 확인해보세요</p></div>
             </div>
           </div>
@@ -105,8 +121,8 @@
                 <div class="mock-frame-bar"><span></span><span></span><span></span></div>
                 <div class="mock-scroll">
                   <div class="mock-screen">
-                    <div class="mock-acct-card"><span class="mock-bank">🏦 신한은행</span><span class="mock-balance">1,473,000원</span></div>
-                    <div class="mock-acct-card"><span class="mock-bank">🏦 카카오뱅크</span><span class="mock-balance">850,000원</span></div>
+                    <div class="mock-acct-card"><span class="mock-bank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l8-6 8 6v11M9 21v-6h6v6"/></svg>신한은행</span><span class="mock-balance">1,473,000원</span></div>
+                    <div class="mock-acct-card"><span class="mock-bank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l8-6 8 6v11M9 21v-6h6v6"/></svg>카카오뱅크</span><span class="mock-balance">850,000원</span></div>
                     <div class="mock-tx-row"><span>정기예금 이자</span><span class="mock-tx-in">+2,000,000원</span></div>
                     <div class="mock-tx-row"><span>카드대금</span><span class="mock-tx-out">-130,000원</span></div>
                   </div>
@@ -123,6 +139,7 @@
               <p class="mock-hint">← 스와이프해서 이체 화면도 보기 →</p>
             </div>
             <div class="showcase-text">
+              <span class="showcase-eyebrow">내 계좌</span>
               <h3>내 계좌 조회부터 이체까지</h3>
               <p>보유 계좌 잔액과 거래내역을 한눈에 확인하고, 몇 번의 클릭만으로 안전하게 이체할 수 있습니다.</p>
               <button class="btn btn-ghost" data-nav="account">내 계좌 바로가기</button>
@@ -134,13 +151,14 @@
               <div class="mock-frame">
                 <div class="mock-frame-bar"><span></span><span></span><span></span></div>
                 <div class="mock-products">
-                  <div class="mock-product-chip"><span>🏦 KB국민은행</span><b>정기예금 3.2%</b></div>
-                  <div class="mock-product-chip"><span>🏦 카카오뱅크</span><b>자유적금 3.5%</b></div>
-                  <div class="mock-product-chip"><span>🏦 토스뱅크</span><b>파킹통장 2.8%</b></div>
+                  <div class="mock-product-chip"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l8-6 8 6v11M9 21v-6h6v6"/></svg>KB국민은행</span><b>정기예금 3.2%</b></div>
+                  <div class="mock-product-chip"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l8-6 8 6v11M9 21v-6h6v6"/></svg>카카오뱅크</span><b>자유적금 3.5%</b></div>
+                  <div class="mock-product-chip"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l8-6 8 6v11M9 21v-6h6v6"/></svg>토스뱅크</span><b>파킹통장 2.8%</b></div>
                 </div>
               </div>
             </div>
             <div class="showcase-text">
+              <span class="showcase-eyebrow">상품안내</span>
               <h3>주요 은행 상품을 한 곳에서 비교</h3>
               <p>예금·적금 금리를 은행별로 비교하고, 공식 상품 페이지로 바로 이동할 수 있습니다.</p>
               <button class="btn btn-ghost" data-nav="products">상품안내 바로가기</button>
@@ -158,6 +176,7 @@
               </div>
             </div>
             <div class="showcase-text">
+              <span class="showcase-eyebrow">AI은행원</span>
               <h3>AI에게 편하게 물어보세요</h3>
               <p>"금리 높은 적금 알려줘"처럼 편하게 물어보면 AI가 찾아서 답해드립니다.</p>
               <ul class="showcase-points">
@@ -224,7 +243,7 @@
     <section id="account" class="section">
       <div class="container">
         <h2 class="section-title">내 계좌</h2>
-        <p class="section-desc">계좌 잔액 조회와 이체를 이용하세요. <span class="demo-badge">데모</span></p>
+        <p class="section-desc">계좌 잔액 조회와 이체를 이용하세요.</p>
 
         <div class="panel account-guest" id="account-guest" style="display:none">
           <p>로그인이 필요한 서비스입니다.</p>
@@ -240,6 +259,12 @@
 
         <!-- 계좌조회 -->
         <div class="account-panel" id="account-panel-inquiry">
+          <div class="acct-header-row">
+            <button type="button" class="btn btn-ghost asset-add-btn" data-nav="mypage" data-mypage-tab="accounts">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              계좌 등록
+            </button>
+          </div>
           <div id="asset-summary" class="asset-summary"><!-- JS 렌더 --></div>
           <div id="account-cards" class="card-grid acct-card-grid"><!-- JS 렌더 --></div>
 
@@ -353,7 +378,7 @@
     <section id="mypage" class="section">
       <div class="container">
         <h2 class="section-title">마이페이지</h2>
-        <p class="section-desc">내 정보·보안·계좌를 관리하세요. <span class="demo-badge">데모</span></p>
+        <p class="section-desc">내 정보·보안·계좌를 관리하세요.</p>
 
         <div class="panel account-guest" id="mypage-guest" style="display:none">
           <p>로그인이 필요한 서비스입니다.</p>
@@ -588,9 +613,15 @@
     <section id="auth" class="section">
       <div class="container auth-container">
 
+        <div class="auth-logo-wrap">
+          <img src="img/logo-mark.svg" alt="" aria-hidden="true" class="auth-logo" />
+          <span class="auth-logo-text">매치뱅크</span>
+        </div>
+
         <!-- 비로그인: 로그인 화면 -->
         <div class="panel auth-panel" id="login-panel">
           <h2 class="auth-heading">로그인</h2>
+          <p class="section-desc">계좌 조회부터 이체까지, 로그인 후 이용하세요.</p>
           <form id="login-form" class="auth-form">
             <div class="tf-field">
               <label for="login-username">아이디</label>
@@ -607,159 +638,244 @@
             <a data-nav="auth" data-auth="signup">회원가입</a></p>
           <p class="auth-switch auth-find-links">
             <a data-auth-panel="findid">아이디 찾기</a> ·
-            <a data-auth-panel="resetpw">비밀번호 재설정</a></p>
+            <a data-auth-panel="resetpw">비밀번호 찾기</a></p>
         </div>
 
         <!-- 비로그인: 아이디 찾기 -->
         <div class="panel auth-panel" id="findid-panel" style="display:none">
           <h2 class="auth-heading">아이디 찾기</h2>
-          <p class="section-desc">가입 시 등록한 이름과 전화번호로 아이디를 찾습니다. <span class="demo-badge">데모</span></p>
+          <p class="section-desc">이름 확인 후, 이메일 인증을 거쳐 아이디를 알려드립니다.</p>
           <form id="findid-form" class="auth-form">
             <div class="tf-field">
               <label for="findid-name">이름</label>
               <input id="findid-name" type="text" autocomplete="name" required />
             </div>
             <div class="tf-field">
-              <label for="findid-phone">전화번호</label>
-              <input id="findid-phone" type="tel" inputmode="numeric" placeholder="숫자만 입력" required />
+              <label for="findid-email">이메일</label>
+              <div class="auth-verify-row">
+                <input id="findid-email" type="email" autocomplete="email" placeholder="인증번호를 받을 이메일" required />
+                <button class="btn btn-ghost" type="button" id="findid-otp-send">인증번호 받기</button>
+              </div>
+              <div class="auth-verify-row" id="findid-otp-code-row" style="display:none">
+                <input id="findid-otp-code" type="text" inputmode="numeric" placeholder="인증번호 6자리" />
+                <button class="btn btn-ghost" type="button" id="findid-otp-confirm">확인</button>
+              </div>
+              <div class="tf-hint" id="findid-otp-hint"></div>
             </div>
-            <button class="btn btn-primary" type="submit">아이디 찾기</button>
+            <button class="btn btn-primary" type="submit" id="findid-submit" disabled>아이디 찾기</button>
             <div id="findid-status" class="tf-status"></div>
           </form>
           <p class="auth-switch"><a data-auth-panel="login">로그인으로 돌아가기</a></p>
         </div>
 
-        <!-- 비로그인: 비밀번호 재설정 -->
+        <!-- 비로그인: 비밀번호 찾기 -->
         <div class="panel auth-panel" id="resetpw-panel" style="display:none">
-          <h2 class="auth-heading">비밀번호 재설정</h2>
-          <p class="section-desc">아이디·이름·전화번호 확인 후 새 비밀번호를 설정합니다. <span class="demo-badge">데모</span></p>
+          <h2 class="auth-heading">비밀번호 찾기</h2>
+          <div class="transfer-steps resetpw-steps">
+            <span class="step" data-step="1">1 본인확인</span>
+            <span class="step-sep">›</span>
+            <span class="step" data-step="2">2 새 비밀번호</span>
+          </div>
           <form id="resetpw-form" class="auth-form">
-            <div class="tf-field">
-              <label for="resetpw-username">아이디</label>
-              <input id="resetpw-username" type="text" autocomplete="username" required />
+
+            <!-- STEP 1: 본인확인 -->
+            <div class="tf-step" id="resetpw-step-1">
+              <div class="tf-field">
+                <label for="resetpw-username">아이디</label>
+                <input id="resetpw-username" type="text" autocomplete="username" required />
+              </div>
+              <div class="tf-field">
+                <label for="resetpw-name">이름</label>
+                <input id="resetpw-name" type="text" autocomplete="name" required />
+              </div>
+              <div class="tf-field">
+                <label for="resetpw-phone">전화번호</label>
+                <input id="resetpw-phone" type="tel" inputmode="numeric" placeholder="숫자만 입력" required />
+              </div>
+              <div class="tf-field">
+                <label for="resetpw-email">이메일</label>
+                <div class="auth-verify-row">
+                  <input id="resetpw-email" type="email" autocomplete="email" placeholder="인증번호를 받을 이메일" required />
+                  <button class="btn btn-ghost" type="button" id="resetpw-otp-send">인증번호 받기</button>
+                </div>
+                <div class="auth-verify-row" id="resetpw-otp-code-row" style="display:none">
+                  <input id="resetpw-otp-code" type="text" inputmode="numeric" placeholder="인증번호 6자리" />
+                  <button class="btn btn-ghost" type="button" id="resetpw-otp-confirm">확인</button>
+                </div>
+                <div class="tf-hint" id="resetpw-otp-hint"></div>
+              </div>
+              <button class="btn btn-primary tf-next" type="button" id="resetpw-to-step2">다음</button>
+              <div id="resetpw-step1-status" class="tf-status"></div>
             </div>
-            <div class="tf-field">
-              <label for="resetpw-name">이름</label>
-              <input id="resetpw-name" type="text" autocomplete="name" required />
+
+            <!-- STEP 2: 새 비밀번호 -->
+            <div class="tf-step" id="resetpw-step-2" style="display:none">
+              <div class="tf-field">
+                <label for="resetpw-new">새 비밀번호</label>
+                <input id="resetpw-new" type="password" autocomplete="new-password" required />
+                <div class="tf-hint" id="resetpw-new-hint">4자 이상 입력하세요.</div>
+              </div>
+              <div class="tf-field">
+                <label for="resetpw-new2">새 비밀번호 확인</label>
+                <input id="resetpw-new2" type="password" autocomplete="new-password" required />
+                <div class="tf-hint" id="resetpw-new2-hint"></div>
+              </div>
+              <div class="tf-confirm-actions">
+                <button class="btn btn-ghost" type="button" id="resetpw-back-step1">이전</button>
+                <button class="btn btn-primary" type="submit" id="resetpw-submit">비밀번호 재설정</button>
+              </div>
+              <div id="resetpw-status" class="tf-status"></div>
             </div>
-            <div class="tf-field">
-              <label for="resetpw-phone">전화번호</label>
-              <input id="resetpw-phone" type="tel" inputmode="numeric" placeholder="숫자만 입력" required />
-            </div>
-            <div class="tf-field">
-              <label for="resetpw-new">새 비밀번호</label>
-              <input id="resetpw-new" type="password" autocomplete="new-password" required />
-            </div>
-            <button class="btn btn-primary" type="submit">비밀번호 재설정</button>
-            <div id="resetpw-status" class="tf-status"></div>
+
           </form>
           <p class="auth-switch"><a data-auth-panel="login">로그인으로 돌아가기</a></p>
         </div>
 
-        <!-- 비로그인: 회원가입 화면 -->
+        <!-- 비로그인: 회원가입 화면 (3단계 위저드 — 이체 위저드와 동일한 .transfer-steps/.tf-step 패턴 재사용) -->
         <div class="panel auth-panel" id="signup-panel" style="display:none">
           <h2 class="auth-heading">회원가입</h2>
+          <div class="transfer-steps signup-steps">
+            <span class="step" data-step="1">1 정보입력</span>
+            <span class="step-sep">›</span>
+            <span class="step" data-step="2">2 계좌·약관</span>
+            <span class="step-sep">›</span>
+            <span class="step" data-step="3">3 완료</span>
+          </div>
           <form id="signup-form" class="auth-form">
-            <div class="tf-field">
-              <label for="signup-username">아이디</label>
-              <input id="signup-username" type="text" autocomplete="username" required />
-            </div>
-            <div class="tf-field">
-              <label for="signup-name">이름</label>
-              <input id="signup-name" type="text" autocomplete="name" required />
-            </div>
-            <div class="tf-field">
-              <label for="signup-password">비밀번호</label>
-              <input id="signup-password" type="password" autocomplete="new-password" required />
-            </div>
-            <div class="tf-field">
-              <label for="signup-password2">비밀번호 확인</label>
-              <input id="signup-password2" type="password" autocomplete="new-password" required />
-            </div>
 
-            <div class="tf-field">
-              <label for="signup-phone">전화번호</label>
-              <div class="auth-verify-row">
-                <input id="signup-phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="숫자만 입력" />
-                <button class="btn btn-ghost" type="button" id="signup-phone-send">인증번호 받기</button>
+            <!-- STEP 1: 기본 정보 -->
+            <div class="tf-step" id="signup-step-1">
+              <div class="tf-field">
+                <label for="signup-username">아이디</label>
+                <input id="signup-username" type="text" autocomplete="username" required />
               </div>
-              <div class="auth-verify-row" id="signup-phone-code-row" style="display:none">
-                <input id="signup-phone-code" type="text" inputmode="numeric" placeholder="인증번호 6자리" />
-                <button class="btn btn-ghost" type="button" id="signup-phone-verify">확인</button>
+              <div class="tf-field">
+                <label for="signup-name">이름</label>
+                <input id="signup-name" type="text" autocomplete="name" required />
               </div>
-              <div class="tf-hint" id="signup-phone-hint"></div>
-            </div>
-
-            <div class="tf-field">
-              <label for="signup-email">이메일</label>
-              <input id="signup-email" type="email" autocomplete="email" required />
-            </div>
-
-            <div class="tf-field">
-              <label for="signup-transfer-pw">이체 비밀번호 (숫자 6자리)</label>
-              <input id="signup-transfer-pw" type="password" inputmode="numeric" maxlength="6"
-                     autocomplete="off" placeholder="이체 시 사용할 6자리 숫자" />
-              <div class="tf-hint">계좌 이체를 실행할 때 로그인 비밀번호 대신 이 번호로 본인 확인합니다.</div>
-            </div>
-
-            <div class="auth-subhead">계좌 등록</div>
-            <div class="tf-field">
-              <label for="signup-bank">은행 선택</label>
-              <select id="signup-bank"></select>
-            </div>
-            <div class="tf-field">
-              <label for="signup-account-no">계좌번호</label>
-              <input id="signup-account-no" type="text" inputmode="numeric" placeholder="- 없이 입력 가능" />
-            </div>
-            <div class="tf-field">
-              <label for="signup-account-holder">예금주명</label>
-              <div class="auth-verify-row">
-                <input id="signup-account-holder" type="text" placeholder="가입자 이름과 동일" />
-                <button class="btn btn-ghost" type="button" id="signup-account-verify">1원 인증</button>
+              <div class="tf-field">
+                <label for="signup-password">비밀번호</label>
+                <input id="signup-password" type="password" autocomplete="new-password" required />
+                <div class="tf-hint" id="signup-password-hint">4자 이상 입력하세요.</div>
               </div>
-              <div class="auth-verify-row" id="signup-account-code-row" style="display:none">
-                <input id="signup-account-code" type="text" inputmode="numeric" placeholder="입금자명 인증코드" />
-                <button class="btn btn-ghost" type="button" id="signup-account-code-confirm">확인</button>
+              <div class="tf-field">
+                <label for="signup-password2">비밀번호 확인</label>
+                <input id="signup-password2" type="password" autocomplete="new-password" required />
+                <div class="tf-hint" id="signup-password2-hint"></div>
               </div>
-              <div class="tf-hint" id="signup-account-hint"></div>
-            </div>
-            <div class="tf-field">
-              <label for="signup-account-nickname">계좌 별칭 <span class="tf-optional">(선택)</span></label>
-              <input id="signup-account-nickname" type="text" maxlength="20" placeholder="예: 생활비 통장" />
-            </div>
-            <div class="auth-agree-row">
-              <label><input type="checkbox" id="signup-account-primary" checked /> <span>대표계좌로 지정</span></label>
+
+              <div class="tf-field">
+                <label for="signup-phone">전화번호</label>
+                <div class="auth-verify-row">
+                  <input id="signup-phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="숫자만 입력" />
+                  <button class="btn btn-ghost" type="button" id="signup-phone-send">인증번호 받기</button>
+                </div>
+                <div class="auth-verify-row" id="signup-phone-code-row" style="display:none">
+                  <input id="signup-phone-code" type="text" inputmode="numeric" placeholder="인증번호 6자리" />
+                  <button class="btn btn-ghost" type="button" id="signup-phone-verify">확인</button>
+                </div>
+                <div class="tf-hint" id="signup-phone-hint"></div>
+              </div>
+
+              <div class="tf-field">
+                <label for="signup-email">이메일</label>
+                <input id="signup-email" type="email" autocomplete="email" required />
+              </div>
+
+              <button class="btn btn-primary tf-next" type="button" id="signup-to-step2">다음</button>
+              <div id="signup-step1-status" class="tf-status"></div>
             </div>
 
-            <div class="auth-agree">
-              <div class="auth-agree-row">
-                <label><input type="checkbox" id="signup-agree-terms" /> <span>(필수) 이용약관 동의</span></label>
-                <button type="button" class="auth-agree-view" data-terms="terms">보기</button>
+            <!-- STEP 2: 계좌 등록 + 이체비밀번호 + 약관동의 -->
+            <div class="tf-step" id="signup-step-2" style="display:none">
+              <div class="auth-subhead">계좌 등록</div>
+              <div class="tf-field">
+                <label for="signup-bank">은행 선택</label>
+                <select id="signup-bank"></select>
+              </div>
+              <div class="tf-field">
+                <label for="signup-account-no">계좌번호</label>
+                <input id="signup-account-no" type="text" inputmode="numeric" placeholder="- 없이 입력 가능" />
+              </div>
+              <div class="tf-field">
+                <label for="signup-account-holder">예금주명</label>
+                <div class="auth-verify-row">
+                  <input id="signup-account-holder" type="text" placeholder="가입자 이름과 동일" />
+                  <button class="btn btn-ghost" type="button" id="signup-account-verify">1원 인증</button>
+                </div>
+                <div class="auth-verify-row" id="signup-account-code-row" style="display:none">
+                  <input id="signup-account-code" type="text" inputmode="numeric" placeholder="입금자명 인증코드" />
+                  <button class="btn btn-ghost" type="button" id="signup-account-code-confirm">확인</button>
+                </div>
+                <div class="tf-hint" id="signup-account-hint"></div>
+              </div>
+              <div class="tf-field">
+                <label for="signup-account-nickname">계좌 별칭 <span class="tf-optional">(선택)</span></label>
+                <input id="signup-account-nickname" type="text" maxlength="20" placeholder="예: 생활비 통장" />
               </div>
               <div class="auth-agree-row">
-                <label><input type="checkbox" id="signup-agree-privacy" /> <span>(필수) 개인정보 수집·이용 동의</span></label>
-                <button type="button" class="auth-agree-view" data-terms="privacy">보기</button>
+                <label><input type="checkbox" id="signup-account-primary" checked /> <span>대표계좌로 지정</span></label>
               </div>
-              <div class="auth-agree-row">
-                <label><input type="checkbox" id="signup-agree-openbanking" /> <span>(필수) 오픈뱅킹 이용 동의</span></label>
-                <button type="button" class="auth-agree-view" data-terms="openbanking">보기</button>
+
+              <div class="tf-field">
+                <label for="signup-transfer-pw">이체 비밀번호 (숫자 6자리)</label>
+                <input id="signup-transfer-pw" type="password" inputmode="numeric" maxlength="6"
+                       autocomplete="off" placeholder="이체 시 사용할 6자리 숫자" />
+                <div class="tf-hint">계좌 이체를 실행할 때 로그인 비밀번호 대신 이 번호로 본인 확인합니다.</div>
               </div>
-              <div class="auth-agree-row">
-                <label><input type="checkbox" id="signup-agree-marketing" /> <span>(선택) 마케팅 정보 수신 동의</span></label>
+
+              <div class="auth-agree">
+                <div class="auth-agree-row">
+                  <label><input type="checkbox" id="signup-agree-terms" /> <span>(필수) 이용약관 동의</span></label>
+                  <button type="button" class="auth-agree-view" data-terms="terms">보기</button>
+                </div>
+                <div class="auth-agree-row">
+                  <label><input type="checkbox" id="signup-agree-privacy" /> <span>(필수) 개인정보 수집·이용 동의</span></label>
+                  <button type="button" class="auth-agree-view" data-terms="privacy">보기</button>
+                </div>
+                <div class="auth-agree-row">
+                  <label><input type="checkbox" id="signup-agree-openbanking" /> <span>(필수) 오픈뱅킹 이용 동의</span></label>
+                  <button type="button" class="auth-agree-view" data-terms="openbanking">보기</button>
+                </div>
+                <div class="auth-agree-row">
+                  <label><input type="checkbox" id="signup-agree-marketing" /> <span>(선택) 마케팅 정보 수신 동의</span></label>
+                </div>
+              </div>
+
+              <div class="tf-confirm-actions">
+                <button class="btn btn-ghost" type="button" id="signup-back-step1">이전</button>
+                <button class="btn btn-primary" type="submit" id="signup-submit" disabled>회원가입</button>
+              </div>
+              <div id="signup-status" class="tf-status"></div>
+            </div>
+
+            <!-- STEP 3: 완료 -->
+            <div class="tf-step" id="signup-step-3" style="display:none">
+              <div class="auth-welcome" style="text-align:center">
+                <span class="auth-welcome-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                  회원가입 완료
+                </span>
+                <h3 class="auth-heading">환영합니다!</h3>
+                <p class="section-desc">이제 매치뱅크의 모든 서비스를 이용할 수 있어요.</p>
+                <button class="btn btn-primary" type="button" id="signup-done">홈으로 가기</button>
               </div>
             </div>
 
-            <button class="btn btn-primary" type="submit" id="signup-submit" disabled>회원가입</button>
-            <div id="signup-status" class="tf-status"></div>
           </form>
           <p class="auth-switch">이미 계정이 있으신가요?
             <a data-nav="auth" data-auth="login">로그인</a></p>
         </div>
 
         <!-- 로그인 상태: 환영 카드 -->
-        <div class="panel auth-panel" id="auth-welcome" style="display:none">
-          <h2 class="section-title" id="auth-welcome-title">환영합니다</h2>
+        <div class="panel auth-panel auth-welcome" id="auth-welcome" style="display:none">
+          <span class="auth-welcome-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            로그인 완료
+          </span>
+          <h2 class="auth-heading" id="auth-welcome-title">환영합니다</h2>
           <p class="section-desc">상단 메뉴에서 내 계좌, AI은행원 등을 이용해 보세요.</p>
+          <button class="btn btn-primary" type="button" data-nav="home">홈으로 가기</button>
         </div>
 
       </div>
@@ -1206,7 +1322,20 @@
 
     <!-- ── AI은행원 (iframe 지연 로드) ───────────────────────────── -->
     <section id="chat" class="section">
-      <div id="chat-frame-wrap"><!-- 최초 진입 시 iframe 생성 --></div>
+      <div class="chat-guest" id="chat-guest" style="display:none">
+        <div class="auth-container">
+          <div class="auth-logo-wrap">
+            <img src="img/logo-mark.svg" alt="" aria-hidden="true" class="auth-logo" />
+            <span class="auth-logo-text">매치뱅크</span>
+          </div>
+          <div class="panel auth-panel" style="text-align:center">
+            <h2 class="auth-heading">AI은행원</h2>
+            <p class="section-desc">로그인 후 이용할 수 있는 서비스입니다.</p>
+            <button class="btn btn-primary" type="button" data-nav="auth">로그인 / 회원가입</button>
+          </div>
+        </div>
+      </div>
+      <div id="chat-frame-wrap"><!-- 로그인 후 최초 진입 시 iframe 생성 --></div>
     </section>
 
   </main>
@@ -1226,5 +1355,13 @@
   <div id="mp-stmt-print-area"></div>
 
   <script src="js/main.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module" src="js/hero3d.js"></script>
 </body>
 </html>

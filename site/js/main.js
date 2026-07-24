@@ -84,6 +84,11 @@ function setAuthTab(tab) {
     const el = document.getElementById(`${t}-panel`);
     if (el) el.style.display = t === tab ? "" : "none";
   });
+  // 다른 패널로 이동해도 인증 상태가 남아있지 않도록 매번 초기화
+  resetFindIdVerification();
+  resetResetPwVerification();
+  if (tab === "signup") signupGoStep(1);
+  if (tab === "resetpw") resetpwGoStep(1);
 }
 
 /* 로그인 패널 내부 링크(아이디 찾기/비번 재설정 등) 전환 */
@@ -122,7 +127,12 @@ function navigate(name) {
   });
   updateNavIndicator();
 
-  if (name === "chat") ensureChatLoaded();
+  if (name === "chat") {
+    const logged = isLoggedIn();
+    document.getElementById("chat-guest").style.display = logged ? "none" : "";
+    document.getElementById("chat-frame-wrap").style.display = logged ? "" : "none";
+    if (logged) ensureChatLoaded();
+  }
   if (name === "products") { ensureBanksLoaded(); loadProductStats(); }
   if (name === "account") {
     const logged = isLoggedIn();
@@ -178,6 +188,7 @@ document.addEventListener("click", (e) => {
   navigate(el.dataset.nav);
   if (el.dataset.auth) setAuthTab(el.dataset.auth);
   if (el.dataset.accountTab) accountGoTab(el.dataset.accountTab);
+  if (el.dataset.mypageTab) mypageGoTab(el.dataset.mypageTab);
 });
 
 /* ── 홈: 이벤트 배너 자동 전환 ───────────────────────────────────── */
@@ -214,6 +225,23 @@ if (bannerEl) {
   bannerEl.addEventListener("mouseenter", stopBannerAuto);
   bannerEl.addEventListener("mouseleave", startBannerAuto);
   startBannerAuto();
+}
+
+/* ── 홈: 기능 소개 스크롤 등장 ───────────────────────────────────── */
+const showcaseRows = document.querySelectorAll(".showcase-row");
+if (showcaseRows.length) {
+  const showcaseObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("in-view");
+          showcaseObserver.unobserve(entry.target);
+        }
+      });
+    },
+    { threshold: 0.2 }
+  );
+  showcaseRows.forEach((row) => showcaseObserver.observe(row));
 }
 
 /* ── AI은행원 iframe: 최초 1회만 생성 ─────────────────────────────── */
@@ -348,6 +376,7 @@ function resetAccountUI() {
   // 로그인/계정 전환 시 이전 사용자의 거래내역·이체 진행 상태가 남지 않도록 초기화
   const detail = document.getElementById("acct-detail");
   detail.style.display = "none";
+  acctDetailOpenId = null;
   document.getElementById("acct-transactions").innerHTML = "";
   document.getElementById("tf-to").value = "";
   document.getElementById("tf-amount").value = "";
@@ -390,12 +419,24 @@ function renderAccountCards(accounts) {
     .map(
       (a) =>
         `<div class="card clickable acct-card" data-acct-id="${a.id}" data-acct-no="${a.account_no}">
-           <span class="acct-bank-logo">${bankBadge(a.bank_name)}</span>
-           <div class="acct-info">
-             <div class="acct-bank">${escapeHtml(a.bank_name)}</div>
-             <div class="acct-no">${escapeHtml(a.account_no)}</div>
+           <div class="acct-tile-head">
+             <span class="acct-bank-logo">${bankBadge(a.bank_name)}</span>
+             <div class="acct-info">
+               <div class="acct-bank">${escapeHtml(a.bank_name)}</div>
+               <div class="acct-no">${escapeHtml(a.account_no)}</div>
+             </div>
            </div>
            <div class="acct-balance">${won(a.balance)}</div>
+           <div class="acct-tile-actions">
+             <button type="button" class="acct-tile-action acct-tile-history">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18M18 17V9M13 17V5M8 17v-3"/></svg>
+               거래내역
+             </button>
+             <button type="button" class="acct-tile-action acct-tile-transfer" data-acct-no="${a.account_no}">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10 3 6l4-4M3 6h13a4 4 0 0 1 4 4v1M17 14l4 4-4 4M21 18H8a4 4 0 0 1-4-4v-1"/></svg>
+               이체
+             </button>
+           </div>
          </div>`
     )
     .join("");
@@ -520,11 +561,36 @@ async function showTransactions(accountId, accountNo) {
   }
 }
 
-/* 계좌 카드 클릭 → 거래내역 표시 */
+/* 계좌 카드의 "이체" 바로가기 → 이체 탭으로 이동 + 그 계좌를 출금 계좌로 선택 */
 document.addEventListener("click", (e) => {
+  const transferBtn = e.target.closest(".acct-tile-transfer");
+  if (!transferBtn) return;
+  e.stopPropagation();
+  accountGoTab("transfer");
+  const fromSelect = document.getElementById("tf-from");
+  if (fromSelect) {
+    fromSelect.value = transferBtn.dataset.acctNo;
+    updateFromBalance();
+    renderTfQuickAccounts();
+  }
+});
+
+/* 계좌 카드 클릭(또는 "거래내역" 버튼) → 거래내역 표시. 같은 계좌를 한 번 더
+   클릭하면 접힌다(토글) */
+let acctDetailOpenId = null;
+document.addEventListener("click", (e) => {
+  if (e.target.closest(".acct-tile-transfer")) return;
   const card = e.target.closest(".acct-card");
   if (!card) return;
-  showTransactions(card.dataset.acctId, card.dataset.acctNo);
+  const id = card.dataset.acctId;
+  const box = document.getElementById("acct-detail");
+  if (acctDetailOpenId === id && box.style.display !== "none") {
+    box.style.display = "none";
+    acctDetailOpenId = null;
+    return;
+  }
+  acctDetailOpenId = id;
+  showTransactions(id, card.dataset.acctNo);
 });
 
 /* ── 이체 마법사 ─────────────────────────────────────────────────── */
@@ -976,7 +1042,7 @@ function renderProductList(products) {
   if (products) productListAll = products;
   const filtered = getFilteredProducts();
   const listEl = document.getElementById("product-list");
-  renderTopPick(filtered[0]);
+  renderTopPick(getBestPick(productListAll));
   if (!productListAll.length) {
     listEl.innerHTML = '<p class="product-list-empty">조회된 상품이 없습니다.</p>';
     return;
@@ -1023,6 +1089,22 @@ function getProductRateRange(p) {
     minRate: rates.length ? Math.min(...rates) : null,
     maxRate: rates.length ? Math.max(...rates) : null,
   };
+}
+
+/* 카테고리 전체(정렬/검색 미적용) 중 실제로 가장 유리한 상품 하나를 고른다.
+   대출은 최저금리, 예금/적금은 최고금리가 "좋은" 방향 — TOP추천은 사용자가
+   고른 정렬/검색과 무관하게 항상 이 기준으로 고정돼야 한다. */
+function getBestPick(products) {
+  if (!products || !products.length) return null;
+  return products.reduce((best, p) => {
+    const rangeP = getProductRateRange(p);
+    const valP = rangeP.isLoan ? rangeP.minRate : rangeP.maxRate;
+    if (valP == null) return best;
+    const rangeBest = getProductRateRange(best);
+    const valBest = rangeBest.isLoan ? rangeBest.minRate : rangeBest.maxRate;
+    if (valBest == null) return p;
+    return rangeP.isLoan ? (valP < valBest ? p : best) : (valP > valBest ? p : best);
+  }, products[0]);
 }
 
 /* 카테고리 탭 클릭 시 정렬 1순위 상품(최저금리=대출 / 최고금리=예적금)을 강조 카드로 표시 */
@@ -1104,12 +1186,16 @@ function renderProductRow(p) {
 
   return `<div class="product-list-row" data-product="${escapeHtml(p.product_name)}" data-category="${escapeHtml(p.category)}">
       <div class="pl-head">
-        ${catBadge}
-        <span class="pl-bank">${bankBadge(p.bank)} ${escapeHtml(p.bank)}</span>
-        <span class="pl-name">${escapeHtml(p.product_name)}</span>
-        ${denyBadge}
-        <span class="pl-rate">${rateText}</span>
-        <span class="chev">▾</span>
+        <div class="pl-head-top">
+          <span class="pl-bank">${bankBadge(p.bank)} ${escapeHtml(p.bank)}</span>
+          ${catBadge}
+          ${denyBadge}
+        </div>
+        <div class="pl-head-main">
+          <span class="pl-name">${escapeHtml(p.product_name)}</span>
+          <span class="pl-rate">${rateText}</span>
+          <span class="chev">▾</span>
+        </div>
       </div>
       <div class="pl-terms">${termRates}</div>
       <div class="pl-detail">
@@ -1236,6 +1322,70 @@ function fillSignupBanks() {
     TF_BANKS.map((b) => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join("");
 }
 
+/* 회원가입 3단계 위저드 — 이체 위저드(tfGoStep)와 동일한 패턴 */
+function signupGoStep(n) {
+  [1, 2, 3].forEach((i) => {
+    document.getElementById(`signup-step-${i}`).style.display = i === n ? "block" : "none";
+  });
+  document.querySelectorAll(".signup-steps .step").forEach((s) => {
+    s.classList.toggle("active", Number(s.dataset.step) === n);
+    s.classList.toggle("done", Number(s.dataset.step) < n);
+  });
+}
+
+/* 1단계(기본 정보) 검증 통과해야 2단계로 이동 */
+function validateSignupStep1() {
+  const statusEl = document.getElementById("signup-step1-status");
+  const pwHint = document.getElementById("signup-password-hint");
+  const pw2Hint = document.getElementById("signup-password2-hint");
+  statusEl.className = "tf-status";
+  pwHint.className = "tf-hint"; pwHint.textContent = "4자 이상 입력하세요.";
+  pw2Hint.className = "tf-hint"; pw2Hint.textContent = "";
+  const username = document.getElementById("signup-username").value.trim();
+  const name = document.getElementById("signup-name").value.trim();
+  const password = document.getElementById("signup-password").value;
+  const password2 = document.getElementById("signup-password2").value;
+  const email = document.getElementById("signup-email").value.trim();
+  if (!username || !name) {
+    statusEl.className = "tf-status err"; statusEl.textContent = "아이디와 이름을 입력하세요.";
+    return false;
+  }
+  if (password.length < 4) {
+    pwHint.className = "tf-hint err"; pwHint.textContent = "비밀번호는 4자 이상 입력하세요.";
+    return false;
+  }
+  if (password !== password2) {
+    pw2Hint.className = "tf-hint err"; pw2Hint.textContent = "비밀번호가 일치하지 않습니다.";
+    return false;
+  }
+  if (!EMAIL_RE.test(email)) {
+    statusEl.className = "tf-status err"; statusEl.textContent = "올바른 이메일 주소를 입력하세요.";
+    return false;
+  }
+  if (!signupPhoneVerified) {
+    statusEl.className = "tf-status err"; statusEl.textContent = "휴대폰 인증을 완료해 주세요.";
+    return false;
+  }
+  statusEl.textContent = "";
+  return true;
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.id === "signup-to-step2") {
+    if (validateSignupStep1()) signupGoStep(2);
+    return;
+  }
+  if (e.target.id === "signup-back-step1") {
+    signupGoStep(1);
+    return;
+  }
+  if (e.target.id === "signup-done") {
+    updateAuthSectionView(); // auth 패널 상태를 정상적인 "로그인됨"으로 원복(다음 #auth 방문 시 환영 카드가 보이도록)
+    navigate("home");
+    return;
+  }
+});
+
 function updateSignupButtonState() {
   const btn = document.getElementById("signup-submit");
   if (!btn) return;
@@ -1268,7 +1418,7 @@ document.addEventListener("click", (e) => {
     signupPhoneExpected = "123456";
     document.getElementById("signup-phone-code-row").style.display = "";
     hint.className = "tf-hint";
-    hint.textContent = "인증번호 123456 이(가) 발송되었습니다. (데모)";
+    hint.textContent = "인증번호 123456 이(가) 발송되었습니다.";
     return;
   }
   if (e.target.id === "signup-phone-verify") {
@@ -1437,8 +1587,10 @@ async function handleSignup() {
     document.getElementById("signup-form").reset();
     resetSignupVerification();
     updateSignupButtonState();
-    refreshAuthUI();
-    navigate("home");
+    refreshAuthUI(); // 로그인 상태로 전환되면서 updateAuthSectionView()가 signup-panel을 숨기므로,
+    document.getElementById("signup-panel").style.display = "";      // 3단계 완료 화면을 보여주기 위해 다시 펼치고
+    document.getElementById("auth-welcome").style.display = "none";  // 환영 카드는 잠시 숨긴다
+    signupGoStep(3);
   } catch (err) {
     statusEl.className = "tf-status err";
     statusEl.textContent = err.message;
@@ -1454,6 +1606,105 @@ document.addEventListener("click", (e) => {
 });
 
 /* ── 로그아웃 상태: 아이디 찾기 / 비밀번호 재설정 ──────────────────── */
+/* 아이디 찾기/비밀번호 찾기 인증(데모 시뮬레이션) — 회원가입 인증과 동일한 고정 코드 방식.
+   지금은 이메일 인증만 지원(문자 인증은 추후 추가) */
+let findIdOtpVerified = false, findIdOtpExpected = "";
+let resetPwOtpVerified = false, resetPwOtpExpected = "";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function updateFindIdButtonState() {
+  const btn = document.getElementById("findid-submit");
+  if (btn) btn.disabled = !findIdOtpVerified;
+}
+function updateResetPwButtonState() {
+  const btn = document.getElementById("resetpw-submit");
+  if (btn) btn.disabled = !resetPwOtpVerified;
+}
+function resetFindIdVerification() {
+  findIdOtpVerified = false; findIdOtpExpected = "";
+  const row = document.getElementById("findid-otp-code-row");
+  if (row) row.style.display = "none";
+  const hint = document.getElementById("findid-otp-hint");
+  if (hint) { hint.className = "tf-hint"; hint.textContent = ""; }
+  updateFindIdButtonState();
+}
+function resetResetPwVerification() {
+  resetPwOtpVerified = false; resetPwOtpExpected = "";
+  const row = document.getElementById("resetpw-otp-code-row");
+  if (row) row.style.display = "none";
+  const hint = document.getElementById("resetpw-otp-hint");
+  if (hint) { hint.className = "tf-hint"; hint.textContent = ""; }
+  updateResetPwButtonState();
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.id === "findid-otp-send") {
+    const name = document.getElementById("findid-name").value.trim();
+    const email = document.getElementById("findid-email").value.trim();
+    const hint = document.getElementById("findid-otp-hint");
+    if (!name) {
+      hint.className = "tf-status err"; hint.textContent = "이름을 입력하세요.";
+      return;
+    }
+    if (!EMAIL_RE.test(email)) {
+      hint.className = "tf-status err"; hint.textContent = "올바른 이메일 주소를 입력하세요.";
+      return;
+    }
+    findIdOtpExpected = "123456";
+    document.getElementById("findid-otp-code-row").style.display = "";
+    hint.className = "tf-hint";
+    hint.textContent = `${email} 로 인증번호가 발송되었습니다.`;
+    return;
+  }
+  if (e.target.id === "findid-otp-confirm") {
+    const code = document.getElementById("findid-otp-code").value.trim();
+    const hint = document.getElementById("findid-otp-hint");
+    if (findIdOtpExpected && code === findIdOtpExpected) {
+      findIdOtpVerified = true;
+      hint.className = "tf-hint"; hint.innerHTML = `<span class="verify-badge ok">✓ 인증 완료</span>`;
+    } else {
+      findIdOtpVerified = false;
+      hint.className = "tf-status err"; hint.textContent = "인증번호가 일치하지 않습니다.";
+    }
+    updateFindIdButtonState();
+    return;
+  }
+
+  if (e.target.id === "resetpw-otp-send") {
+    const username = document.getElementById("resetpw-username").value.trim();
+    const name = document.getElementById("resetpw-name").value.trim();
+    const phone = document.getElementById("resetpw-phone").value.replace(/[^0-9]/g, "");
+    const email = document.getElementById("resetpw-email").value.trim();
+    const hint = document.getElementById("resetpw-otp-hint");
+    if (!username || !name || phone.length < 10) {
+      hint.className = "tf-status err"; hint.textContent = "아이디·이름·전화번호를 정확히 입력하세요.";
+      return;
+    }
+    if (!EMAIL_RE.test(email)) {
+      hint.className = "tf-status err"; hint.textContent = "올바른 이메일 주소를 입력하세요.";
+      return;
+    }
+    resetPwOtpExpected = "123456";
+    document.getElementById("resetpw-otp-code-row").style.display = "";
+    hint.className = "tf-hint";
+    hint.textContent = `${email} 로 인증번호가 발송되었습니다.`;
+    return;
+  }
+  if (e.target.id === "resetpw-otp-confirm") {
+    const code = document.getElementById("resetpw-otp-code").value.trim();
+    const hint = document.getElementById("resetpw-otp-hint");
+    if (resetPwOtpExpected && code === resetPwOtpExpected) {
+      resetPwOtpVerified = true;
+      hint.className = "tf-hint"; hint.innerHTML = `<span class="verify-badge ok">✓ 인증 완료</span>`;
+    } else {
+      resetPwOtpVerified = false;
+      hint.className = "tf-status err"; hint.textContent = "인증번호가 일치하지 않습니다.";
+    }
+    updateResetPwButtonState();
+    return;
+  }
+});
+
 async function handleFindId() {
   const statusEl = document.getElementById("findid-status");
   statusEl.className = "tf-status";
@@ -1463,7 +1714,7 @@ async function handleFindId() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: document.getElementById("findid-name").value.trim(),
-        phone: document.getElementById("findid-phone").value.replace(/[^0-9]/g, ""),
+        email: document.getElementById("findid-email").value.trim(),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -1476,9 +1727,63 @@ async function handleFindId() {
   }
 }
 
+/* 비밀번호 찾기 2단계 위저드 — signupGoStep과 동일한 패턴 */
+function resetpwGoStep(n) {
+  [1, 2].forEach((i) => {
+    document.getElementById(`resetpw-step-${i}`).style.display = i === n ? "block" : "none";
+  });
+  document.querySelectorAll(".resetpw-steps .step").forEach((s) => {
+    s.classList.toggle("active", Number(s.dataset.step) === n);
+    s.classList.toggle("done", Number(s.dataset.step) < n);
+  });
+}
+
+function validateResetPwStep1() {
+  const statusEl = document.getElementById("resetpw-step1-status");
+  statusEl.className = "tf-status";
+  const username = document.getElementById("resetpw-username").value.trim();
+  const name = document.getElementById("resetpw-name").value.trim();
+  const phone = document.getElementById("resetpw-phone").value.replace(/[^0-9]/g, "");
+  if (!username || !name || phone.length < 10) {
+    statusEl.className = "tf-status err"; statusEl.textContent = "아이디·이름·전화번호를 정확히 입력하세요.";
+    return false;
+  }
+  if (!resetPwOtpVerified) {
+    statusEl.className = "tf-status err"; statusEl.textContent = "이메일 인증을 완료해 주세요.";
+    return false;
+  }
+  statusEl.textContent = "";
+  return true;
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.id === "resetpw-to-step2") {
+    if (validateResetPwStep1()) resetpwGoStep(2);
+    return;
+  }
+  if (e.target.id === "resetpw-back-step1") {
+    resetpwGoStep(1);
+    return;
+  }
+});
+
 async function handleResetPw() {
   const statusEl = document.getElementById("resetpw-status");
+  const pwHint = document.getElementById("resetpw-new-hint");
+  const pw2Hint = document.getElementById("resetpw-new2-hint");
   statusEl.className = "tf-status";
+  pwHint.className = "tf-hint"; pwHint.textContent = "4자 이상 입력하세요.";
+  pw2Hint.className = "tf-hint"; pw2Hint.textContent = "";
+  const newPassword = document.getElementById("resetpw-new").value;
+  const newPassword2 = document.getElementById("resetpw-new2").value;
+  if (newPassword.length < 4) {
+    pwHint.className = "tf-hint err"; pwHint.textContent = "비밀번호는 4자 이상 입력하세요.";
+    return;
+  }
+  if (newPassword !== newPassword2) {
+    pw2Hint.className = "tf-hint err"; pw2Hint.textContent = "비밀번호가 일치하지 않습니다.";
+    return;
+  }
   statusEl.textContent = "처리 중…";
   try {
     const res = await fetch("/api/reset-password", {
@@ -1493,6 +1798,7 @@ async function handleResetPw() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || "재설정에 실패했습니다.");
     document.getElementById("resetpw-form").reset();
+    resetResetPwVerification();
     statusEl.className = "tf-status ok";
     statusEl.textContent = "비밀번호가 재설정되었습니다. 새 비밀번호로 로그인하세요.";
   } catch (err) {
