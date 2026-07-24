@@ -67,7 +67,24 @@ import tracing
 st.set_page_config(page_title="AI 채팅", page_icon="💬", layout="wide")
 
 # ── CSS ─────────────────────────────────────────────────────────────
+# 매치뱅크 사이트(site/css/style.css)와 동일한 브랜드 그린 팔레트로 통일.
+# Streamlit은 별도 iframe(문서)라 site의 CSS 변수를 상속받지 못하므로, 여기서 같은
+# 값으로 :root 변수를 다시 선언해 사이트와 동일한 이름(--blue 등)으로 맞춘다.
 st.markdown("""<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap');
+:root {
+    --blue:        #0FA968;
+    --blue-dark:   #0B8457;
+    --blue-soft:   #E3F6EC;
+    --blue-line:   #A8E0C4;
+    --bg-soft:     #F8FAFD;
+    --border:      #DDE3EA;
+    --text:        #3C4043;
+    --text-sub:    #5F6368;
+}
+.stApp, .stApp [class*="css"] {
+    font-family: "IBM Plex Sans KR", -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif !important;
+}
 [data-testid="stSidebarNav"] { display: none; }
 #MainMenu, footer { visibility: hidden; }
 .main .block-container {
@@ -78,8 +95,10 @@ st.markdown("""<style>
     margin-right: auto;
 }
 [data-testid="stSidebar"] {
-    background-color: #F8FAFD;
-    border-right: 1px solid #DDE3EA;
+    /* 배경색으로 구분하지 않고, 옅은 경계선만으로 메인 영역과 구분.
+       Streamlit 테마의 secondaryBackgroundColor가 사이드바에 기본 적용되므로 명시적으로 덮어씀 */
+    background-color: #fff !important;
+    border-right: 1px solid rgba(221, 227, 234, 0.55);
 }
 /* 사이드바 상단 헤더(숨기기 버튼 행) 왼쪽에 'AI은행원' 제목 삽입 */
 [data-testid="stSidebarHeader"] {
@@ -90,7 +109,7 @@ st.markdown("""<style>
     content: "AI은행원";
     font-size: 18px;
     font-weight: 700;
-    color: #1A73E8;
+    color: var(--blue-dark);
     padding-left: 4px;
     white-space: nowrap;
 }
@@ -99,43 +118,68 @@ st.markdown("""<style>
     padding-top: 0.5rem !important;
 }
 
-/* ── 새 채팅: 음영 있는 둥근 행 (Gemini 스타일) ───────────────────── */
+/* ── 새 채팅: 화이트 카드 + 얇은 테두리, 아이콘은 브랜드 그린 ──────── */
 /* st-key-<key> 클래스는 stElementContainer(바깥 래퍼)에 붙고, stButton/버튼은
    그 안쪽 자손이므로 반드시 후손 결합자( )를 쓴다 (직계 자식 > 은 매치 안 됨) */
 [data-testid="stSidebar"] .st-key-sidebar_new_chat [data-testid="stButton"] button {
     border: none !important;
     outline: none !important;
-    border-radius: 20px !important;
-    background: #F0F2F5 !important;
-    box-shadow: 0 1px 2px rgba(60,64,67,0.08) !important;
+    border-radius: 12px !important;
+    background: #FFFFFF !important;
+    box-shadow: none !important;
     justify-content: flex-start !important;
     min-height: 0 !important;
-    padding: 0.55rem 0.9rem !important;
-    color: #3C4043 !important;
+    padding: 0.6rem 0.9rem !important;
+    color: var(--text) !important;
+    transition: background 0.15s !important;
 }
 [data-testid="stSidebar"] .st-key-sidebar_new_chat [data-testid="stButton"] button:hover {
-    background: #E4E7EB !important;
+    background: var(--blue-soft) !important;
 }
-[data-testid="stSidebar"] .st-key-sidebar_new_chat [data-testid="stButton"] button p { font-size: 14px !important; }
+/* 버튼 내부 래퍼(div)가 자체적으로 justify-content:center라 아이콘+텍스트가
+   가운데로 몰린다 — 왼쪽 정렬(채팅 검색과 동일한 축)이 되도록 덮어씀 */
+[data-testid="stSidebar"] .st-key-sidebar_new_chat [data-testid="stButton"] button > div {
+    justify-content: flex-start !important;
+}
+[data-testid="stSidebar"] .st-key-sidebar_new_chat [data-testid="stButton"] button p {
+    font-size: 14px !important;
+    font-weight: 600 !important;
+}
+[data-testid="stSidebar"] .st-key-sidebar_new_chat [data-testid="stButton"] button [data-testid="stIconMaterial"] {
+    color: var(--blue-dark) !important;
+}
 
-/* ── 채팅 검색: 테두리 없는 평평한 행 ──────────────────────────────── */
+/* ── 채팅 검색: 새 채팅 버튼과 동일한 톤(흰 배경 + 호버 시 blue-soft, radius 12px) ── */
 [data-testid="stSidebar"] .st-key-sidebar_search { margin-top: 4px !important; margin-bottom: 0 !important; }
 [data-testid="stSidebar"] .st-key-sidebar_search [data-testid="stTextInputRootElement"] {
     border: none !important;
     outline: none !important;
-    background: transparent !important;
-    border-radius: 20px !important;
+    background: #FFFFFF !important;
+    border-radius: 12px !important;
     box-shadow: none !important;
+    transition: background 0.15s !important;
+    /* 새 채팅 버튼의 아이콘 시작 위치(padding-left 14px)·아이콘-텍스트 간격(8px)과 맞춤 */
+    padding-left: 14px !important;
+    column-gap: 8px !important;
+}
+[data-testid="stSidebar"] .st-key-sidebar_search [data-testid="stTextInputRootElement"]:hover {
+    background: var(--blue-soft) !important;
 }
 [data-testid="stSidebar"] .st-key-sidebar_search [data-testid="stTextInputRootElement"]:focus-within {
-    background: #F0F2F5 !important;
+    background: var(--blue-soft) !important;
     box-shadow: none !important;
+}
+/* root 안의 이름 없는 래퍼 div 2개(아이콘 감싸는 것 + 입력창 감싸는 것)가
+   자체적으로 흰 배경이라 root의 색이 가장자리에만 살짝 비쳐 보였다 — 투명 처리 */
+[data-testid="stSidebar"] .st-key-sidebar_search [data-testid="stTextInputRootElement"] > div {
+    background: transparent !important;
 }
 [data-testid="stSidebar"] .st-key-sidebar_search input {
     font-size: 14px !important;
     background: transparent !important;
+    color: var(--text) !important;
 }
-[data-testid="stSidebar"] .st-key-sidebar_search [data-testid="stTextInputIcon"] { color: #5F6368 !important; }
+[data-testid="stSidebar"] .st-key-sidebar_search [data-testid="stTextInputIcon"] { color: var(--blue-dark) !important; }
 
 /* ── "이전 대화" 소제목: 절제된 스타일 ─────────────────────────────── */
 [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
@@ -159,21 +203,23 @@ st.markdown("""<style>
     text-overflow: ellipsis !important;
     font-size: 13.5px !important;
 }
-/* 대화 목록(제목·삭제): 배경·테두리 제거. columns 내부(stHorizontalBlock)만 타겟 */
+/* 대화 목록(제목·삭제): 기본은 투명. columns 내부(stHorizontalBlock)만 타겟 */
 [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stButton"] > button {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
+    border-radius: 10px !important;
+    transition: background 0.15s !important;
 }
-/* 현재 대화(primary): 배경 대신 파란 굵은 글씨로 구분 (흰 글씨 방지) */
+/* 현재 대화(primary): 연한 그린 필 배경으로 "선택됨"을 명확히 표시 */
 [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stButton"] > button[kind="primary"] {
-    color: #1A73E8 !important;
+    background: var(--blue-soft) !important;
+    color: var(--blue-dark) !important;
     font-weight: 700 !important;
 }
-/* hover 시 옅은 배경으로 클릭 가능 표시 */
-[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stButton"] > button:hover {
-    background: #EEF3FB !important;
-    color: #1A73E8 !important;
+/* hover(선택되지 않은 행): 중립 회색 — 그린은 "선택됨" 전용이라 구분되게 */
+[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stButton"] > button[kind="secondary"]:hover {
+    background: #F0F2F5 !important;
 }
 /* 대화 제목: 왼쪽 정렬 (첫 번째 컬럼 버튼만, 삭제 버튼은 그대로) */
 [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child
@@ -212,7 +258,7 @@ st.markdown("""<style>
     margin: 0.6rem 0 !important;
 }
 
-/* ── expander(은행 에이전트 / 유의사항): 박스 느낌 제거 + 절제된 폰트 ── */
+/* ── expander(유의사항): 박스 느낌 제거 + 작은 폰트 + 사이드바 하단 고정 ── */
 /* 실제 테두리/배경은 컨테이너가 아니라 summary(헤더)에 있어 둘 다 리셋 */
 [data-testid="stSidebar"] [data-testid="stExpander"] {
     border: none !important;
@@ -225,17 +271,62 @@ st.markdown("""<style>
     background: transparent !important;
     box-shadow: none !important;
     outline: none !important;
-    padding: 0.4rem 0.2rem !important;
-    font-size: 13.5px !important;
+    padding: 0.35rem 0.2rem !important;
+    font-size: 11.5px !important;
     font-weight: 500 !important;
+    color: var(--text-sub, #5F6368) !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary svg {
+    width: 14px !important;
+    height: 14px !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
-    background: #EEF3FB !important;
+    background: var(--blue-soft) !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpanderDetails"] {
-    font-size: 13px !important;
-    line-height: 1.6 !important;
+    font-size: 11.5px !important;
+    line-height: 1.4 !important;
     padding-top: 0.2rem !important;
+    max-height: 200px !important;
+    overflow-y: auto !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpanderDetails"] p,
+[data-testid="stSidebar"] [data-testid="stExpanderDetails"] ul,
+[data-testid="stSidebar"] [data-testid="stExpanderDetails"] li {
+    font-size: 11.5px !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpanderDetails"] ul {
+    padding-left: 1rem !important;
+    margin: 0 !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpanderDetails"] li {
+    margin-bottom: 0.3rem !important;
+}
+
+/* 사이드바 콘텐츠를 세로 flex로 늘여 '유의사항'을 항상 하단에 고정 */
+[data-testid="stSidebarContent"] {
+    display: flex !important;
+    flex-direction: column !important;
+}
+[data-testid="stSidebarContent"] [data-testid="stSidebarUserContent"] {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+}
+[data-testid="stSidebarUserContent"] > div {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+}
+[data-testid="stSidebarUserContent"] > div > [data-testid="stVerticalBlock"] {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+}
+/* 유의사항 바로 위 구분선부터 margin-top:auto로 하단에 밀착 */
+[data-testid="stSidebarUserContent"] [data-testid="stElementContainer"]:has(> [data-testid="stMarkdown"] hr) {
+    margin-top: auto !important;
 }
 [data-testid="stChatMessage"] {
     background-color: transparent !important;
@@ -246,7 +337,7 @@ st.markdown("""<style>
 }
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"])
   [data-testid="stVerticalBlock"] {
-    background-color: #EFF6FF;
+    background-color: var(--blue-soft);
     border-radius: 18px 18px 18px 4px;
     padding: 12px 18px;
     max-width: 72%;
@@ -266,6 +357,9 @@ st.markdown("""<style>
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
   [data-testid="stChatMessageAvatarAssistant"] { display: none; }
 
+/* "+" 파일첨부 버튼에 마우스를 올리면 뜨는 허용 파일형식 툴팁 숨김 */
+[role="tooltip"] { display: none !important; }
+
 /* ── 액션 버튼 ─────────────────────────────────────────────────── */
 .msg-actions { display: flex; gap: 4px; margin-top: 6px; }
 .action-btn {
@@ -276,7 +370,7 @@ st.markdown("""<style>
     cursor: pointer;
     transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-.action-btn:hover { border-color: #1A73E8; background: #E8F0FE; color: #1A73E8; }
+.action-btn:hover { border-color: var(--blue); background: var(--blue-soft); color: var(--blue-dark); }
 .action-btn svg { width: 14px; height: 14px; pointer-events: none; }
 /* 숨겨진 retry st.button — JS .click()으로만 트리거 */
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
@@ -294,7 +388,7 @@ st.markdown("""<style>
 [data-testid="stChatInput"] { margin-right: 150px !important; }
 [data-testid="stChatInput"] > div {
     border-radius: 24px !important;
-    border: 1.5px solid #D3E3FD !important;
+    border: 1.5px solid var(--blue-line) !important;
     background-color: #FFFFFF !important;
     box-shadow: 0 2px 8px rgba(60,64,67,0.10) !important;
 }
@@ -304,13 +398,13 @@ st.markdown("""<style>
 }
 [data-testid="stChatInputSubmitButton"][disabled] { color: rgba(49,51,63,0.55) !important; }
 [data-testid="stChatInputSubmitButton"]:not([disabled]) {
-    color: #1A73E8 !important;
-    background: #E8F0FE !important;
+    color: var(--blue-dark) !important;
+    background: var(--blue-soft) !important;
 }
 
 /* ── 은행 링크 ─────────────────────────────────────────────────── */
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) a {
-    color: #1A73E8; text-decoration: none; font-weight: 500;
+    color: var(--blue-dark); text-decoration: none; font-weight: 500;
 }
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) a:hover {
     text-decoration: underline;
@@ -327,12 +421,12 @@ st.markdown("""<style>
 [data-testid="stPopoverButton"] {
     width: auto !important; min-width: 0 !important;
     height: 59px !important;
-    background-color: #E8F0FE !important;
-    border: 1.5px solid #C5D9F8 !important;
+    background-color: var(--blue-soft) !important;
+    border: 1.5px solid var(--blue-line) !important;
     border-radius: 24px !important;
     padding: 0 16px !important;
     font-size: 0.8rem !important; font-weight: 500 !important;
-    color: #1A73E8 !important;
+    color: var(--blue-dark) !important;
     white-space: nowrap !important;
 }
 [data-testid="stPopoverBody"] [data-testid="stButton"] > button {
@@ -344,26 +438,47 @@ st.markdown("""<style>
     box-shadow: none !important;
 }
 [data-testid="stPopoverBody"] [data-testid="stButton"] > button[kind="secondary"] {
-    border: none !important; background: transparent !important; color: #3C4043 !important;
+    border: none !important; background: transparent !important; color: var(--text) !important;
 }
 [data-testid="stPopoverBody"] [data-testid="stButton"] > button[kind="secondary"]:hover {
-    background: #F1F3F4 !important; color: #1A73E8 !important;
+    background: var(--bg-soft) !important; color: var(--blue-dark) !important;
 }
 [data-testid="stPopoverBody"] [data-testid="stButton"] > button[kind="primary"] {
-    border: none !important; background: #EFF6FF !important;
-    color: #1565C0 !important; font-weight: 600 !important;
+    border: none !important; background: var(--blue-soft) !important;
+    color: var(--blue-dark) !important; font-weight: 600 !important;
 }
 [data-testid="stPopoverBody"] [data-testid="stButton"] > button[kind="primary"]:hover {
-    background: #D3E3FD !important; color: #1565C0 !important;
+    background: var(--blue-line) !important; color: var(--blue-dark) !important;
 }
-/* 추천 질문(제안) 버튼: 문장 크기에 맞춘 칩. 컬럼 폭을 채우지 않고 내용만큼만. */
-[class*="st-key-sugg_"] { width: fit-content !important; }
-[class*="st-key-sugg_"] > button {
+/* 추천 질문(제안) 버튼: 가로 스크롤 리본의 작은 알약형 칩.
+   st-key-<key> 클래스는 stElementContainer(바깥 래퍼)에 붙고 button은 stButton 안쪽
+   자손이므로 반드시 후손 결합자를 쓴다(직계 자식 > 은 매치 안 됨 — 실제로 button의 부모는
+   stButton div이고, st-key-sugg_ 클래스는 그 바깥의 stElementContainer에 있음).
+   배경/호버는 흰 바탕 + 옅은 테두리 + 호버 시 그림자 확대·상승(카드형 톤), 모양만 알약형 유지. */
+[class*="st-key-sugg_"] { width: fit-content !important; flex-shrink: 0 !important; }
+[class*="st-key-sugg_"] button {
     width: fit-content !important;
-    padding: 6px 14px !important;
+    padding: 7px 14px !important;
     border-radius: 18px !important;
+    border: 1px solid #E3E6EA !important;
+    background: #FFFFFF !important;
+    color: var(--text) !important;
+    font-weight: 500 !important;
+    font-size: 13px !important;
+    box-shadow: 0 1px 3px rgba(60, 64, 67, 0.06) !important;
+    transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease !important;
+    white-space: nowrap !important;
 }
-[class*="st-key-sugg_"] > button > div { width: auto !important; }
+[class*="st-key-sugg_"] button:hover {
+    border-color: var(--blue-line) !important;
+    box-shadow: 0 6px 16px rgba(15, 169, 104, 0.18) !important;
+    transform: translateY(-2px) !important;
+}
+[class*="st-key-sugg_"] button:active {
+    transform: translateY(0) scale(0.98) !important;
+}
+[class*="st-key-sugg_"] button p { font-size: 13px !important; }
+[class*="st-key-sugg_"] button > div { width: auto !important; }
 /* 제출 시작 즉시 인사말·키워드 숨김(블로킹 처리 중 잔상 방지) + 입력창 하단 고정 */
 body.chat-submitting .chat-hero-greeting,
 body.chat-submitting [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){ display: none !important; }
@@ -550,32 +665,6 @@ with st.sidebar:
 
     # 파일 첨부는 입력창의 "+" 버튼(st.chat_input accept_file)으로 이동했다.
 
-    # 은행 에이전트 로그인 — 사이트 iframe 임베드 시에는 사이트 로그인과 자동 연동되므로
-    # 사이드바에 노출하지 않고, :8501 직접 접속 시에만 수동 로그인 UI를 보여준다.
-    if not _SITE_EMBEDDED:
-        st.divider()
-        with st.expander("🤖 은행 에이전트", expanded=not st.session_state.get("auth_token")):
-            if st.session_state.get("auth_token"):
-                st.success("로그인됨 — 계좌·거래내역·이체·문의 도구 사용 가능")
-                if st.button("로그아웃", use_container_width=True, key="agent_logout"):
-                    st.session_state.auth_token = None
-                    st.rerun()
-            else:
-                st.caption("로그인하면 계좌·이체 등 은행업무를 대화로 처리합니다. (테스트 계정: demo / demo1234)")
-                _lu = st.text_input("아이디", key="agent_login_u")
-                _lp = st.text_input("비밀번호", type="password", key="agent_login_p")
-                if st.button("에이전트 로그인", type="primary", use_container_width=True, key="agent_login_btn"):
-                    try:
-                        _r = requests.post(f"{_BACKEND_URL}/api/login",
-                                           json={"username": _lu, "password": _lp}, timeout=5)
-                        if _r.ok:
-                            st.session_state.auth_token = _r.json()["token"]
-                            st.rerun()
-                        else:
-                            st.error(_r.json().get("detail", "로그인에 실패했습니다."))
-                    except Exception as _e:
-                        st.error(f"백엔드(:8000) 연결 실패: {_e}")
-
     st.divider()
     with st.expander("AI은행원 유의사항", icon=":material/info:", expanded=False):
         # 이체 한도 문구는 관리자가 저장한 이체 정책(config.json)을 그대로 반영한다.
@@ -665,22 +754,42 @@ body.chat-empty [data-testid="stBottom"]{
 body.chat-empty [data-testid="stChatInput"]{
   max-width: 520px !important; margin-left: auto !important; margin-right: auto !important;
 }
-/* 추천 키워드: 메인영역 기준 가운데(인사말·입력창과 같은 축), 입력창 아래에. 기본 숨김 → 포커스 시 노출 */
+/* 추천 키워드: 입력창 아래, 가로 한 줄 스크롤 리본. 기본 숨김 → 포커스 시 노출 */
 .stMain{ position: relative !important; }
 [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){
   position: absolute !important; left: 0 !important; right: 0 !important;
   top: 60% !important;
-  justify-content: center !important; gap: 40px !important;
+  justify-content: center !important; gap: 10px !important;
   display: none !important; z-index: 39;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  padding: 4px 24px 10px !important;
+  scrollbar-width: none !important;      /* Firefox: 스크롤바 숨김 */
+  -ms-overflow-style: none !important;   /* 구형 Edge: 스크롤바 숨김 */
 }
-/* 컬럼이 폭을 채우며 늘어나지 않도록 → 두 컬럼이 가운데로 모임 */
+/* Chrome/Safari(웹킷): 스크롤바 숨김 */
+[data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"])::-webkit-scrollbar{
+  display: none !important;
+}
+/* 컬럼이 폭을 채우며 늘어나지 않도록 → 내용 크기만큼만, 한 줄에 나열 */
 [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]) > [data-testid="stColumn"]{
   flex: 0 0 auto !important; width: auto !important; min-width: 0 !important;
 }
 body.kw-open [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){ display: flex !important; }
 </style>""", unsafe_allow_html=True)
     st.markdown("<div style='height:16vh'></div>", unsafe_allow_html=True)
-    st.markdown(f"""
+
+    if not auth_token:
+        st.markdown("""
+<div class='chat-hero-greeting' style='text-align:center; padding:1.5rem 2rem;'>
+  <p style='font-size:2rem; font-weight:400; color:#3C4043;
+            letter-spacing:-0.3px; line-height:1.35; margin:0;'>
+    로그인하고 AI은행원과 대화를 나눠보세요.
+  </p>
+</div>""", unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
 <div class='chat-hero-greeting' style='text-align:center; padding:1.5rem 2rem;'>
   <p style='font-size:2rem; font-weight:400; color:#3C4043;
             letter-spacing:-0.3px; line-height:1.35; margin:0;'>
@@ -688,21 +797,21 @@ body.kw-open [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){ dis
   </p>
 </div>""", unsafe_allow_html=True)
 
-    # 대화 제안(추천 프롬프트) — 클릭 시 해당 질문 전송
-    _SUGGESTIONS = [
-        "💰 내 계좌 잔액 알려줘",
-        "📄 최근 거래내역 보여줘",
-        "📈 금리 높은 정기예금 추천해줘",
-        "🐷 적금 상품 비교해줘",
-        "💸 오늘 이체 한도 얼마 남았어?",
-        "🙋 공지사항 알려줘",
-    ]
-    # 문장 길이에 맞는 칩 형태: 컨테이너 폭을 채우지 않고 내용 크기로
-    _scols = st.columns(2)
-    for _i, _sugg in enumerate(_SUGGESTIONS):
-        if _scols[_i % 2].button(_sugg, key=f"sugg_{_i}", use_container_width=False):
-            st.session_state["_retry_prompt"] = _sugg.split(" ", 1)[1]  # 이모지 제거
-            st.rerun()
+        # 대화 제안(추천 프롬프트) — 클릭 시 해당 질문 전송 (로그인 후에만 노출)
+        _SUGGESTIONS = [
+            "💰 내 계좌 잔액 알려줘",
+            "📄 최근 거래내역 보여줘",
+            "📈 금리 높은 정기예금 추천해줘",
+            "🐷 적금 상품 비교해줘",
+            "💸 오늘 이체 한도 얼마 남았어?",
+            "🙋 공지사항 알려줘",
+        ]
+        # 문장 길이에 맞는 칩 형태: 한 줄에 나열해 가로 스크롤 리본으로(컨테이너 폭 안 채움)
+        _scols = st.columns(len(_SUGGESTIONS))
+        for _i, _sugg in enumerate(_SUGGESTIONS):
+            if _scols[_i].button(_sugg, key=f"sugg_{_i}", use_container_width=False):
+                st.session_state["_retry_prompt"] = _sugg.split(" ", 1)[1]  # 이모지 제거
+                st.rerun()
 
     # 입력창을 누르면(포커스) 추천 키워드 노출 (iframe → 부모 DOM)
     _components.html("""<script>
@@ -973,9 +1082,9 @@ _components.html("""<script>
           var self=this;
           var title=self.getAttribute('title')||'';
           function flash(){
-            self.style.color='#1A73E8';
-            self.style.borderColor='#1A73E8';
-            self.style.background='#E8F0FE';
+            self.style.color='#0B8457';
+            self.style.borderColor='#0B8457';
+            self.style.background='#E3F6EC';
             setTimeout(function(){
               self.style.color='';
               self.style.borderColor='';

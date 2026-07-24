@@ -503,6 +503,13 @@ def create_notice(title: str, content: str) -> int:
         return cur.lastrowid
 
 
+def update_notice(notice_id: int, title: str, content: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE notices SET title = ?, content = ? WHERE id = ?", (title, content, notice_id)
+        )
+
+
 def delete_notice(notice_id: int) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM notices WHERE id = ?", (notice_id,))
@@ -546,6 +553,13 @@ def create_faq(question: str, answer: str) -> int:
         return cur.lastrowid
 
 
+def update_faq(faq_id: int, question: str, answer: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE faqs SET question = ?, answer = ? WHERE id = ?", (question, answer, faq_id)
+        )
+
+
 def delete_faq(faq_id: int) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM faqs WHERE id = ?", (faq_id,))
@@ -586,6 +600,14 @@ def create_document(title: str, category: str, description: str = "") -> int:
             (title, category, description, time.time()),
         )
         return cur.lastrowid
+
+
+def update_document(document_id: int, title: str, category: str, description: str = "") -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE documents SET title = ?, category = ?, description = ? WHERE id = ?",
+            (title, category, description, document_id),
+        )
 
 
 def delete_document(document_id: int) -> None:

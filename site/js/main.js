@@ -170,13 +170,14 @@ function updateNavIndicator() {
 }
 window.addEventListener("resize", updateNavIndicator);
 
-/* 클릭 위임: data-nav 속성을 가진 모든 요소 (data-auth 있으면 로그인/회원가입 탭도 맞춤) */
+/* 클릭 위임: data-nav 속성을 가진 모든 요소 (data-auth 있으면 로그인/회원가입 탭도, data-account-tab 있으면 내 계좌 서브탭도 맞춤) */
 document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-nav]");
   if (!el) return;
   e.preventDefault();
   navigate(el.dataset.nav);
   if (el.dataset.auth) setAuthTab(el.dataset.auth);
+  if (el.dataset.accountTab) accountGoTab(el.dataset.accountTab);
 });
 
 /* ── 홈: 이벤트 배너 자동 전환 ───────────────────────────────────── */
@@ -300,6 +301,32 @@ function bankLogoFallback(img, name) {
 
 /* ── 내 계좌 (계좌조회 + 이체) ──────────────────────────────────── */
 const won = (n) => Number(n).toLocaleString("ko-KR") + "원";
+
+/* Backoffice 지표 카드용 미니 스파크라인. 실제 데이터(날짜별 발생 건수)만 그린다 —
+   시계열이 2개 미만이면 추세라 부를 게 없으므로 빈 문자열(렌더 안 함). */
+function sparklineSvg(values, color) {
+  if (!values || values.length < 2) return "";
+  const max = Math.max(1, ...values);
+  const w = 100, h = 20;
+  const pts = values
+    .map((v, i) => `${((i / (values.length - 1)) * w).toFixed(1)},${(h - (v / max) * h).toFixed(1)}`)
+    .join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">` +
+    `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+/* items를 날짜별로 묶어 {days:[정렬된 날짜키...], byDay:{날짜키: {...}}} 형태로 반환.
+   dayFn(item)으로 날짜키, bucketFn(acc, item)으로 각 날짜 버킷을 누적한다.
+   데이터가 실제로 존재하는 날짜만 모아 최근 maxDays개만 남긴다(빈 날짜로 납작해지는 것 방지). */
+function bucketByDay(items, dayFn, bucketFn, maxDays = 8) {
+  const byDay = {};
+  for (const item of items) {
+    const day = dayFn(item);
+    byDay[day] = bucketFn(byDay[day], item);
+  }
+  const days = Object.keys(byDay).sort().slice(-maxDays);
+  return { days, byDay };
+}
 const ACCOUNT_TABS = ["inquiry", "transfer"];
 
 function accountGoTab(name) {
@@ -338,13 +365,24 @@ async function loadAccounts() {
     const res = await apiFetch("/api/accounts");
     if (!res.ok) throw new Error("계좌 조회 실패");
     const { accounts } = await res.json();
+    renderAssetSummary(accounts);
     renderAccountCards(accounts);
     fillTransferFrom(accounts);
   } catch (err) {
+    document.getElementById("asset-summary").innerHTML = "";
     document.getElementById("account-cards").innerHTML =
       '<div class="card"><p>계좌 정보를 불러오지 못했습니다. 백엔드(:8000)가 실행 중인지 확인하세요.</p></div>';
     console.error("계좌 로드 실패:", err);
   }
+}
+
+function renderAssetSummary(accounts) {
+  const total = accounts.reduce((sum, a) => sum + Number(a.balance), 0);
+  document.getElementById("asset-summary").innerHTML = `
+    <div class="asset-summary-label">총자산</div>
+    <div class="asset-summary-amount">${won(total)}</div>
+    <div class="asset-summary-sub">${accounts.length}개 계좌 연결됨</div>
+  `;
 }
 
 function renderAccountCards(accounts) {
@@ -352,8 +390,11 @@ function renderAccountCards(accounts) {
     .map(
       (a) =>
         `<div class="card clickable acct-card" data-acct-id="${a.id}" data-acct-no="${a.account_no}">
-           <div class="acct-bank">${bankBadge(a.bank_name)} ${escapeHtml(a.bank_name)}</div>
-           <div class="acct-no">${escapeHtml(a.account_no)}</div>
+           <span class="acct-bank-logo">${bankBadge(a.bank_name)}</span>
+           <div class="acct-info">
+             <div class="acct-bank">${escapeHtml(a.bank_name)}</div>
+             <div class="acct-no">${escapeHtml(a.account_no)}</div>
+           </div>
            <div class="acct-balance">${won(a.balance)}</div>
          </div>`
     )
@@ -377,7 +418,9 @@ function fillTransferFrom(accounts) {
     .join("");
   const toBank = document.getElementById("tf-to-bank");
   if (toBank && !toBank.dataset.filled) {
-    toBank.innerHTML = TF_BANKS.map((b) => `<option value="${b}">${b}</option>`).join("");
+    toBank.innerHTML =
+      `<option value="" disabled selected>은행 선택</option>` +
+      TF_BANKS.map((b) => `<option value="${b}">${b}</option>`).join("");
     toBank.dataset.filled = "1";
   }
   updateFromBalance();
@@ -732,90 +775,29 @@ function renderReceipt(tr) {
     </div>`;
 }
 
-/* ── 인기 통계 (상품안내 상단: 은행 순위 + 카테고리별 Top 5) ──────── */
+/* ── 인기 통계 (상품안내 상단: 카테고리별 Top 5) ──────────────────── */
 async function loadProductStats() {
-  loadBankRanking("stat-banks", 5, false, false);   // 상품안내: 조회수·프로그레스바 숨김
-  loadTopProductsCarousel("stat-products");
+  loadTopProductsGrid("stat-products");
 }
 
-async function loadBankRanking(targetId = "stat-banks", limit = 10, showNum = true, showBar = true) {
-  const box = document.getElementById(targetId);
-  try {
-    const res = await fetch(`/api/stats/banks?limit=${limit}`);
-    const { banks } = await res.json();
-    if (!banks.length) {
-      box.innerHTML = statEmpty();
-      return;
-    }
-    const max = Math.max(1, ...banks.map((b) => b.count));
-    box.innerHTML = banks
-      .map((b, i) => {
-        const url = banksData.find((d) => d.name === b.name)?.url;
-        const tag = url ? "a" : "div";
-        const link = url ? ` href="${url}" target="_blank" rel="noopener"` : "";
-        return (
-          `<${tag} class="bar-row"${link}>` +
-          `<span class="rank">${i + 1}</span>` +
-          bankBadge(b.name) +
-          `<span class="name">${escapeHtml(b.name)}</span>` +
-          (showBar ? `<div class="bar-track"><div class="bar-fill" style="width:${(b.count / max) * 100}%"></div></div>` : ``) +
-          (showNum ? `<span class="num">${b.count}</span>` : ``) +
-          `</${tag}>`
-        );
-      })
-      .join("");
-  } catch (err) {
-    box.innerHTML = statError();
-    console.error("은행 순위 로드 실패:", err);
-  }
-}
+/* 상품안내 카테고리 탭(#cat-tabs)과 동일한 순서 — 인기 상품 TOP5도 이 순서로 표시 */
+const PRODUCT_CATEGORY_ORDER = ["예금", "적금", "주택담보대출", "전세자금대출", "신용대출"];
 
-async function loadTopProducts(targetId = "stat-products") {
+/* 카테고리별 Top5를 5분할(가로) 레이아웃으로 한 번에 표시(상품안내 + 백오피스 공용).
+   내용은 순위+상품명, 카테고리 순서는 상품안내 탭 메뉴 순서와 동일하게 정렬. */
+async function loadTopProductsGrid(targetId = "stat-products") {
   const box = document.getElementById(targetId);
   try {
     const res = await fetch("/api/stats/top-products");
     const { categories } = await res.json();
-    const names = Object.keys(categories);
+    const names = Object.keys(categories)
+      .filter((c) => (categories[c] || []).length > 0)
+      .sort((a, b) => PRODUCT_CATEGORY_ORDER.indexOf(a) - PRODUCT_CATEGORY_ORDER.indexOf(b));
     if (!names.length) {
       box.innerHTML = statEmpty();
       return;
     }
-    box.innerHTML = names
-      .map((cat) => {
-        const items = categories[cat];
-        const rows = items
-          .map(
-            (p, i) =>
-              `<li><span class="rank">${i + 1}</span>` +
-              `<span class="p-name">${escapeHtml(p.product)}</span>` +
-              `<span class="p-count">${p.count}</span></li>`
-          )
-          .join("");
-        return `<div class="topcat"><div class="topcat-title">${escapeHtml(cat)}</div><ol class="topcat-list">${rows}</ol></div>`;
-      })
-      .join("");
-  } catch (err) {
-    box.innerHTML = statError();
-    console.error("인기 상품 로드 실패:", err);
-  }
-}
-
-/* 상품안내 페이지 전용: 카테고리별 Top5 캐러셀(스와이프).
-   옆 은행순위(5줄)와 높이를 맞추기 위해 전체를 한 번에 나열하지 않고
-   한 카테고리씩 슬라이드로 보여준다. 내용은 이용통계와 동일하게 순위+상품명+조회수. */
-let statProductsIndex = 0;
-
-async function loadTopProductsCarousel(targetId = "stat-products") {
-  const box = document.getElementById(targetId);
-  try {
-    const res = await fetch("/api/stats/top-products");
-    const { categories } = await res.json();
-    const names = Object.keys(categories).filter((c) => (categories[c] || []).length > 0);
-    if (!names.length) {
-      box.innerHTML = statEmpty();
-      return;
-    }
-    const slides = names
+    const cols = names
       .map((cat) => {
         const rows = categories[cat]
           .map(
@@ -825,70 +807,17 @@ async function loadTopProductsCarousel(targetId = "stat-products") {
               `<span class="p-name">${escapeHtml(p.product)}</span></li>`
           )
           .join("");
-        return `<div class="stat-products-slide"><div class="topcat"><div class="topcat-title">${escapeHtml(cat)}</div><ol class="topcat-list">${rows}</ol></div></div>`;
+        return `<div class="topcat"><div class="topcat-title">${escapeHtml(cat)}</div><ol class="topcat-list">${rows}</ol></div>`;
       })
       .join("");
-    const dots = names
-      .map(
-        (cat, i) =>
-          `<button class="stat-products-dot${i === 0 ? " active" : ""}" type="button" data-slide="${i}" aria-label="${escapeHtml(cat)}"></button>`
-      )
-      .join("");
-    // 슬라이드가 1개뿐이면 화살표·dot 숨김
-    const nav = names.length > 1
-      ? `<button class="stat-products-nav prev" type="button" aria-label="이전 카테고리">‹</button>` +
-        `<button class="stat-products-nav next" type="button" aria-label="다음 카테고리">›</button>`
-      : "";
-    box.innerHTML =
-      `<div class="stat-products-carousel">` +
-      `<div class="stat-products-track" id="stat-products-track">${slides}</div>` +
-      nav +
-      `</div>` +
-      (names.length > 1 ? `<div class="stat-products-dots">${dots}</div>` : "");
-    statProductsIndex = 0;
-    goStatProductsSlide(0);
-    setupStatProductsSwipe();
+    box.innerHTML = `<div class="stat-products-columns">${cols}</div>`;
   } catch (err) {
     box.innerHTML = statError();
     console.error("인기 상품 로드 실패:", err);
   }
 }
 
-function goStatProductsSlide(i) {
-  const track = document.getElementById("stat-products-track");
-  const dots = document.querySelectorAll(".stat-products-dot");
-  if (!track) return;
-  const count = dots.length || 1;
-  statProductsIndex = (i + count) % count;
-  track.style.transform = `translateX(-${statProductsIndex * 100}%)`;
-  dots.forEach((d, idx) => d.classList.toggle("active", idx === statProductsIndex));
-}
-
-/* 터치/마우스 드래그 스와이프. box.innerHTML 재설정 시 요소가 교체되므로
-   리스너가 누적되지 않는다(옛 요소와 함께 GC). */
-function setupStatProductsSwipe() {
-  const carousel = document.querySelector(".stat-products-carousel");
-  if (!carousel) return;
-  let startX = null;
-  const begin = (x) => { startX = x; };
-  const end = (x) => {
-    if (startX === null) return;
-    const dx = x - startX;
-    startX = null;
-    if (Math.abs(dx) > 40) goStatProductsSlide(statProductsIndex + (dx < 0 ? 1 : -1));
-  };
-  carousel.addEventListener("touchstart", (e) => begin(e.touches[0].clientX), { passive: true });
-  carousel.addEventListener("touchend", (e) => end(e.changedTouches[0].clientX));
-  carousel.addEventListener("mousedown", (e) => begin(e.clientX));
-  carousel.addEventListener("mouseup", (e) => end(e.clientX));
-  carousel.addEventListener("mouseleave", () => { startX = null; });
-}
-
 document.addEventListener("click", (e) => {
-  const dot = e.target.closest(".stat-products-dot");
-  if (dot) { goStatProductsSlide(Number(dot.dataset.slide)); return; }
-  if (e.target.closest(".stat-products-nav.prev")) { goStatProductsSlide(statProductsIndex - 1); return; }
-  if (e.target.closest(".stat-products-nav.next")) { goStatProductsSlide(statProductsIndex + 1); return; }
   const item = e.target.closest("#stat-products .topcat-list li[data-product]");
   if (item) { goToProductInList(item.dataset.category, item.dataset.product); return; }
 });
@@ -998,6 +927,10 @@ async function loadProductList(category, desc) {
   titleEl.textContent = `${category} 상품 목록`;
   descEl.textContent = desc || "";
   listEl.innerHTML = '<p class="product-list-empty">불러오는 중…</p>';
+  productSearchQuery = "";
+  productSortMode = "default";
+  document.getElementById("product-search").value = "";
+  document.getElementById("product-sort").value = "default";
   panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
   try {
     const res = await fetch(`/api/products?category=${encodeURIComponent(category)}`);
@@ -1017,37 +950,104 @@ async function loadProductList(category, desc) {
 const PRODUCT_LIST_PAGE_SIZE = 8;
 let productListAll = [];
 let productListExpanded = false;
+let productSearchQuery = "";
+let productSortMode = "default"; // default | rate-asc | rate-desc
+
+/* 검색어(은행명/상품명)로 좁히고, 정렬 모드에 따라 재정렬한 목록 반환 */
+function getFilteredProducts() {
+  let list = productListAll;
+  if (productSearchQuery) {
+    const q = productSearchQuery;
+    list = list.filter(
+      (p) => p.bank.toLowerCase().includes(q) || p.product_name.toLowerCase().includes(q)
+    );
+  }
+  if (productSortMode !== "default") {
+    list = [...list].sort((a, b) => {
+      const ra = getProductRateRange(a).maxRate ?? 0;
+      const rb = getProductRateRange(b).maxRate ?? 0;
+      return productSortMode === "rate-asc" ? ra - rb : rb - ra;
+    });
+  }
+  return list;
+}
 
 function renderProductList(products) {
-  productListAll = products;
+  if (products) productListAll = products;
+  const filtered = getFilteredProducts();
   const listEl = document.getElementById("product-list");
+  renderTopPick(filtered[0]);
   if (!productListAll.length) {
     listEl.innerHTML = '<p class="product-list-empty">조회된 상품이 없습니다.</p>';
     return;
   }
-  const overflow = productListAll.length > PRODUCT_LIST_PAGE_SIZE;
+  if (!filtered.length) {
+    listEl.innerHTML = '<p class="product-list-empty">검색 결과가 없습니다.</p>';
+    return;
+  }
+  const overflow = filtered.length > PRODUCT_LIST_PAGE_SIZE;
   const visible = productListExpanded || !overflow
-    ? productListAll
-    : productListAll.slice(0, PRODUCT_LIST_PAGE_SIZE);
+    ? filtered
+    : filtered.slice(0, PRODUCT_LIST_PAGE_SIZE);
   const toggleBtn = overflow
     ? `<button class="product-list-toggle" type="button">${
         productListExpanded
           ? "접기 ▲"
-          : `더보기 (${productListAll.length - PRODUCT_LIST_PAGE_SIZE}개 더 보기) ▼`
+          : `더보기 (${filtered.length - PRODUCT_LIST_PAGE_SIZE}개 더 보기) ▼`
       }</button>`
     : "";
   listEl.innerHTML = visible.map(renderProductRow).join("") + toggleBtn;
 }
 
+document.getElementById("product-search").addEventListener("input", (e) => {
+  productSearchQuery = e.target.value.trim().toLowerCase();
+  productListExpanded = false;
+  renderProductList();
+});
+document.getElementById("product-sort").addEventListener("change", (e) => {
+  productSortMode = e.target.value;
+  productListExpanded = false;
+  renderProductList();
+});
+
 const LOAN_CATEGORIES = ["주택담보대출", "전세자금대출", "신용대출"];
 
-function renderProductRow(p) {
+/* 상품의 최저~최고 금리 범위 계산 (목록 행/TOP 추천 카드 공용) */
+function getProductRateRange(p) {
   const isLoan = LOAN_CATEGORIES.includes(p.category);
   const rates = isLoan
     ? p.options.flatMap((o) => [o.min_rate, o.max_rate]).filter((r) => r != null)
     : p.options.map((o) => (o.max_rate != null ? o.max_rate : o.base_rate)).filter((r) => r != null);
-  const minRate = rates.length ? Math.min(...rates) : null;
-  const maxRate = rates.length ? Math.max(...rates) : null;
+  return {
+    isLoan,
+    minRate: rates.length ? Math.min(...rates) : null,
+    maxRate: rates.length ? Math.max(...rates) : null,
+  };
+}
+
+/* 카테고리 탭 클릭 시 정렬 1순위 상품(최저금리=대출 / 최고금리=예적금)을 강조 카드로 표시 */
+function renderTopPick(p) {
+  const el = document.getElementById("product-top-pick");
+  if (!p) { el.innerHTML = ""; return; }
+  const { isLoan, minRate, maxRate } = getProductRateRange(p);
+  const rateNum = isLoan ? minRate : maxRate;
+  const rateLabel = isLoan ? "최저금리" : "최고금리";
+  el.innerHTML = `
+    <div class="top-pick">
+      <span class="top-pick-badge">TOP 추천</span>
+      <div class="top-pick-body">
+        <div class="top-pick-bank">${bankBadge(p.bank)} ${escapeHtml(p.bank)}</div>
+        <div class="top-pick-name">${escapeHtml(p.product_name)}</div>
+      </div>
+      <div class="top-pick-rate">
+        <span class="top-pick-rate-label">${rateLabel}</span>
+        <span class="top-pick-rate-num">연 ${rateNum != null ? rateNum : "-"}%</span>
+      </div>
+    </div>`;
+}
+
+function renderProductRow(p) {
+  const { isLoan, minRate, maxRate } = getProductRateRange(p);
   const rateText =
     minRate == null
       ? "-"
@@ -1176,9 +1176,8 @@ async function ensureBanksLoaded() {
 document.addEventListener("click", async (e) => {
   const chip = e.target.closest(".bank-chip");
   if (!chip) return;
-  // 새 탭 이동은 브라우저가 처리(target=_blank), 현재 탭에서 추적·갱신
+  // 새 탭 이동은 브라우저가 처리(target=_blank), 현재 탭에서 추적만
   await trackView({ bank: chip.dataset.bank });
-  loadBankRanking("stat-banks", 5, false, false);
 });
 
 /* ── 인증: 로그인 / 회원가입 / 로그아웃 ─────────────────────────────── */
@@ -1515,11 +1514,12 @@ function mypageGoTab(name) {
     document.getElementById(`mypage-panel-${t}`).style.display = t === name ? "block" : "none";
   });
   if (name === "profile") loadMyProfile();
-  if (name === "security") { loadMyTransferPwState(); loadMyConsents(); loadMyLimits(); loadMySecurityEvents(); }
+  if (name === "security") { loadSecurityOverview(); loadMyTransferPwState(); loadMyConsents(); loadMyLimits(); loadMySecurityEvents(); }
   if (name === "accounts") loadMyAccounts();
   if (name === "favorites") loadMyFavorites();
   if (name === "scheduled") loadMyScheduled();
   if (name === "inquiries") loadMyInquiries();
+  if (name === "statement") loadMyStatementList();
 }
 
 document.addEventListener("click", (e) => {
@@ -1536,7 +1536,9 @@ function mpStatus(id, msg, ok) {
 function fillBankOptions(id) {
   const sel = document.getElementById(id);
   if (sel && !sel.options.length) {
-    sel.innerHTML = TF_BANKS.map((b) => `<option value="${b}">${b}</option>`).join("");
+    sel.innerHTML =
+      `<option value="" disabled selected>은행 선택</option>` +
+      TF_BANKS.map((b) => `<option value="${b}">${b}</option>`).join("");
   }
 }
 
@@ -1587,14 +1589,46 @@ async function changeMyPassword() {
   } catch (err) { mpStatus("mp-password-status", err.message); }
 }
 
+/* 보안 탭 상단: 이체 비밀번호·오픈뱅킹 동의·최근 보안 이벤트를 한눈에 보여주는 요약 카드 */
+async function loadSecurityOverview() {
+  const box = document.getElementById("mp-security-overview");
+  try {
+    const [profileRes, consentsRes, eventsRes] = await Promise.all([
+      apiFetch("/api/me/profile"),
+      apiFetch("/api/me/consents"),
+      apiFetch("/api/me/security-events"),
+    ]);
+    const profile = profileRes.ok ? await profileRes.json() : {};
+    const consents = consentsRes.ok ? await consentsRes.json() : {};
+    const { events } = eventsRes.ok ? await eventsRes.json() : { events: [] };
+    const tpwOk = !!profile.has_transfer_password;
+    const obOk = !!consents.agree_openbanking;
+    const evCount = events.length;
+    box.innerHTML = `
+      <div class="mp-sec-stat">
+        <span class="mp-sec-stat-badge ${tpwOk ? "ok" : "warn"}">${tpwOk ? "설정됨" : "미설정"}</span>
+        <span class="mp-sec-stat-label">이체 비밀번호</span>
+      </div>
+      <div class="mp-sec-stat">
+        <span class="mp-sec-stat-badge ${obOk ? "ok" : "warn"}">${obOk ? "동의완료" : "미동의"}</span>
+        <span class="mp-sec-stat-label">오픈뱅킹 동의</span>
+      </div>
+      <div class="mp-sec-stat">
+        <span class="mp-sec-stat-badge ${evCount > 0 ? "warn" : "ok"}">${evCount}건</span>
+        <span class="mp-sec-stat-label">보안 이벤트</span>
+      </div>`;
+  } catch { box.innerHTML = ""; }
+}
+
 /* 이체 비밀번호 설정/변경 */
 async function loadMyTransferPwState() {
   try {
     const res = await apiFetch("/api/me/profile");
     if (!res.ok) return;
     const p = await res.json();
-    document.getElementById("mp-tpw-state").textContent =
-      p.has_transfer_password ? "· 설정됨" : "· 미설정";
+    const el = document.getElementById("mp-tpw-state");
+    el.textContent = p.has_transfer_password ? "설정됨" : "미설정";
+    el.className = `mp-tpw-badge ${p.has_transfer_password ? "ok" : "warn"}`;
   } catch { /* noop */ }
 }
 async function changeMyTransferPw() {
@@ -1670,8 +1704,9 @@ async function loadMySecurityEvents() {
     const { events } = await res.json();
     if (!events.length) { box.innerHTML = `<p class="tf-hint">보안 이벤트가 없습니다.</p>`; return; }
     box.innerHTML = events.map((ev) =>
-      `<div class="mp-sec-item"><span class="mp-sec-type">${escapeHtml(SEC_LABELS[ev.event_type] || ev.event_type)}</span>` +
-      `<span class="mp-sec-detail">${escapeHtml(ev.detail || "")}</span>` +
+      `<div class="mp-sec-item" data-severity="${ev.event_type === "new_payee" ? "info" : "warn"}"><span class="mp-sec-dot"></span>` +
+      `<span class="mp-sec-body"><span class="mp-sec-type">${escapeHtml(SEC_LABELS[ev.event_type] || ev.event_type)}</span>` +
+      `<span class="mp-sec-detail">${escapeHtml(ev.detail || "")}</span></span>` +
       `<span class="mp-sec-time">${mpFmtDate(ev.created_at)}</span></div>`
     ).join("");
   } catch (err) { box.innerHTML = `<p class="tf-hint">${escapeHtml(err.message)}</p>`; }
@@ -1800,20 +1835,105 @@ async function loadMyInquiries() {
   } catch (err) { box.innerHTML = `<p class="tf-hint">${escapeHtml(err.message)}</p>`; }
 }
 
-/* 거래명세서 CSV 다운로드 (Bearer 헤더 필요 → blob 방식) */
-async function downloadMyStatement() {
-  mpStatus("mp-statement-status", "생성 중…");
+/* 거래명세서: 전 계좌 거래내역을 모아 체크박스 목록으로 표시 */
+let mpStatementTx = [];
+
+async function loadMyStatementList() {
+  const box = document.getElementById("mp-stmt-list");
+  box.innerHTML = '<p class="tf-hint">불러오는 중…</p>';
   try {
-    const res = await apiFetch("/api/me/transactions/export");
-    if (!res.ok) throw new Error("다운로드 실패");
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "transactions.csv";
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-    mpStatus("mp-statement-status", "다운로드되었습니다.", true);
-  } catch (err) { mpStatus("mp-statement-status", err.message); }
+    const accRes = await apiFetch("/api/accounts");
+    if (!accRes.ok) throw new Error("계좌 조회 실패");
+    const { accounts } = await accRes.json();
+    const perAccount = await Promise.all(
+      accounts.map(async (a) => {
+        const res = await apiFetch(`/api/accounts/${a.id}/transactions`);
+        if (!res.ok) return [];
+        const { transactions } = await res.json();
+        return transactions.map((t) => ({ ...t, bank_name: a.bank_name, account_no: a.account_no }));
+      })
+    );
+    mpStatementTx = perAccount.flat().sort((x, y) => y.created_at - x.created_at);
+    renderMyStatementList();
+  } catch (err) {
+    box.innerHTML = `<p class="tf-hint">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function renderMyStatementList() {
+  const box = document.getElementById("mp-stmt-list");
+  if (!mpStatementTx.length) {
+    box.innerHTML = '<p class="tf-hint">거래내역이 없습니다.</p>';
+    updateStmtSelectCount();
+    return;
+  }
+  box.innerHTML = mpStatementTx
+    .map((t, i) => {
+      const inflow = t.type === "in";
+      const sign = inflow ? "+" : "−";
+      const cls = inflow ? "tx-in" : "tx-out";
+      const d = new Date(t.created_at * 1000).toLocaleDateString("ko-KR");
+      return `<label class="mp-stmt-row">
+          <input type="checkbox" class="mp-stmt-check" data-idx="${i}" checked />
+          <span class="mp-stmt-date">${d}</span>
+          <span class="mp-stmt-bank">${escapeHtml(t.bank_name)}</span>
+          <span class="mp-stmt-cp">${escapeHtml(t.counterparty || "-")}</span>
+          <span class="mp-stmt-amt ${cls}">${sign}${won(t.amount)}</span>
+        </label>`;
+    })
+    .join("");
+  updateStmtSelectCount();
+}
+
+function updateStmtSelectCount() {
+  const total = mpStatementTx.length;
+  const checked = document.querySelectorAll(".mp-stmt-check:checked").length;
+  const label = document.getElementById("mp-stmt-select-count");
+  const selectAll = document.getElementById("mp-stmt-select-all");
+  if (!label) return;
+  label.textContent = total ? `${checked}/${total}건 선택` : "전체 선택";
+  if (selectAll) selectAll.checked = total > 0 && checked === total;
+}
+
+document.addEventListener("change", (e) => {
+  if (e.target.id === "mp-stmt-select-all") {
+    document.querySelectorAll(".mp-stmt-check").forEach((c) => (c.checked = e.target.checked));
+    updateStmtSelectCount();
+  }
+  if (e.target.classList.contains("mp-stmt-check")) updateStmtSelectCount();
+});
+
+/* 선택한 거래내역만 인쇄 전용 영역에 채운 뒤 브라우저 인쇄(→PDF 저장)로 출력.
+   한글 폰트를 임베드해야 하는 클라이언트 PDF 라이브러리 대신, 이미 렌더링되는
+   브라우저 폰트를 그대로 쓸 수 있는 window.print() 방식을 택했다. */
+function printMyStatementPdf() {
+  const idxs = [...document.querySelectorAll(".mp-stmt-check:checked")].map((c) => Number(c.dataset.idx));
+  if (!idxs.length) { mpStatus("mp-statement-status", "다운로드할 거래내역을 선택하세요."); return; }
+  const rows = idxs.map((i) => mpStatementTx[i]);
+  const today = new Date().toLocaleDateString("ko-KR");
+  const rowsHtml = rows
+    .map((t) => {
+      const inflow = t.type === "in";
+      const d = new Date(t.created_at * 1000).toLocaleString("ko-KR");
+      return `<tr>
+          <td>${escapeHtml(d)}</td>
+          <td>${escapeHtml(t.bank_name)} ${escapeHtml(t.account_no)}</td>
+          <td>${inflow ? "입금" : "출금"}</td>
+          <td>${escapeHtml(t.counterparty || "-")}</td>
+          <td class="num">${won(t.amount)}</td>
+          <td class="num">${t.balance_after == null ? "-" : won(t.balance_after)}</td>
+        </tr>`;
+    })
+    .join("");
+  document.getElementById("mp-stmt-print-area").innerHTML = `
+    <h1>매치뱅크 거래명세서</h1>
+    <p>발급일: ${today} · 총 ${rows.length}건</p>
+    <table>
+      <thead><tr><th>거래일시</th><th>계좌</th><th>구분</th><th>상대</th><th>금액</th><th>거래후잔액</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>`;
+  window.print();
+  mpStatus("mp-statement-status", `${rows.length}건으로 인쇄 대화상자를 열었습니다. "PDF로 저장"을 선택하세요.`, true);
 }
 
 /* 회원 탈퇴 */
@@ -1851,7 +1971,7 @@ document.addEventListener("submit", (e) => {
 /* 마이페이지 클릭 위임 (계좌/즐겨찾기/예약이체 액션) */
 document.addEventListener("click", async (e) => {
   const t = e.target;
-  if (t.id === "mp-download-csv") { downloadMyStatement(); return; }
+  if (t.closest("#mp-download-pdf")) { printMyStatementPdf(); return; }
 
   const save = t.closest(".mp-acct-save");
   if (save) {
@@ -1942,7 +2062,7 @@ async function refreshBoTransfersLive() {
   loadBoSecurityEvents();
   try {
     const res = await apiFetch(`/api/admin/transfers?offset=0&limit=1&status=${boTransferStatus}`);
-    if (res.ok) renderBoTransferSummary((await res.json()).summary);
+    if (res.ok) loadBoTransferSummaryWithTrend((await res.json()).summary);
   } catch (err) {
     console.error("이체 요약 갱신 실패:", err);
   }
@@ -1956,14 +2076,12 @@ function ensureBoTabLoaded(name) {
   if (name === "transfers") { loadBoTransfers(); loadBoTransferPolicy(); }
   if (name === "usage") {
     loadBoUsageStats();
-    loadBankRanking("bo-stat-banks");
-    loadTopProducts("bo-stat-products");
+    loadTopProductsGrid("bo-stat-products");
   }
   if (name === "perf") { loadBoHealth(); loadBoBatchPerf(); loadBoFssStatus(); }
   if (name === "prompt") loadBoChatbotConfig();
   if (name === "products") {
-    loadBankRanking("bo-product-stat-banks");
-    loadTopProducts("bo-product-stat-products");
+    loadTopProductsGrid("bo-product-stat-products");
     loadBoDocuments();
   }
   if (name === "faq") { loadBoNotices(); loadBoFaqs(); }
@@ -2178,27 +2296,59 @@ async function loadBoTransfers(reset = true) {
     );
     if (!res.ok) throw new Error("이체 내역 조회 실패");
     const data = await res.json();
-    renderBoTransferSummary(data.summary);
     renderBoTransferRows(data.transfers, reset);
     document.getElementById("bo-transfer-more").style.display =
       boTransferOffset + data.transfers.length < data.total ? "" : "none";
     boTransferOffset += data.transfers.length;
-    if (reset) { loadBoScheduledQueue(); loadBoSecurityEvents(); }
+    if (reset) {
+      loadBoScheduledQueue();
+      loadBoSecurityEvents();
+      loadBoTransferSummaryWithTrend(data.summary);
+    }
   } catch (err) {
     console.error("이체 내역 로드 실패:", err);
   }
 }
 
-function renderBoTransferSummary(s) {
+/* 지표 카드 스파크라인용: 전체 이체 내역(최대 300건)을 발생일별로 묶어 실제 추세를 계산한다.
+   (표에 쓰는 페이지네이션된 목록과 별개 — 상태 필터와 무관하게 전체를 봐야 추세가 의미 있음) */
+async function loadBoTransferSummaryWithTrend(summary) {
+  let trend = null;
+  try {
+    const res = await apiFetch(`/api/admin/transfers?offset=0&limit=300&status=`);
+    if (res.ok) {
+      const { transfers } = await res.json();
+      trend = bucketByDay(
+        transfers,
+        (t) => new Date(t.created_at * 1000).toISOString().slice(0, 10),
+        (acc, t) => {
+          acc = acc || { total: 0, completed: 0, pending: 0, failed: 0, scheduled: 0, delayed: 0, canceled: 0, completedAmount: 0 };
+          acc.total++;
+          acc[t.status] = (acc[t.status] || 0) + 1;
+          if (t.status === "completed") acc.completedAmount += t.amount;
+          return acc;
+        }
+      );
+    }
+  } catch (err) {
+    console.error("이체 추세 로드 실패:", err);
+  }
+  renderBoTransferSummary(summary, trend);
+}
+
+function renderBoTransferSummary(s, trend) {
+  const days = trend?.days || [];
+  const series = (key) => days.map((d) => (trend.byDay[d] && trend.byDay[d][key]) || 0);
+  const spark = (key, color) => sparklineSvg(series(key), color);
   document.getElementById("bo-transfer-summary").innerHTML = `
-    <div class="metric"><div class="value">${s.total}</div><div class="label">총 이체</div></div>
-    <div class="metric"><div class="value">${s.completed}</div><div class="label">완료</div></div>
-    <div class="metric"><div class="value">${s.pending}</div><div class="label">대기</div></div>
-    <div class="metric"><div class="value">${s.failed}</div><div class="label">실패</div></div>
-    <div class="metric"><div class="value" style="color:#1A56DB">${s.scheduled || 0}</div><div class="label">예약</div></div>
-    <div class="metric"><div class="value" style="color:#6D28D9">${s.delayed || 0}</div><div class="label">지연</div></div>
-    <div class="metric"><div class="value" style="color:#5F6368">${s.canceled || 0}</div><div class="label">취소</div></div>
-    <div class="metric"><div class="value">${won(s.completed_amount)}</div><div class="label">완료 금액</div></div>`;
+    <div class="metric"><div class="value">${s.total}</div><div class="label">총 이체</div>${spark("total", "var(--text-sub)")}</div>
+    <div class="metric"><div class="value" style="color:var(--blue-dark)">${s.completed}</div><div class="label">완료</div>${spark("completed", "var(--blue)")}</div>
+    <div class="metric"><div class="value" style="color:var(--warning)">${s.pending}</div><div class="label">대기</div>${spark("pending", "var(--warning)")}</div>
+    <div class="metric"><div class="value" style="color:var(--error)">${s.failed}</div><div class="label">실패</div>${spark("failed", "var(--error)")}</div>
+    <div class="metric"><div class="value" style="color:var(--info)">${s.scheduled || 0}</div><div class="label">예약</div>${spark("scheduled", "var(--info)")}</div>
+    <div class="metric"><div class="value" style="color:#6D28D9">${s.delayed || 0}</div><div class="label">지연</div>${spark("delayed", "#6D28D9")}</div>
+    <div class="metric"><div class="value" style="color:var(--text-sub)">${s.canceled || 0}</div><div class="label">취소</div>${spark("canceled", "var(--text-sub)")}</div>
+    <div class="metric"><div class="value">${won(s.completed_amount)}</div><div class="label">완료 금액</div>${spark("completedAmount", "var(--blue)")}</div>`;
 }
 
 // 예약/지연 대기 큐 렌더 (예정 시각 오름차순)
@@ -2261,11 +2411,25 @@ async function loadBoSecurityEvents() {
     const { events, summary } = await res.json();
 
     const bt = summary.by_type || {};
+    const trend = bucketByDay(
+      events,
+      (e) => new Date(e.created_at * 1000).toISOString().slice(0, 10),
+      (acc, e) => {
+        acc = acc || { total: 0, password_fail: 0, limit: 0, new_payee: 0 };
+        acc.total++;
+        if (e.event_type === "password_fail") acc.password_fail++;
+        else if (e.event_type === "limit_once" || e.event_type === "limit_daily") acc.limit++;
+        else if (e.event_type === "new_payee") acc.new_payee++;
+        return acc;
+      }
+    );
+    const secSeries = (key) => trend.days.map((d) => (trend.byDay[d] && trend.byDay[d][key]) || 0);
+    const secSpark = (key, color) => sparklineSvg(secSeries(key), color);
     sumBox.innerHTML = `
-      <div class="metric"><div class="value">${summary.last_24h || 0}</div><div class="label">최근 24시간</div></div>
-      <div class="metric"><div class="value" style="color:#C5221F">${bt.password_fail || 0}</div><div class="label">비밀번호 실패</div></div>
-      <div class="metric"><div class="value" style="color:#92400E">${(bt.limit_once || 0) + (bt.limit_daily || 0)}</div><div class="label">한도 초과</div></div>
-      <div class="metric"><div class="value" style="color:#1A56DB">${bt.new_payee || 0}</div><div class="label">신규 수취계좌</div></div>`;
+      <div class="metric"><div class="value">${summary.last_24h || 0}</div><div class="label">최근 24시간</div>${secSpark("total", "var(--text-sub)")}</div>
+      <div class="metric"><div class="value" style="color:var(--error)">${bt.password_fail || 0}</div><div class="label">비밀번호 실패</div>${secSpark("password_fail", "var(--error)")}</div>
+      <div class="metric"><div class="value" style="color:var(--warning)">${(bt.limit_once || 0) + (bt.limit_daily || 0)}</div><div class="label">한도 초과</div>${secSpark("limit", "var(--warning)")}</div>
+      <div class="metric"><div class="value" style="color:var(--info)">${bt.new_payee || 0}</div><div class="label">신규 수취계좌</div>${secSpark("new_payee", "var(--info)")}</div>`;
 
     if (!events.length) {
       box.innerHTML = `<p class="tf-hint">기록된 보안 이벤트가 없습니다.</p>`;
@@ -2275,7 +2439,7 @@ async function loadBoSecurityEvents() {
       .map((e) => {
         const d = new Date(e.created_at * 1000).toLocaleString("ko-KR");
         const label = SEC_EVENT_LABEL[e.event_type] || escapeHtml(e.event_type);
-        return `<div class="sec-row">
+        return `<div class="sec-row sec-row--${escapeHtml(e.event_type)}">
           <span class="sec-badge sec-${escapeHtml(e.event_type)}">${label}</span>
           <span class="sec-user">${escapeHtml(e.username || "-")}</span>
           <span class="sec-info">${escapeHtml(e.to_account || "")}</span>
@@ -2307,7 +2471,7 @@ function renderBoTransferRows(transfers, reset) {
       // 예약/지연 건은 취소 버튼
       const cancelBtn = (t.status === "scheduled" || t.status === "delayed")
         ? ` <button class="bo-cancel-btn" type="button" data-tf-id="${t.id}">취소</button>` : "";
-      return `<tr><td>${t.id}</td><td>${escapeHtml(t.from_account)}</td>` +
+      return `<tr class="bo-tx-row bo-tx-row--${escapeHtml(t.status)}"><td>${t.id}</td><td>${escapeHtml(t.from_account)}</td>` +
         `<td>${escapeHtml(t.to_account)}</td><td>${won(t.amount)}</td><td>${won(t.fee)}</td>` +
         `<td>${badge}${cancelBtn}</td><td>${d}</td></tr>`;
     })
@@ -2740,6 +2904,8 @@ document.addEventListener("click", async (e) => {
 
 /* ── Backoffice: 공지사항 관리 ───────────────────────────────────── */
 let boNoticeOffset = 0, boNoticeQuery = "";
+let boNoticeCache = {};
+let boNoticeEditId = null;
 
 async function loadBoNotices(reset = true) {
   if (reset) boNoticeOffset = 0;
@@ -2759,15 +2925,38 @@ async function loadBoNotices(reset = true) {
 }
 
 function renderBoNoticeRows(notices, reset) {
+  if (reset) boNoticeCache = {};
   const rows = notices
     .map((n) => {
+      boNoticeCache[n.id] = n;
       const d = new Date(n.created_at * 1000).toLocaleDateString("ko-KR");
       return `<tr><td>${escapeHtml(n.title)}</td><td>${d}</td>` +
-        `<td><button class="btn btn-ghost bo-del-btn" type="button" data-kind="notice" data-id="${n.id}">삭제</button></td></tr>`;
+        `<td><div class="bo-row-actions">` +
+        `<button class="btn btn-ghost bo-edit-btn" type="button" data-kind="notice" data-id="${n.id}">수정</button>` +
+        `<button class="btn btn-ghost bo-del-btn" type="button" data-kind="notice" data-id="${n.id}">삭제</button>` +
+        `</div></td></tr>`;
     })
     .join("");
   const tbody = document.getElementById("bo-notice-rows");
   tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
+}
+
+function boNoticeStartEdit(id) {
+  const n = boNoticeCache[id];
+  if (!n) return;
+  boNoticeEditId = id;
+  document.getElementById("bo-notice-title").value = n.title;
+  document.getElementById("bo-notice-content").value = n.content;
+  document.getElementById("bo-notice-submit-btn").textContent = "수정 완료";
+  document.getElementById("bo-notice-cancel-btn").style.display = "";
+  document.getElementById("bo-notice-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function boNoticeCancelEdit() {
+  boNoticeEditId = null;
+  document.getElementById("bo-notice-form").reset();
+  document.getElementById("bo-notice-submit-btn").textContent = "등록";
+  document.getElementById("bo-notice-cancel-btn").style.display = "none";
 }
 
 document.addEventListener("click", (e) => {
@@ -2776,6 +2965,9 @@ document.addEventListener("click", (e) => {
     loadBoNotices(true);
   }
   if (e.target.closest("#bo-notice-more")) loadBoNotices(false);
+  const editBtn = e.target.closest('.bo-edit-btn[data-kind="notice"]');
+  if (editBtn) boNoticeStartEdit(editBtn.dataset.id);
+  if (e.target.closest("#bo-notice-cancel-btn")) boNoticeCancelEdit();
 });
 
 document.addEventListener("submit", async (e) => {
@@ -2783,19 +2975,26 @@ document.addEventListener("submit", async (e) => {
   e.preventDefault();
   const statusEl = document.getElementById("bo-notice-form-status");
   statusEl.className = "tf-status";
-  statusEl.textContent = "등록 중…";
+  statusEl.textContent = boNoticeEditId ? "수정 중…" : "등록 중…";
   try {
-    const res = await apiFetch("/api/admin/notices", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: document.getElementById("bo-notice-title").value.trim(),
-        content: document.getElementById("bo-notice-content").value.trim(),
-      }),
-    });
-    if (!res.ok) throw new Error("등록에 실패했습니다.");
+    const payload = {
+      title: document.getElementById("bo-notice-title").value.trim(),
+      content: document.getElementById("bo-notice-content").value.trim(),
+    };
+    const res = boNoticeEditId
+      ? await apiFetch(`/api/admin/notices/${boNoticeEditId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+      : await apiFetch("/api/admin/notices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+    if (!res.ok) throw new Error(boNoticeEditId ? "수정에 실패했습니다." : "등록에 실패했습니다.");
     statusEl.textContent = "";
-    e.target.reset();
+    boNoticeCancelEdit();
     loadBoNotices(true);
   } catch (err) {
     statusEl.className = "tf-status err";
@@ -2805,6 +3004,8 @@ document.addEventListener("submit", async (e) => {
 
 /* ── Backoffice: FAQ 관리 ───────────────────────────────────────── */
 let boFaqOffset = 0, boFaqQuery = "";
+let boFaqCache = {};
+let boFaqEditId = null;
 
 async function loadBoFaqs(reset = true) {
   if (reset) boFaqOffset = 0;
@@ -2824,15 +3025,38 @@ async function loadBoFaqs(reset = true) {
 }
 
 function renderBoFaqRows(faqs, reset) {
+  if (reset) boFaqCache = {};
   const rows = faqs
     .map((f) => {
+      boFaqCache[f.id] = f;
       const d = new Date(f.created_at * 1000).toLocaleDateString("ko-KR");
       return `<tr><td>${escapeHtml(f.question)}</td><td>${d}</td>` +
-        `<td><button class="btn btn-ghost bo-del-btn" type="button" data-kind="faq" data-id="${f.id}">삭제</button></td></tr>`;
+        `<td><div class="bo-row-actions">` +
+        `<button class="btn btn-ghost bo-edit-btn" type="button" data-kind="faq" data-id="${f.id}">수정</button>` +
+        `<button class="btn btn-ghost bo-del-btn" type="button" data-kind="faq" data-id="${f.id}">삭제</button>` +
+        `</div></td></tr>`;
     })
     .join("");
   const tbody = document.getElementById("bo-faq-rows");
   tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
+}
+
+function boFaqStartEdit(id) {
+  const f = boFaqCache[id];
+  if (!f) return;
+  boFaqEditId = id;
+  document.getElementById("bo-faq-question").value = f.question;
+  document.getElementById("bo-faq-answer").value = f.answer;
+  document.getElementById("bo-faq-submit-btn").textContent = "수정 완료";
+  document.getElementById("bo-faq-cancel-btn").style.display = "";
+  document.getElementById("bo-faq-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function boFaqCancelEdit() {
+  boFaqEditId = null;
+  document.getElementById("bo-faq-form").reset();
+  document.getElementById("bo-faq-submit-btn").textContent = "등록";
+  document.getElementById("bo-faq-cancel-btn").style.display = "none";
 }
 
 document.addEventListener("click", (e) => {
@@ -2841,6 +3065,9 @@ document.addEventListener("click", (e) => {
     loadBoFaqs(true);
   }
   if (e.target.closest("#bo-faq-more")) loadBoFaqs(false);
+  const editBtn = e.target.closest('.bo-edit-btn[data-kind="faq"]');
+  if (editBtn) boFaqStartEdit(editBtn.dataset.id);
+  if (e.target.closest("#bo-faq-cancel-btn")) boFaqCancelEdit();
 });
 
 document.addEventListener("submit", async (e) => {
@@ -2848,19 +3075,26 @@ document.addEventListener("submit", async (e) => {
   e.preventDefault();
   const statusEl = document.getElementById("bo-faq-form-status");
   statusEl.className = "tf-status";
-  statusEl.textContent = "등록 중…";
+  statusEl.textContent = boFaqEditId ? "수정 중…" : "등록 중…";
   try {
-    const res = await apiFetch("/api/admin/faqs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        question: document.getElementById("bo-faq-question").value.trim(),
-        answer: document.getElementById("bo-faq-answer").value.trim(),
-      }),
-    });
-    if (!res.ok) throw new Error("등록에 실패했습니다.");
+    const payload = {
+      question: document.getElementById("bo-faq-question").value.trim(),
+      answer: document.getElementById("bo-faq-answer").value.trim(),
+    };
+    const res = boFaqEditId
+      ? await apiFetch(`/api/admin/faqs/${boFaqEditId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+      : await apiFetch("/api/admin/faqs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+    if (!res.ok) throw new Error(boFaqEditId ? "수정에 실패했습니다." : "등록에 실패했습니다.");
     statusEl.textContent = "";
-    e.target.reset();
+    boFaqCancelEdit();
     loadBoFaqs(true);
   } catch (err) {
     statusEl.className = "tf-status err";
@@ -2870,6 +3104,8 @@ document.addEventListener("submit", async (e) => {
 
 /* ── Backoffice: 서식·약관·설명서 관리 ─────────────────────────────── */
 let boDocOffset = 0, boDocQuery = "";
+let boDocCache = {};
+let boDocEditId = null;
 
 async function loadBoDocuments(reset = true) {
   if (reset) boDocOffset = 0;
@@ -2889,15 +3125,39 @@ async function loadBoDocuments(reset = true) {
 }
 
 function renderBoDocRows(docs, reset) {
+  if (reset) boDocCache = {};
   const rows = docs
     .map((doc) => {
+      boDocCache[doc.id] = doc;
       const d = new Date(doc.created_at * 1000).toLocaleDateString("ko-KR");
       return `<tr><td>${escapeHtml(doc.title)}</td><td>${escapeHtml(doc.category)}</td><td>${d}</td>` +
-        `<td><button class="btn btn-ghost bo-del-btn" type="button" data-kind="document" data-id="${doc.id}">삭제</button></td></tr>`;
+        `<td><div class="bo-row-actions">` +
+        `<button class="btn btn-ghost bo-edit-btn" type="button" data-kind="document" data-id="${doc.id}">수정</button>` +
+        `<button class="btn btn-ghost bo-del-btn" type="button" data-kind="document" data-id="${doc.id}">삭제</button>` +
+        `</div></td></tr>`;
     })
     .join("");
   const tbody = document.getElementById("bo-doc-rows");
   tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
+}
+
+function boDocStartEdit(id) {
+  const doc = boDocCache[id];
+  if (!doc) return;
+  boDocEditId = id;
+  document.getElementById("bo-doc-title").value = doc.title;
+  document.getElementById("bo-doc-category").value = doc.category;
+  document.getElementById("bo-doc-desc").value = doc.description || "";
+  document.getElementById("bo-doc-submit-btn").textContent = "수정 완료";
+  document.getElementById("bo-doc-cancel-btn").style.display = "";
+  document.getElementById("bo-document-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function boDocCancelEdit() {
+  boDocEditId = null;
+  document.getElementById("bo-document-form").reset();
+  document.getElementById("bo-doc-submit-btn").textContent = "등록";
+  document.getElementById("bo-doc-cancel-btn").style.display = "none";
 }
 
 document.addEventListener("click", (e) => {
@@ -2906,6 +3166,9 @@ document.addEventListener("click", (e) => {
     loadBoDocuments(true);
   }
   if (e.target.closest("#bo-doc-more")) loadBoDocuments(false);
+  const editBtn = e.target.closest('.bo-edit-btn[data-kind="document"]');
+  if (editBtn) boDocStartEdit(editBtn.dataset.id);
+  if (e.target.closest("#bo-doc-cancel-btn")) boDocCancelEdit();
 });
 
 document.addEventListener("submit", async (e) => {
@@ -2913,20 +3176,27 @@ document.addEventListener("submit", async (e) => {
   e.preventDefault();
   const statusEl = document.getElementById("bo-doc-form-status");
   statusEl.className = "tf-status";
-  statusEl.textContent = "등록 중…";
+  statusEl.textContent = boDocEditId ? "수정 중…" : "등록 중…";
   try {
-    const res = await apiFetch("/api/admin/documents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: document.getElementById("bo-doc-title").value.trim(),
-        category: document.getElementById("bo-doc-category").value,
-        description: document.getElementById("bo-doc-desc").value.trim(),
-      }),
-    });
-    if (!res.ok) throw new Error("등록에 실패했습니다.");
+    const payload = {
+      title: document.getElementById("bo-doc-title").value.trim(),
+      category: document.getElementById("bo-doc-category").value,
+      description: document.getElementById("bo-doc-desc").value.trim(),
+    };
+    const res = boDocEditId
+      ? await apiFetch(`/api/admin/documents/${boDocEditId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+      : await apiFetch("/api/admin/documents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+    if (!res.ok) throw new Error(boDocEditId ? "수정에 실패했습니다." : "등록에 실패했습니다.");
     statusEl.textContent = "";
-    e.target.reset();
+    boDocCancelEdit();
     loadBoDocuments(true);
   } catch (err) {
     statusEl.className = "tf-status err";
@@ -3020,6 +3290,9 @@ function supportGoTab(name) {
   );
   SUPPORT_TABS.forEach((t) => {
     document.getElementById(`support-panel-${t}`).style.display = t === name ? "block" : "none";
+  });
+  document.querySelectorAll(".support-search").forEach((box) => {
+    box.style.display = box.dataset.supportSearch === name ? "flex" : "none";
   });
   ensureSupportTabLoaded(name);
 }

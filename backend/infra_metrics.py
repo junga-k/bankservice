@@ -9,12 +9,28 @@ Phoenix 트레이스/LLM/RAG/캐시 집계)를 노출한다.
 """
 from __future__ import annotations
 
+import concurrent.futures
 from datetime import datetime, timedelta, timezone
 
 PHOENIX_URL = "http://localhost:6006"
 PHOENIX_PROJECT = "ai-chat"
 ES_HOST = "http://localhost:9200"
 ES_INDEX = "rag_documents"
+
+# Kafka/ES 클라이언트는 브로커가 죽어 있으면 자체 재시도 때문에 request_timeout_ms를
+# 줘도 실제로는 수십 초씩 걸릴 수 있다. 라이브러리 타임아웃을 믿지 않고 별도 스레드에서
+# 돌려 이 시간이 지나면 TimeoutError로 포기한다(각 함수의 기존 except가 그대로 처리).
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="infra-metrics")
+
+
+def _call_with_timeout(fn, timeout: float = 3.0):
+    return _executor.submit(fn).result(timeout=timeout)
+
+
+def _conn_err(e: Exception) -> str:
+    if isinstance(e, concurrent.futures.TimeoutError):
+        return "응답이 너무 오래 걸려 시간 초과 처리했습니다."
+    return str(e)
 
 
 def kafka_metrics() -> dict:
@@ -25,73 +41,77 @@ def kafka_metrics() -> dict:
       → 코디네이터 join/rebalance 없이 end_offsets 만 조회
     lag = Σ max(0, end_offset - committed_offset)
     """
-    admin = consumer = None
-    try:
-        from kafka import KafkaConsumer, TopicPartition
-        from kafka.admin import KafkaAdminClient
+    def _do():
+        admin = consumer = None
+        try:
+            from kafka import KafkaConsumer, TopicPartition
+            from kafka.admin import KafkaAdminClient
 
-        from backend.kafka_io import BROKER, TOPIC_TRANSFER
+            from backend.kafka_io import BROKER, TOPIC_TRANSFER
 
-        admin = KafkaAdminClient(bootstrap_servers=BROKER, request_timeout_ms=1500)
-        topics = admin.list_topics()
-        topic_count = len(topics)
-        if TOPIC_TRANSFER not in topics:
+            admin = KafkaAdminClient(bootstrap_servers=BROKER, request_timeout_ms=1500)
+            topics = admin.list_topics()
+            topic_count = len(topics)
+            if TOPIC_TRANSFER not in topics:
+                return {
+                    "status": "warn",
+                    "detail": f"브로커 {BROKER} 연결됨 · 토픽 '{TOPIC_TRANSFER}' 없음",
+                    "topic_count": topic_count,
+                    "lag": 0,
+                }
+
+            consumer = KafkaConsumer(
+                bootstrap_servers=BROKER,
+                enable_auto_commit=False,
+                consumer_timeout_ms=1500,
+                request_timeout_ms=2000,
+            )
+            parts = consumer.partitions_for_topic(TOPIC_TRANSFER) or set()
+            tps = [TopicPartition(TOPIC_TRANSFER, p) for p in parts]
+            consumer.assign(tps)
+            end_offsets = consumer.end_offsets(tps) if tps else {}
+
+            committed = admin.list_group_offsets("transfer-worker")  # {TopicPartition: OffsetAndMetadata}
+
+            lag = 0
+            for tp in tps:
+                end = end_offsets.get(tp, 0)
+                meta = committed.get(tp)
+                com = meta.offset if meta else 0
+                lag += max(0, end - com)
+
             return {
-                "status": "warn",
-                "detail": f"브로커 {BROKER} 연결됨 · 토픽 '{TOPIC_TRANSFER}' 없음",
+                "status": "ok",
+                "detail": f"브로커 {BROKER} 연결됨 · 미처리 메시지 {lag:,}건",
                 "topic_count": topic_count,
-                "lag": 0,
+                "lag": lag,
             }
+        finally:
+            try:
+                if consumer is not None:
+                    consumer.close()
+            except Exception:
+                pass
+            try:
+                if admin is not None:
+                    admin.close()
+            except Exception:
+                pass
 
-        consumer = KafkaConsumer(
-            bootstrap_servers=BROKER,
-            enable_auto_commit=False,
-            consumer_timeout_ms=1500,
-            request_timeout_ms=2000,
-        )
-        parts = consumer.partitions_for_topic(TOPIC_TRANSFER) or set()
-        tps = [TopicPartition(TOPIC_TRANSFER, p) for p in parts]
-        consumer.assign(tps)
-        end_offsets = consumer.end_offsets(tps) if tps else {}
-
-        committed = admin.list_group_offsets("transfer-worker")  # {TopicPartition: OffsetAndMetadata}
-
-        lag = 0
-        for tp in tps:
-            end = end_offsets.get(tp, 0)
-            meta = committed.get(tp)
-            com = meta.offset if meta else 0
-            lag += max(0, end - com)
-
-        return {
-            "status": "ok",
-            "detail": f"브로커 {BROKER} 연결됨 · 미처리 메시지 {lag:,}건",
-            "topic_count": topic_count,
-            "lag": lag,
-        }
+    try:
+        return _call_with_timeout(_do)
     except Exception as e:
         return {
             "status": "down",
-            "detail": f"연결할 수 없습니다: {e}",
+            "detail": f"연결할 수 없습니다: {_conn_err(e)}",
             "topic_count": 0,
             "lag": 0,
         }
-    finally:
-        try:
-            if consumer is not None:
-                consumer.close()
-        except Exception:
-            pass
-        try:
-            if admin is not None:
-                admin.close()
-        except Exception:
-            pass
 
 
 def elasticsearch_metrics() -> dict:
     """ES 클러스터 상태 + rag_documents 인덱스 문서수. health.py 의 check 와 별개로 재조회."""
-    try:
+    def _do():
         import config as _cfg
         from elasticsearch import Elasticsearch
 
@@ -114,10 +134,18 @@ def elasticsearch_metrics() -> dict:
             "active_shards": active_shards,
             "doc_count": doc_count,
         }
-    except Exception:
+
+    try:
+        return _call_with_timeout(_do)
+    except Exception as e:
+        detail = (
+            "응답이 너무 오래 걸려 시간 초과 처리했습니다."
+            if isinstance(e, concurrent.futures.TimeoutError)
+            else f"연결할 수 없습니다. Elasticsearch가 {ES_HOST} 에서 실행 중인지 확인하세요."
+        )
         return {
             "status": "down",
-            "detail": f"연결할 수 없습니다. Elasticsearch가 {ES_HOST} 에서 실행 중인지 확인하세요.",
+            "detail": detail,
             "cluster_status": "unknown",
             "node_count": 0,
             "active_shards": 0,
@@ -156,7 +184,7 @@ def phoenix_metrics() -> dict:
     실시간 신호원이다. span_kind/name 은 서버 버전에 따라 쿼리 필터가 막힐 수 있어
     start_time/limit 만 넘기고 파이썬에서 필터링한다.
     """
-    try:
+    def _do():
         from phoenix.client import Client
 
         client = Client(base_url=PHOENIX_URL)
@@ -203,10 +231,18 @@ def phoenix_metrics() -> dict:
             "rag_search_count": rag_search_count,
             "cache_hit_rate": cache_hit_rate,
         }
-    except Exception:
+
+    try:
+        return _call_with_timeout(_do)
+    except Exception as e:
+        detail = (
+            "응답이 너무 오래 걸려 시간 초과 처리했습니다."
+            if isinstance(e, concurrent.futures.TimeoutError)
+            else "연결할 수 없습니다. `.venv/bin/phoenix serve`로 기동하세요."
+        )
         return {
             "status": "down",
-            "detail": "연결할 수 없습니다. `.venv/bin/phoenix serve`로 기동하세요.",
+            "detail": detail,
             "trace_count_24h": 0,
             "llm_request_count": 0,
             "llm_avg_latency_ms": 0,

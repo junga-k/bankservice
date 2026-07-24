@@ -6,7 +6,7 @@
   <title>매치뱅크 — AI 금융상품 검색</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -44,11 +44,34 @@
       <div class="hero">
         <div class="hero-inner">
           <h1>은행 금융상품을 <span class="accent">한눈에</span>,<br />AI에게 물어보세요</h1>
-          <p>예금·적금부터 은행 업무까지. 자연어로 질문하면 AI가 찾아 안내합니다.</p>
-          <button class="btn btn-primary" data-nav="chat">💬 AI은행원에게 물어보기</button>
+          <p>예금·적금부터 은행 업무까지. 질문하면 AI가 찾아 안내합니다.</p>
+          <button class="btn btn-primary" data-nav="chat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            AI은행원에게 물어보기
+          </button>
         </div>
       </div>
       <div class="container">
+
+        <!-- 빠른 액션 타일 -->
+        <div class="quick-actions">
+          <button type="button" class="quick-tile" data-nav="account" data-account-tab="inquiry">
+            <span class="quick-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg></span>
+            <span class="quick-tile-label">계좌조회</span>
+          </button>
+          <button type="button" class="quick-tile" data-nav="account" data-account-tab="transfer">
+            <span class="quick-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10 3 6l4-4"/><path d="M3 6h13a4 4 0 0 1 4 4v1"/><path d="M17 14l4 4-4 4"/><path d="M21 18H8a4 4 0 0 1-4-4v-1"/></svg></span>
+            <span class="quick-tile-label">이체하기</span>
+          </button>
+          <button type="button" class="quick-tile" data-nav="products">
+            <span class="quick-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg></span>
+            <span class="quick-tile-label">상품비교</span>
+          </button>
+          <button type="button" class="quick-tile" data-nav="chat">
+            <span class="quick-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span>
+            <span class="quick-tile-label">AI 상담</span>
+          </button>
+        </div>
 
         <!-- 이벤트 배너 -->
         <div class="event-banner">
@@ -138,9 +161,9 @@
               <h3>AI에게 편하게 물어보세요</h3>
               <p>"금리 높은 적금 알려줘"처럼 편하게 물어보면 AI가 찾아서 답해드립니다.</p>
               <ul class="showcase-points">
-                <li>💬 편하게 질문하면 AI가 알아서 찾아드려요</li>
-                <li>📚 금융감독원 공식 데이터를 근거로 답변해요</li>
-                <li>⚡ 실시간으로 빠르게 답변해요</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>편하게 질문하면 AI가 알아서 찾아드려요</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>금융감독원 공식 데이터를 근거로 답변해요</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>실시간으로 빠르게 답변해요</li>
               </ul>
               <button class="btn btn-ghost" data-nav="chat">AI은행원에게 물어보기</button>
             </div>
@@ -158,17 +181,11 @@
 
         <!-- 인기 통계 (상품안내 클릭 + 은행원 검색 병합) -->
         <div class="stat-block">
-          <h3 class="stat-heading">📊 인기 통계</h3>
+          <h3 class="stat-heading"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>인기 통계</h3>
           <p class="stat-sub">상품안내 조회와 AI은행원 검색을 합산한 실시간 인기 순위입니다.<span class="stat-note"> · 선정 기준: 조회수 상위 5개</span></p>
-          <div class="stat-grid">
-            <div class="panel">
-              <h3>은행 순위</h3>
-              <div id="stat-banks"><!-- JS 렌더 --></div>
-            </div>
-            <div class="panel">
-              <h3>카테고리별 인기 상품 TOP 5</h3>
-              <div id="stat-products"><!-- JS 렌더 --></div>
-            </div>
+          <div class="panel">
+            <h3>카테고리별 인기 상품 TOP 5</h3>
+            <div id="stat-products"><!-- JS 렌더 --></div>
           </div>
         </div>
 
@@ -181,8 +198,20 @@
         </div>
 
         <div class="product-list-panel" id="product-list-panel" style="display:none">
-          <h3 id="product-list-title"></h3>
+          <div class="product-list-head">
+            <h3 id="product-list-title"></h3>
+            <select id="product-sort" class="product-sort">
+              <option value="default">기본순</option>
+              <option value="rate-asc">금리 낮은순</option>
+              <option value="rate-desc">금리 높은순</option>
+            </select>
+          </div>
           <p id="product-list-desc" class="product-list-desc"></p>
+          <div class="product-search-wrap">
+            <svg class="product-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="product-search" placeholder="은행명 또는 상품명 검색" autocomplete="off" />
+          </div>
+          <div id="product-top-pick"><!-- JS 렌더 --></div>
           <div id="product-list"><!-- JS 렌더 --></div>
         </div>
 
@@ -211,7 +240,8 @@
 
         <!-- 계좌조회 -->
         <div class="account-panel" id="account-panel-inquiry">
-          <div id="account-cards" class="card-grid"><!-- JS 렌더 --></div>
+          <div id="asset-summary" class="asset-summary"><!-- JS 렌더 --></div>
+          <div id="account-cards" class="card-grid acct-card-grid"><!-- JS 렌더 --></div>
 
           <div class="panel" id="acct-detail" style="display:none">
             <h3 id="acct-detail-title">거래내역</h3>
@@ -371,6 +401,8 @@
 
           <!-- 보안 -->
           <div class="mypage-panel" id="mypage-panel-security" style="display:none">
+            <div id="mp-security-overview" class="mp-security-overview"><!-- JS 렌더 --></div>
+
             <div class="panel">
               <h3>로그인 비밀번호 변경</h3>
               <form id="mp-password-form">
@@ -388,7 +420,7 @@
             </div>
 
             <div class="panel">
-              <h3>이체 비밀번호 <span id="mp-tpw-state" class="tf-optional"></span></h3>
+              <h3>이체 비밀번호 <span id="mp-tpw-state" class="mp-tpw-badge"></span></h3>
               <p class="section-desc">이체 시 사용하는 숫자 6자리 PIN입니다. 본인 확인을 위해 로그인 비밀번호가 필요합니다.
                 (PIN을 잊었다면 여기서 재설정하세요.)</p>
               <form id="mp-tpw-form">
@@ -514,9 +546,19 @@
           <!-- 거래명세서 -->
           <div class="mypage-panel" id="mypage-panel-statement" style="display:none">
             <div class="panel">
-              <h3>거래명세서 다운로드</h3>
-              <p class="section-desc">전 계좌 통합 거래내역을 CSV 파일로 내려받습니다.</p>
-              <button class="btn btn-primary" type="button" id="mp-download-csv">CSV 다운로드</button>
+              <h3>거래명세서</h3>
+              <p class="section-desc">다운로드할 거래내역을 선택하세요.</p>
+              <div class="mp-stmt-toolbar">
+                <label class="mp-stmt-selectall">
+                  <input type="checkbox" id="mp-stmt-select-all" checked />
+                  <span id="mp-stmt-select-count">전체 선택</span>
+                </label>
+                <button class="btn btn-primary" type="button" id="mp-download-pdf">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+                  PDF 다운로드
+                </button>
+              </div>
+              <div id="mp-stmt-list"><!-- JS 렌더 --></div>
               <span id="mp-statement-status" class="tf-status"></span>
             </div>
           </div>
@@ -794,13 +836,13 @@
             <h3>테스트 계정</h3>
             <p class="section-desc">방문자 입장에서 계좌조회·거래내역·이체·AI은행원 등 기능을 테스트할 때 쓰는
               데모 계정 정보입니다.</p>
-            <button class="btn btn-ghost" type="button" id="bo-show-demo">테스트 계정 보기</button>
+            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-show-demo">테스트 계정 보기</button>
             <div id="bo-demo-info" class="admin-demo-info"></div>
           </div>
 
           <div class="panel">
             <h3>회원 목록</h3>
-            <div class="bo-toolbar">
+            <div class="bo-toolbar bo-search-inline">
               <input type="text" id="bo-user-search" placeholder="아이디/이름 검색" />
               <button class="btn btn-ghost" type="button" id="bo-user-search-btn">검색</button>
             </div>
@@ -808,7 +850,7 @@
               <thead><tr><th>아이디</th><th>이름</th><th>권한</th><th>가입일</th></tr></thead>
               <tbody id="bo-user-rows"><!-- JS 렌더 --></tbody>
             </table>
-            <button class="btn btn-ghost" type="button" id="bo-user-more">더 보기</button>
+            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-user-more">더 보기</button>
           </div>
         </div>
 
@@ -843,8 +885,10 @@
                 <label for="bo-tp-fee">타행 이체 수수료 (원)</label>
                 <input type="number" id="bo-tp-fee" min="0" step="100" />
               </div>
-              <button class="btn btn-primary" type="submit">저장</button>
-              <span class="tf-status" id="bo-tp-status"></span>
+              <div class="tf-form-footer">
+                <button class="btn btn-primary" type="submit">저장</button>
+                <span class="tf-status" id="bo-tp-status"></span>
+              </div>
             </form>
           </div>
 
@@ -863,7 +907,7 @@
               <thead><tr><th>ID</th><th>출금</th><th>입금</th><th>금액</th><th>수수료</th><th>상태</th><th>일시</th></tr></thead>
               <tbody id="bo-transfer-rows"><!-- JS 렌더 --></tbody>
             </table>
-            <button class="btn btn-ghost" type="button" id="bo-transfer-more">더 보기</button>
+            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-transfer-more">더 보기</button>
           </div>
         </div>
 
@@ -876,15 +920,9 @@
             <div id="bo-usage-daily"><!-- JS 렌더 --></div>
           </div>
 
-          <div class="stat-grid">
-            <div class="panel">
-              <h3>은행 순위</h3>
-              <div id="bo-stat-banks"><!-- JS 렌더 --></div>
-            </div>
-            <div class="panel">
-              <h3>카테고리별 인기 상품 TOP 5</h3>
-              <div id="bo-stat-products"><!-- JS 렌더 --></div>
-            </div>
+          <div class="panel">
+            <h3>카테고리별 인기 상품 TOP 5</h3>
+            <div id="bo-stat-products"><!-- JS 렌더 --></div>
           </div>
         </div>
 
@@ -903,7 +941,7 @@
             <p class="section-desc">금융감독원(FSS) 상품 데이터의 신선도와, 지난 기준 대비 변경(신규·금리변경·삭제)을 확인합니다.</p>
             <div class="metric-grid" id="bo-fss-cards"><!-- JS 렌더 --></div>
             <div id="bo-fss-changes"><!-- JS 렌더 --></div>
-            <div class="bo-toolbar">
+            <div class="bo-toolbar bo-toolbar-right">
               <button class="btn btn-ghost" type="button" id="bo-fss-snapshot-btn">현재 상태를 기준으로 저장</button>
               <span class="tf-status" id="bo-fss-snapshot-status"></span>
             </div>
@@ -935,11 +973,11 @@
                 <label for="bo-cc-prompt">시스템 프롬프트</label>
                 <textarea id="bo-cc-prompt" class="prompt-editor"></textarea>
               </div>
-              <div class="tf-field">
-                <label><input type="checkbox" id="bo-cc-websearch" /> 웹 검색 사용</label>
+              <div class="tf-form-footer">
+                <label class="tf-inline-check"><input type="checkbox" id="bo-cc-websearch" /> 웹 검색 사용</label>
+                <button class="btn btn-primary" type="submit">저장</button>
+                <span class="tf-status" id="bo-cc-status"></span>
               </div>
-              <button class="btn btn-primary" type="submit">저장</button>
-              <span class="tf-status" id="bo-cc-status"></span>
             </form>
           </div>
 
@@ -948,10 +986,12 @@
             <p class="section-desc">위 시스템 프롬프트를 A·B에 동일하게 적용한 상태에서, <strong>답변 스타일만 바꿔</strong>
               같은 질문의 답변을 나란히 비교합니다. '이 스타일 적용'을 누르면 위 설정의 기본 답변 스타일로 반영됩니다.
               (제공자·모델은 위 설정값을 사용)</p>
-            <div class="bo-toolbar">
-              <input id="bo-ab-question" placeholder="샘플 질문 (예: 적금 추천해줘)" />
-              <button class="btn btn-primary" type="button" id="bo-ab-run">비교 실행</button>
-              <span class="tf-status" id="bo-ab-status"></span>
+            <div class="bo-toolbar bo-ab-toolbar">
+              <textarea id="bo-ab-question" placeholder="샘플 질문 (예: 적금 추천해줘)" rows="2"></textarea>
+              <div class="bo-ab-toolbar-actions">
+                <button class="btn btn-primary" type="button" id="bo-ab-run">비교 실행</button>
+                <span class="tf-status" id="bo-ab-status"></span>
+              </div>
             </div>
             <div class="ab-grid">
               <div class="ab-col">
@@ -981,15 +1021,9 @@
           <div class="panel">
             <h3>FSS 상품 조회 통계</h3>
             <p class="section-desc">고객 상품안내 페이지에서 조회된 데이터 기준입니다.</p>
-            <div class="stat-grid">
-              <div class="panel">
-                <h3>은행 순위</h3>
-                <div id="bo-product-stat-banks"><!-- JS 렌더 --></div>
-              </div>
-              <div class="panel">
-                <h3>카테고리별 인기 상품</h3>
-                <div id="bo-product-stat-products"><!-- JS 렌더 --></div>
-              </div>
+            <div class="panel">
+              <h3>카테고리별 인기 상품</h3>
+              <div id="bo-product-stat-products"><!-- JS 렌더 --></div>
             </div>
           </div>
 
@@ -1006,10 +1040,13 @@
                 </select>
               </div>
               <div class="tf-field"><label for="bo-doc-desc">설명</label><textarea id="bo-doc-desc" rows="2"></textarea></div>
-              <button class="btn btn-primary" type="submit">등록</button>
-              <span class="tf-status" id="bo-doc-form-status"></span>
+              <div class="tf-form-footer">
+                <button class="btn btn-ghost" type="button" id="bo-doc-cancel-btn" style="display:none">취소</button>
+                <button class="btn btn-primary" type="submit" id="bo-doc-submit-btn">등록</button>
+                <span class="tf-status" id="bo-doc-form-status"></span>
+              </div>
             </form>
-            <div class="bo-toolbar">
+            <div class="bo-toolbar bo-search-inline">
               <input type="text" id="bo-doc-search" placeholder="제목 검색" />
               <button class="btn btn-ghost" type="button" id="bo-doc-search-btn">검색</button>
             </div>
@@ -1017,7 +1054,7 @@
               <thead><tr><th>제목</th><th>구분</th><th>등록일</th><th></th></tr></thead>
               <tbody id="bo-doc-rows"><!-- JS 렌더 --></tbody>
             </table>
-            <button class="btn btn-ghost" type="button" id="bo-doc-more">더 보기</button>
+            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-doc-more">더 보기</button>
           </div>
         </div>
 
@@ -1028,10 +1065,13 @@
             <form id="bo-notice-form" class="bo-inline-form">
               <div class="tf-field"><label for="bo-notice-title">제목</label><input id="bo-notice-title" type="text" required /></div>
               <div class="tf-field"><label for="bo-notice-content">내용</label><textarea id="bo-notice-content" rows="3" required></textarea></div>
-              <button class="btn btn-primary" type="submit">등록</button>
-              <span class="tf-status" id="bo-notice-form-status"></span>
+              <div class="tf-form-footer">
+                <button class="btn btn-ghost" type="button" id="bo-notice-cancel-btn" style="display:none">취소</button>
+                <button class="btn btn-primary" type="submit" id="bo-notice-submit-btn">등록</button>
+                <span class="tf-status" id="bo-notice-form-status"></span>
+              </div>
             </form>
-            <div class="bo-toolbar">
+            <div class="bo-toolbar bo-search-inline">
               <input type="text" id="bo-notice-search" placeholder="제목/내용 검색" />
               <button class="btn btn-ghost" type="button" id="bo-notice-search-btn">검색</button>
             </div>
@@ -1039,7 +1079,7 @@
               <thead><tr><th>제목</th><th>등록일</th><th></th></tr></thead>
               <tbody id="bo-notice-rows"><!-- JS 렌더 --></tbody>
             </table>
-            <button class="btn btn-ghost" type="button" id="bo-notice-more">더 보기</button>
+            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-notice-more">더 보기</button>
           </div>
 
           <div class="panel">
@@ -1047,10 +1087,13 @@
             <form id="bo-faq-form" class="bo-inline-form">
               <div class="tf-field"><label for="bo-faq-question">질문</label><input id="bo-faq-question" type="text" required /></div>
               <div class="tf-field"><label for="bo-faq-answer">답변</label><textarea id="bo-faq-answer" rows="3" required></textarea></div>
-              <button class="btn btn-primary" type="submit">등록</button>
-              <span class="tf-status" id="bo-faq-form-status"></span>
+              <div class="tf-form-footer">
+                <button class="btn btn-ghost" type="button" id="bo-faq-cancel-btn" style="display:none">취소</button>
+                <button class="btn btn-primary" type="submit" id="bo-faq-submit-btn">등록</button>
+                <span class="tf-status" id="bo-faq-form-status"></span>
+              </div>
             </form>
-            <div class="bo-toolbar">
+            <div class="bo-toolbar bo-search-inline">
               <input type="text" id="bo-faq-search" placeholder="질문/답변 검색" />
               <button class="btn btn-ghost" type="button" id="bo-faq-search-btn">검색</button>
             </div>
@@ -1058,7 +1101,7 @@
               <thead><tr><th>질문</th><th>등록일</th><th></th></tr></thead>
               <tbody id="bo-faq-rows"><!-- JS 렌더 --></tbody>
             </table>
-            <button class="btn btn-ghost" type="button" id="bo-faq-more">더 보기</button>
+            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-faq-more">더 보기</button>
           </div>
         </div>
 
@@ -1087,29 +1130,37 @@
       <div class="container">
         <h2 class="section-title">고객센터</h2>
 
-        <div class="support-tabs">
-          <button type="button" class="support-tab active" data-support-tab="notices">공지사항</button>
-          <button type="button" class="support-tab" data-support-tab="faq">FAQ</button>
-          <button type="button" class="support-tab" data-support-tab="inquiry">문의하기</button>
-          <button type="button" class="support-tab" data-support-tab="documents">서식·약관·설명서</button>
+        <div class="support-topbar">
+          <div class="support-tabs">
+            <button type="button" class="support-tab active" data-support-tab="notices">공지사항</button>
+            <button type="button" class="support-tab" data-support-tab="faq">FAQ</button>
+            <button type="button" class="support-tab" data-support-tab="inquiry">문의하기</button>
+            <button type="button" class="support-tab" data-support-tab="documents">서식·약관·설명서</button>
+          </div>
+          <div class="support-search-slot">
+            <div class="bo-toolbar support-search" data-support-search="notices">
+              <input type="text" id="notice-search" placeholder="검색" />
+              <button class="btn btn-ghost" type="button" id="notice-search-btn">검색</button>
+            </div>
+            <div class="bo-toolbar support-search" data-support-search="faq" style="display:none">
+              <input type="text" id="faq-search" placeholder="검색" />
+              <button class="btn btn-ghost" type="button" id="faq-search-btn">검색</button>
+            </div>
+            <div class="bo-toolbar support-search" data-support-search="documents" style="display:none">
+              <input type="text" id="document-search" placeholder="검색" />
+              <button class="btn btn-ghost" type="button" id="document-search-btn">검색</button>
+            </div>
+          </div>
         </div>
 
         <!-- 공지사항 -->
         <div class="support-panel" id="support-panel-notices">
-          <div class="bo-toolbar">
-            <input type="text" id="notice-search" placeholder="검색" />
-            <button class="btn btn-ghost" type="button" id="notice-search-btn">검색</button>
-          </div>
           <div id="notice-list"><!-- JS 렌더 --></div>
           <button class="btn btn-ghost" type="button" id="notice-more">더 보기</button>
         </div>
 
         <!-- FAQ -->
         <div class="support-panel" id="support-panel-faq" style="display:none">
-          <div class="bo-toolbar">
-            <input type="text" id="faq-search" placeholder="검색" />
-            <button class="btn btn-ghost" type="button" id="faq-search-btn">검색</button>
-          </div>
           <div id="faq-list"><!-- JS 렌더 --></div>
           <button class="btn btn-ghost" type="button" id="faq-more">더 보기</button>
         </div>
@@ -1147,10 +1198,6 @@
 
         <!-- 서식·약관·설명서 -->
         <div class="support-panel" id="support-panel-documents" style="display:none">
-          <div class="bo-toolbar">
-            <input type="text" id="document-search" placeholder="검색" />
-            <button class="btn btn-ghost" type="button" id="document-search-btn">검색</button>
-          </div>
           <div id="document-list"><!-- JS 렌더 --></div>
           <button class="btn btn-ghost" type="button" id="document-more">더 보기</button>
         </div>
@@ -1174,6 +1221,9 @@
 
   <!-- ── 맨 위로 이동 플로팅 버튼 (스크롤 시 노출) ───────────────── -->
   <button id="scroll-top" class="scroll-top" type="button" aria-label="맨 위로 이동" title="맨 위로">↑</button>
+
+  <!-- ── 거래명세서 인쇄 전용 영역 (평소엔 숨김, PDF 다운로드 시 window.print()로 출력) ── -->
+  <div id="mp-stmt-print-area"></div>
 
   <script src="js/main.js"></script>
 </body>

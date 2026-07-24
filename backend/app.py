@@ -1050,6 +1050,12 @@ def admin_create_notice(req: NoticeReq, user: dict = Depends(auth.require_admin)
     return {"id": db.create_notice(req.title, req.content)}
 
 
+@app.put("/api/admin/notices/{notice_id}")
+def admin_update_notice(notice_id: int, req: NoticeReq, user: dict = Depends(auth.require_admin)):
+    db.update_notice(notice_id, req.title, req.content)
+    return {"ok": True}
+
+
 @app.delete("/api/admin/notices/{notice_id}")
 def admin_delete_notice(notice_id: int, user: dict = Depends(auth.require_admin)):
     db.delete_notice(notice_id)
@@ -1064,6 +1070,12 @@ class FaqReq(BaseModel):
 @app.post("/api/admin/faqs")
 def admin_create_faq(req: FaqReq, user: dict = Depends(auth.require_admin)):
     return {"id": db.create_faq(req.question, req.answer)}
+
+
+@app.put("/api/admin/faqs/{faq_id}")
+def admin_update_faq(faq_id: int, req: FaqReq, user: dict = Depends(auth.require_admin)):
+    db.update_faq(faq_id, req.question, req.answer)
+    return {"ok": True}
 
 
 @app.delete("/api/admin/faqs/{faq_id}")
@@ -1083,6 +1095,14 @@ def admin_create_document(req: DocumentReq, user: dict = Depends(auth.require_ad
     if req.category not in ("약관", "서식", "설명서"):
         raise HTTPException(400, "지원하지 않는 구분입니다.")
     return {"id": db.create_document(req.title, req.category, req.description)}
+
+
+@app.put("/api/admin/documents/{document_id}")
+def admin_update_document(document_id: int, req: DocumentReq, user: dict = Depends(auth.require_admin)):
+    if req.category not in ("약관", "서식", "설명서"):
+        raise HTTPException(400, "지원하지 않는 구분입니다.")
+    db.update_document(document_id, req.title, req.category, req.description)
+    return {"ok": True}
 
 
 @app.delete("/api/admin/documents/{document_id}")

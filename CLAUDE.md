@@ -103,6 +103,37 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # 키 입력
 - **웹 검색 컨텍스트 분리**: 검색 결과는 LLM 메시지에만 주입, 대화 JSON(`conversations/<uuid>.json`)에는 원본 질문만 저장.
 - **Phoenix 선택적**: 없어도 앱 동작. OpenAI는 `OpenAIInstrumentor` 자동계측, `rag`/`cache`는 수동 스팬. `batch_test.py`는 별도 프로젝트명으로 `phoenix.otel.register()` 직접 호출.
 
+## 리디자인 디자인 시스템 (현재 기준값)
+
+리디자인 작업(2026-07-20~)에서 실제로 정착된 컬러·타이포·사이즈 값. 새 화면을 리디자인할 때는 아래 값을 그대로 재사용하고, 새 값이 필요하면 이 표를 먼저 갱신한다.
+
+**컬러 (site/css/style.css `:root`, `app.py` `:root`에 이름 동일하게 중복 선언)**
+- Primary: `--blue: #0FA968` (매치뱅크 로고 그린), hover/강조 `--blue-dark: #0B8457`
+- Primary soft: `--blue-soft: #E3F6EC`(연한 배경), `--blue-line: #A8E0C4`(연한 테두리/보더)
+- 중립: `--bg-soft: #F8FAFD`, `--border: #DDE3EA`, `--text: #3C4043`, `--text-sub: #5F6368`
+- semantic(상태): `--success`(=blue) / `--warning: #B45309` / `--error: #DC2626` / `--info: #2563EB` — 각각 `-soft` 배경 버전 존재
+- ⚠️ 알려진 불일치: AI은행원 추천 칩(`app.py`)의 테두리색은 `#E3E6EA`로 하드코딩돼 있어 `--border`(`#DDE3EA`)와 미묘하게 다름 — 다음에 손댈 때 변수로 통일할 것.
+
+**타이포그래피**
+- 본문 폰트: `IBM Plex Sans KR` (site·챗봇 동일, 챗봇은 Google Fonts `@import`로 로드)
+- site에는 `--font-display: "Black Han Sans"`(강조용)와 `--text-xs`(12px)~`--text-3xl`(40px) 스케일이 정의돼 있음. 챗봇(`app.py`)에는 이 스케일이 없고 값을 그때그때 하드코딩(예: 칩 13px, 유의사항 11.5px) — 화면을 늘릴수록 이 격차가 문제될 수 있음.
+
+**사이즈/모양 스케일 (site `:root`, "리디자인 Phase 0" 추가분 — 정의는 돼 있으나 아직 전면 적용은 안 된 상태)**
+- spacing: 8px 기준 `--space-1`(4px)~`--space-9`(96px)
+- radius: `--radius-sm`(8px) / 기존 `--radius`(14px, 카드 기본) / `--radius-lg`(20px) / `--radius-pill`(999px, 알약형)
+- shadow: `--shadow-sm`(rgba(60,64,67,.06)) / `--shadow-md` / `--shadow-lg` / `--shadow-brand`(rgba(15,169,104,.28), 브랜드 그린 강조용)
+- motion: `--ease: cubic-bezier(0.4,0,0.2,1)`, `--dur-fast: 150ms` / `--dur-base: 200ms` / `--dur-slow: 300ms`
+
+**실제 컴포넌트에서 반복된 시각 패턴** (남은 화면 리디자인 시 그대로 확장 적용할 기준)
+- **카드/버튼 rest→hover 공식**: rest = 흰 배경 + 연한 회색 테두리 + 아주 옅은 그림자(`--shadow-sm` 수준) → hover = 테두리가 브랜드 그린(`--blue-line`)으로 전환 + 그림자 확대(브랜드 그린 틴트) + 위로 2px 리프트(`translateY(-2px)`), `transition: 0.15s ease`. 백오피스 버튼, AI은행원 사이드바 버튼, 추천 칩에 공통 적용됨.
+- **알약형(pill) 칩**: `border-radius: 18px`, `padding: 7px 14px`, `font-size: 13px`, `font-weight: 500`
+- **사각 버튼/입력창**: `border-radius: 12px`
+- **아이콘+텍스트 정렬**: 아이콘-텍스트 간격 `gap: 8px` 기준, 좌측 padding 14px
+
+**Streamlit(`app.py`) 전용 CSS 작성 시 항상 주의할 점**
+- Streamlit `key=`로 생성되는 `.st-key-<key>` 클래스는 버튼의 바로 위 부모가 아니라 그 바깥 `stElementContainer`에 붙는다. CSS 선택자에 직계 자식 결합자(`>`)를 쓰면 조용히 안 먹으니 항상 후손 결합자(space)를 쓸 것 — 이 세션에서만 3번 재발한 버그.
+- Python/CSS를 고쳐도 이미 열린 세션에 반영이 안 될 때가 잦다. 브라우저 새로고침보다 `streamlit run` 프로세스 자체를 재시작하는 편이 확실하다.
+
 ## 작업 기록
 
 세션마다 진행한 변경을 날짜순으로 아래에 추가한다.
@@ -141,3 +172,31 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # 키 입력
 - 기술스택 섹션은 "① 자체 구축 시스템"과 "② 외부 연동"(OpenAI AI 모델, 금융감독원 데이터)으로 구분 — FastAPI처럼 이름에 "API"가 들어간 프레임워크가 외부 데이터 소스와 헷갈리지 않도록 명확히 분리.
 - 동일 내용을 Figma Slides 12장으로 미러링(포트폴리오 열람용, 리디자인이 아니라 기획서를 슬라이드화한 것). 매치뱅크 실제 브랜드 컬러(그린 `#0FA968`)·Noto Sans KR 적용, 배치마다 겹침/텍스트클리핑/영역이탈 자동검증 + 스크린샷 육안 확인.
 - 다음 단계 순서 확정(별도 세션에서 진행 예정): 로컬에 설치된 claudekit 디자인 스킬(`ui-ux-pro-max`로 컬러·타이포 방향 결정 → `frontend-design`으로 `site/` 코드 직접 리디자인)로 실제 코드를 먼저 완성한 뒤, `figma-generate-library`/`figma-generate-design`으로 그 코드베이스에서 Figma 디자인시스템/화면을 역추출 — 기획서(md)→Figma Slides와 같은 "코드/문서가 원본, Figma는 그 결과물" 패턴.
+
+### 2026-07-24
+
+**백오피스 UI 일관성 정리** — 대상: `site/index.html`, `site/js/main.js`, `site/css/style.css`
+- 공지사항/FAQ/서식관리/회원관리/금융상품관리의 검색창을 `.bo-search-inline` 공통 클래스로 통일 — 세로 길이 축소, 탭바와 같은 줄 오른쪽 정렬, 제목/등록일 메뉴와 10px 여백.
+- 버튼 크기 전반 축소 + 오른쪽 정렬(`.bo-content .btn`, `.bo-btn-right`, `.bo-toolbar-right`, `.bo-row-actions`).
+- 공지/FAQ/서식 목록에 "수정" 버튼 신규 추가(기존 "삭제"와 나란히) — `backend/db.py`에 `update_notice`/`update_faq`/`update_document`, `backend/app.py`에 `PUT /api/admin/notices/{id}` 등 3개 엔드포인트 신규.
+- 대시보드 카드 정렬 버그(`align-items: start`로 패널 높이 안 맞던 문제), 도넛차트 좌측 쏠림(`justify-content: center` 누락) 수정.
+- 이체모니터링/보안관리 테이블에 실제 데이터 기반 스파크라인 추가(`sparklineSvg`/`bucketByDay`, 장식용 가짜 데이터 아님) — 최근 이체 최대 300건을 집계해 일별 추세 표시.
+- 체크박스가 거대한 정사각형으로 깨지던 버그(`.tf-field input` 일반 규칙이 checkbox까지 덮어씀) 수정.
+
+**백엔드 헬스체크 40초+ 행(hang) 수정** — 대상: `backend/health.py`, `backend/infra_metrics.py`
+- Kafka/Elasticsearch 클라이언트 라이브러리가 자체 `timeout` 설정을 무시하고 내부 재시도하는 문제 발견 → `ThreadPoolExecutor` + `future.result(timeout=N)`로 감싸 응답 없는 백그라운드 스레드를 포기(abandon)하는 방식으로 우회.
+
+**AI은행원(챗봇) 사이드바/입력창 리디자인** — 대상: `app.py`
+- "새 채팅"/"채팅검색" 버튼 스타일 통일(테두리 제거, 좌측정렬, 호버 시 배경색, 아이콘·텍스트 위치 픽셀 단위로 정렬).
+- 사이드바 배경 제거(Streamlit 기본 테마 `secondaryBackgroundColor`가 강제 적용되던 것을 `!important`로 재정의).
+- "AI은행원 유의사항" 폰트 크기 불일치 수정 — 컨테이너가 아니라 Streamlit이 `<li>`/`<ul>`에 직접 박아둔 16px를 명시적으로 덮어써야 했음.
+- 입력창 클릭 시 뜨는 추천 키워드 칩을 2×3 그리드 → 가로 스크롤 한 줄(스크롤바 숨김)로 재구성, 흰 배경+연한 테두리+호버 시 그림자·리프트·테두리 그린 전환 스타일 적용.
+- **반복 발견된 버그 패턴**: Streamlit `key=` 로 생성되는 `.st-key-*` 클래스는 버튼의 바로 위 부모가 아니라 그 바깥 `stElementContainer`에 붙는다 — CSS에서 직계 자식 결합자(`>`)를 쓰면 조용히 안 먹는다(이번 세션에서만 3번 재발: 새채팅 버튼, 채팅검색 입력창, 추천 칩). 항상 후손 결합자(space)를 써야 함.
+
+**남은 리디자인 대상 화면 (TODO)** — 이번 세션까지 진행한 리디자인은 AI은행원(챗봇)·백오피스·고객센터 검색창·상품안내 인기통계 랭킹 정도이고, 아래는 아직 톤 정리를 안 한 화면:
+- `#home` — quick-actions 여백만 조정, 히어로/레이아웃은 미착수
+- `#account`(내 계좌) — 전혀 미착수
+- `#auth`(로그인/회원가입/아이디찾기/비밀번호재설정) — 전혀 미착수
+- `#mypage`(마이페이지) — 기능(이체 PIN 등)은 이전 세션에서 구현됐으나 이번 리디자인 톤 반영 안 됨
+- `#products` 탭바·상품 리스트·상세 아코디언 — 인기통계 랭킹 부분만 손댔고 핵심 UI는 미착수
+- `#support`(고객센터) 본문 — 검색창 위치/크기만 정리, 공지/FAQ/서식 리스트 카드 자체는 미착수
