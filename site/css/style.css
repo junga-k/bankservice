@@ -289,7 +289,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-4) var(--space-6);
+  padding: 13px var(--space-6);
   border-radius: var(--radius-sm);
   font-size: var(--text-md);
   font-weight: 600;
@@ -1650,16 +1650,41 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 
 /* ── 내 계좌: 총자산 요약 카드 ───────────────────────────────────── */
-.acct-header-row { display: flex; justify-content: flex-end; margin-bottom: var(--space-2); }
-.asset-add-btn {
-  flex-shrink: 0;
-  padding: 9px 16px;
-  font-size: var(--text-sm);
-  background: #fff;
-  border-color: var(--blue-line);
-  box-shadow: var(--shadow-sm);
+/* 계좌 추가를 그리드 밖 버튼이 아니라 카드 그리드 안 점선 고스트 타일로 —
+   uibowl.io의 지갑/계좌 대시보드 레퍼런스에서 확인한 패턴(추가 액션을 만들어질 항목과 같은 자리에 둠) */
+.acct-card.ghost {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 148px;
+  background: transparent;
+  border: 1.5px dashed var(--border);
+  box-shadow: none;
+  color: var(--text-sub);
+  cursor: pointer;
 }
-.asset-add-btn svg { width: 16px; height: 16px; }
+.acct-card.ghost:hover {
+  border-color: var(--blue-line);
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+  box-shadow: none;
+  transform: none;
+}
+.acct-card.ghost .ghost-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+}
+.acct-card.ghost:hover .ghost-icon { background: #fff; border-color: var(--blue-line); }
+.acct-card.ghost .ghost-icon svg { width: 16px; height: 16px; }
+.acct-card.ghost span { font-size: var(--text-sm); font-weight: 600; }
 
 .asset-summary {
   position: relative;
@@ -2140,6 +2165,40 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 .scroll-top:hover { background: var(--blue-dark); }
 .scroll-top.show { opacity: 1; visibility: visible; transform: translateY(0); }
+
+/* ── 스크롤 유도 힌트 (uidesign.tips "Prompt User to Scroll") ──────── */
+.scroll-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translate(-50%, 0);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(6px);
+  color: var(--text-sub);
+  font-size: 12.5px;
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s;
+  z-index: 190;
+}
+.scroll-hint.show { opacity: 1; visibility: visible; }
+.scroll-hint svg { width: 14px; height: 14px; animation: scrollHintArrow 1.4s ease-in-out infinite; }
+@keyframes scrollHintArrow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scroll-hint svg { animation: none; }
+}
 
 /* ── 마이페이지 ─────────────────────────────────────────────────── */
 .btn-danger { background: #D93025; color: #fff; }

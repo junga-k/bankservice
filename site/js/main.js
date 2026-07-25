@@ -164,6 +164,7 @@ function navigate(name) {
   // 해시 동기화 (뒤로가기 지원)
   if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
   window.scrollTo(0, 0);
+  if (window.updateScrollHint) window.updateScrollHint();
 }
 
 /* 헤더 메뉴 하단 슬라이딩 인디케이터: 선택된 메뉴 아래로 부드럽게 이동 */
@@ -451,7 +452,13 @@ function renderAccountCards(accounts) {
            </div>
          </div>`
     )
-    .join("");
+    .join("") +
+    `<div class="card acct-card ghost" data-nav="mypage" data-mypage-tab="accounts">
+       <span class="ghost-icon">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+       </span>
+       <span>계좌 추가</span>
+     </div>`;
 }
 
 /* 받는 은행 선택 목록 */
@@ -3903,6 +3910,23 @@ function escapeHtml(s) {
   window.addEventListener("scroll", toggle, { passive: true });
   btn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
   toggle();
+})();
+
+/* ── 스크롤 유도 힌트: 화면 전환 시 아래에 더 볼 내용이 있으면 노출,
+   스크롤을 시작하면 사라진다(uidesign.tips "Prompt User to Scroll") ── */
+(function () {
+  const hint = document.getElementById("scroll-hint");
+  if (!hint) return;
+  const hide = () => hint.classList.remove("show");
+  window.updateScrollHint = function () {
+    hide();
+    window.setTimeout(() => {
+      if (window.scrollY > 40) return;   // 이미 스크롤된 채로 진입했으면 노출 안 함
+      const overflow = document.documentElement.scrollHeight - window.innerHeight;
+      if (overflow > 160) hint.classList.add("show");
+    }, 200);
+  };
+  window.addEventListener("scroll", hide, { passive: true });
 })();
 
 /* ── 은행원 iframe → 부모 SPA 이동 (이체내역 조회하기 등) ───────────── */

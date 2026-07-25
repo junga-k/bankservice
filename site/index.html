@@ -259,12 +259,6 @@
 
         <!-- 계좌조회 -->
         <div class="account-panel" id="account-panel-inquiry">
-          <div class="acct-header-row">
-            <button type="button" class="btn btn-ghost asset-add-btn" data-nav="mypage" data-mypage-tab="accounts">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-              계좌 등록
-            </button>
-          </div>
           <div id="asset-summary" class="asset-summary"><!-- JS 렌더 --></div>
           <div id="account-cards" class="card-grid acct-card-grid"><!-- JS 렌더 --></div>
 
@@ -1392,6 +1386,13 @@
 
   <!-- ── 맨 위로 이동 플로팅 버튼 (스크롤 시 노출) ───────────────── -->
   <button id="scroll-top" class="scroll-top" type="button" aria-label="맨 위로 이동" title="맨 위로">↑</button>
+
+  <!-- ── 스크롤 유도 힌트: 화면 진입 시 아래에 더 볼 내용이 있으면 노출,
+       스크롤을 시작하면 사라진다(uidesign.tips "Prompt User to Scroll") ── -->
+  <div id="scroll-hint" class="scroll-hint" aria-hidden="true">
+    <span>스크롤하여 더 보기</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+  </div>
 
   <!-- ── 거래명세서 인쇄 전용 영역 (평소엔 숨김, PDF 다운로드 시 window.print()로 출력) ── -->
   <div id="mp-stmt-print-area"></div>

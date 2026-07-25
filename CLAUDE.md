@@ -266,5 +266,16 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # 키 입력
 - **브랜드명 폰트 삽질 기록**(다음에 비슷한 걸 또 겪지 않도록): 처음엔 브랜드명을 헤더와 맞춘다며 `--font-display`(Black Han Sans)에 `font-weight: 800`을 줬는데, 이 폰트는 Google Fonts에 굵기가 하나뿐이라 800을 줘도 브라우저가 억지로 두껍게 그려서(합성 볼드) 오히려 뭉개져 보였음. → 폰트를 IBM Plex Sans KR로 바꾸고 `font-weight: 600`으로 낮췄는데, 실제로 스크린샷으로 보니 여전히 얇아 보인다는 피드백 → `document.fonts`/`document.fonts.check()`로 확인한 결과 폰트 자체는 정상 로드됐지만, **IBM Plex Sans KR은 한글 글리프에서 400/500/600 굵기가 육안으로 거의 구분이 안 되고 700(Bold)부터 실제로 굵어지는** 폰트였음(0~800까지 실제 페이지에 나란히 렌더링해서 직접 비교 확인). → 결국 원래 원하던 방향(로고와 같은 폰트 유지)으로 되돌려 Black Han Sans + `letter-spacing: 2px`로 해결 — 두께가 아니라 자간이 좁아 글자가 뭉쳐 보이는 게 진짜 원인이었음. **교훈: 폰트 굵기를 조정할 땐 그 폰트가 실제로 그 굵기를 갖고 있는지(가변 폰트가 아니면 단일 굵기인 경우가 많음) 먼저 확인하고, 스크린샷만으로 판단하기 애매하면 여러 굵기를 실제로 나란히 렌더링해서 비교할 것.**
 - **비밀번호 찾기 CTA 버그 수정**: STEP2("비밀번호 재설정") 버튼이 STEP1에서 이메일 인증만 완료하면 활성화돼버려서, STEP2 진입 직후 새 비밀번호를 하나도 안 쳤는데도 버튼이 활성 상태로 보이던 문제 발견. `updateResetPwButtonState()`에 새 비밀번호 두 칸이 4자 이상+일치해야 활성화되는 조건을 추가하고, STEP1 "다음" 버튼도 아이디찾기처럼 이메일 인증 전엔 비활성화되도록 `updateResetPwStep1ButtonState()` 신설.
 
+**CTA 버튼 크기 재검토 + 계좌 추가 고스트 타일 + AI은행원 스피너/검색창 폭 미세조정** — 대상: `site/css/style.css`, `site/index.html`, `site/js/main.js`, `app.py`
+- 전체 화면 재검토 결과 두 가지 실제 격차를 확정 반영: `.btn` 기본 padding을 `var(--space-4)`(16px)→`13px`로 낮춰 버튼 높이를 55px→49px로 축소(다른 화면 대비 CTA가 유독 커 보이던 문제), `#home .btn`은 기존 알약형 예외 유지.
+- 계좌 목록 상단에 따로 떠 있던 "계좌 등록" 버튼(`.acct-header-row`)을 제거하고, 카드 그리드 안에 점선 테두리 고스트 타일(`.acct-card.ghost`)로 통합 — uibowl.io 지갑/계좌 대시보드 레퍼런스에서 "추가" 액션을 새로 만들어질 항목과 같은 자리에 두는 패턴을 확인하고 반영.
+- AI은행원(Streamlit) 사이드바 "채팅검색" 입력창의 아이콘-텍스트 간격이 "새채팅" 버튼(8px)보다 넓어 보이던 버그 재수정 — 원인은 flex 부모의 `column-gap: 8px`는 이미 맞았는데 Streamlit `<input>` 자체의 기본 `padding-left: 12px`가 더해져 총 간격이 벌어진 것이었음. `padding-left: 0 !important` 한 줄로 해결(라이브 DOM에서 `getBoundingClientRect`/`getComputedStyle`로 정확한 원인 확인 후 수정 — 크로스오리진 iframe이라 부모 탭에선 안 보여서 `:8501` 직접 접속 탭에서 진단).
+- AI 응답 대기 중 뜨는 Streamlit 기본 스피너(회색 링)를 브랜드 톤 알약형 배지(연한 그린 배경 + 은은한 펄스 애니메이션)로 재스킨 — `[data-testid="stSpinner"]` 기준으로만 스타일링해서 `st.spinner()` 호출부 어디서 어떤 문구를 띄우든 동일하게 적용됨. 스피너 링 자체(SVG 아님)는 재색상 시도 두 번(svg 셀렉터, svg * 셀렉터)이 모두 안 먹혀 원인을 못 찾았고, 효과 없는 추측성 CSS를 남기지 않기 위해 제거하고 회색 링은 그대로 둠(알려진 한계로 수용).
+
+**스크롤 유도 힌트 (Prompt to Scroll)** — 대상: `site/index.html`, `site/css/style.css`, `site/js/main.js`
+- uidesign.tips의 "Prompt User to Scroll" 팁(다음 섹션을 살짝 보여줘서 더 볼 내용이 있음을 알리는 것)을 참고해, 화면마다 콘텐츠를 직접 잘라 보여주는 대신 **콘텐츠 기반 범용 플로팅 힌트**로 구현 — 폼/표 위주의 유틸리티 화면(설정, 백오피스 탭 등)까지 억지로 "다음 섹션 미리보기"를 넣는 게 어색해서, 대신 현재 활성 섹션이 실제로 뷰포트를 넘칠 때만(`scrollHeight - innerHeight > 160`) 하단 중앙에 "스크롤하여 더 보기" 알약형 배지 + 통통 튀는 화살표를 노출하고, 스크롤을 시작하면 사라지는 방식.
+- 기존 `navigate(name)` 함수 끝에 `updateScrollHint()` 훅을 추가해 SPA 섹션 전환마다 재평가 — 초기 로드(`navigate(location.hash...)`)도 같은 경로를 타므로 별도 처리 불필요. 우측 하단 `#scroll-top`(맨 위로) 버튼과 겹치지 않도록 하단 중앙에 배치.
+- 브라우저에서 실측 검증: 긴 화면(`#home`, `#products`)에선 정상 노출·스크롤 시 정상 소멸·재진입 시 재노출 확인, 짧은 화면(백오피스 보안관리 탭, overflow 83px)에선 노출 안 됨 확인.
+
 **남은 작업 (TODO)**
-- CTA 버튼 전체 크기 재검토 — `#home`/`#products`/`#account`/`#auth`까지 끝났으니 재검토 시점 후보
+- (현재 없음 — CTA 버튼 크기 재검토까지 완료. 신규 요청 발생 시 이 자리에 추가)

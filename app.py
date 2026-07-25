@@ -178,6 +178,9 @@ st.markdown("""<style>
     font-size: 14px !important;
     background: transparent !important;
     color: var(--text) !important;
+    /* input 자체의 기본 padding-left(12px)가 아이콘과의 flex gap(8px)에 더해져
+       새 채팅 버튼(아이콘-텍스트 8px)보다 훨씬 벌어져 보였다 — 0으로 상쇄 */
+    padding-left: 0 !important;
 }
 [data-testid="stSidebar"] .st-key-sidebar_search [data-testid="stTextInputIcon"] { color: var(--blue-dark) !important; }
 
@@ -408,6 +411,40 @@ st.markdown("""<style>
 }
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) a:hover {
     text-decoration: underline;
+}
+
+/* ── AI 생각 중 인디케이터 ─────────────────────────────────────────
+   기존엔 Streamlit 기본 스피너(회색 링 + 텍스트)를 그대로 써서 나머지 커스텀
+   UI 사이에서 유독 눈에 띄었음. 브랜드 톤의 알약형 배지 + 은은한 펄스 애니메이션으로
+   교체 — st.spinner() 호출부(app.py 곳곳의 "처리 중"/"검색 중" 등)는 그대로 두고
+   testid 기준으로만 재스킨하므로 어떤 spinner 문구든 동일하게 적용된다. */
+[data-testid="stSpinner"] {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    margin: 4px 0;
+    background: var(--blue-soft);
+    border-radius: 999px;
+    width: fit-content;
+    animation: aiThinkingPulse 1.6s ease-in-out infinite;
+}
+[data-testid="stSpinner"] svg {
+    width: 16px !important;
+    height: 16px !important;
+    color: var(--blue) !important;
+}
+[data-testid="stSpinner"] p {
+    color: var(--blue-dark) !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+}
+@keyframes aiThinkingPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+@media (prefers-reduced-motion: reduce) {
+    [data-testid="stSpinner"] { animation: none; }
 }
 
 /* ── 모델 팝오버 ────────────────────────────────────────────────── */
