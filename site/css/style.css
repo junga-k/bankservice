@@ -687,7 +687,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .rank-row:last-child { margin-bottom: 0; }
 .rank-row .rank-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .rank-row .rank-name {
-  width: 92px; font-size: 13px; color: var(--text-sub); flex-shrink: 0;
+  width: 92px; font-size: 13px; font-weight: 500; color: var(--text-sub); flex-shrink: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .rank-track { flex: 1; background: var(--bg-soft); border-radius: 6px; height: 22px; overflow: hidden; }
@@ -915,6 +915,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .topcat-list .p-name {
   flex: 1;
   min-width: 0;
+  font-weight: 500;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
