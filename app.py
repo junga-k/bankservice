@@ -389,6 +389,35 @@ st.markdown("""<style>
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
   [class*="st-key-px_"] [data-testid="stButton"] button { pointer-events: auto !important; }
 
+/* 싫어요 이유 선택 상자(key=dislike_box_<i>): 체크박스 몇 개뿐인데 채팅 컬럼 전체 폭으로
+   퍼져 보이던 것을 내용에 맞는 폭으로 줄임. */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
+  [class*="st-key-dislike_box_"] {
+    max-width: 420px;
+    /* 기본 padding이 0px 8px(위아래 여백 0)라 글자·버튼이 테두리에 그대로 붙어 답답해
+       보였음 — 사방에 여유 있는 여백을 줌(uidesign.tips "Visually Separate Elements": 여백이
+       구획을 나누고 인지 부담을 줄인다). */
+    padding: 18px 20px !important;
+}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
+  [class*="st-key-dislike_box_"] [data-testid="stVerticalBlock"] {
+    gap: 10px;
+    /* Streamlit 기본값 max-width:82%가 이 상자 안에서 또 82%로 줄어들어(체크박스/제출·취소
+       버튼 줄이 상자 오른쪽 끝까지 못 닿고 여백만 남던 원인) — 상자 폭 안에서는 100% 그대로 채움. */
+    max-width: 100% !important;
+}
+/* 질문("어떤 점이 아쉬웠나요?")과 선택지 텍스트를 다른 색으로 구분 — 기본값은 둘 다 --text라
+   구분이 안 됐음: 질문은 보조 안내문 느낌으로 옅게, 선택지는 실제 클릭 대상이라 진하게. */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
+  [class*="st-key-dislike_box_"] [data-testid="stCaptionContainer"] p {
+    color: var(--text-sub) !important;
+}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
+  [class*="st-key-dislike_box_"] [data-testid="stCheckbox"] label p {
+    color: var(--text) !important;
+    font-weight: 500;
+}
+
 /* ── 입력창 ────────────────────────────────────────────────────── */
 [data-testid="stChatInput"] { margin-right: 150px !important; }
 [data-testid="stChatInput"] > div {
@@ -872,7 +901,7 @@ body.kw-open [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){ dis
     </script>""", height=0)
     st.markdown("<div style='height:4vh'></div>", unsafe_allow_html=True)
 
-_DISLIKE_REASONS = ["부정확한 정보", "원하는 답변이 아님", "응답이 느림/오류", "말투가 별로", "안전/법적 우려", "기타"]
+_DISLIKE_REASONS = ["부정확한 정보", "원하는 답변이 아님", "응답이 느림/오류", "말투/스타일이 아쉬움", "안전/법적 우려", "기타"]
 
 
 def _submit_chat_feedback(conv: dict, msg: dict, msg_index: int, rating: str,
@@ -937,22 +966,25 @@ for i, msg in enumerate(conv["messages"]):
                 st.rerun()
 
             if st.session_state.get(f"show_dislike_form_{i}"):
-                with st.form(key=f"dislike_form_{i}"):
+                with st.container(border=True, key=f"dislike_box_{i}"):
                     st.caption("어떤 점이 아쉬웠나요? (선택)")
-                    _selected = [
-                        r for ridx, r in enumerate(_DISLIKE_REASONS)
-                        if st.checkbox(r, key=f"reason_{i}_{ridx}")
-                    ]
-                    _comment = st.text_area("추가로 남기고 싶은 말", key=f"comment_{i}", height=68)
+                    _selected = []
+                    for ridx, r in enumerate(_DISLIKE_REASONS):
+                        if st.checkbox(r, key=f"reason_{i}_{ridx}"):
+                            _selected.append(r)
+                    _etc_text = ""
+                    if "기타" in _selected:
+                        _etc_text = st.text_input("기타 사유를 입력해주세요", key=f"etc_{i}")
                     _fc1, _fc2 = st.columns(2)
-                    _submitted = _fc1.form_submit_button("제출", use_container_width=True)
-                    _canceled = _fc2.form_submit_button("취소", use_container_width=True)
+                    _submitted = _fc1.button("제출", key=f"dislike_submit_{i}", use_container_width=True)
+                    _canceled = _fc2.button("취소", key=f"dislike_cancel_{i}", use_container_width=True)
                 if _submitted:
+                    _submit_chat_feedback(conv, msg, i, "down", reasons=_selected, comment=_etc_text)
+                if _submitted or _canceled:
                     st.session_state.pop(f"show_dislike_form_{i}", None)
-                    _submit_chat_feedback(conv, msg, i, "down", reasons=_selected, comment=_comment)
-                    st.rerun()
-                if _canceled:
-                    st.session_state.pop(f"show_dislike_form_{i}", None)
+                    for ridx in range(len(_DISLIKE_REASONS)):
+                        st.session_state.pop(f"reason_{i}_{ridx}", None)
+                    st.session_state.pop(f"etc_{i}", None)
                     st.rerun()
 
 # ── 이체 확인 카드 헬퍼 ──────────────────────────────────────────────
