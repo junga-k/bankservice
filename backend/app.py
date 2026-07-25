@@ -660,6 +660,50 @@ def prompt_ab_test(req: PromptABTestReq, user: dict = Depends(auth.require_admin
     return {"a": _run_once(req.prompt_a), "b": _run_once(req.prompt_b)}
 
 
+# ── AI은행원 답변 평가(좋아요/싫어요) ──────────────────────────────────
+class ChatFeedbackReq(BaseModel):
+    conversation_id: str
+    message_index: int
+    rating: str
+    reasons: list[str] = []
+    comment: str = ""
+    question: str = ""
+    answer: str = ""
+
+
+@app.post("/api/chat-feedback")
+def create_chat_feedback(req: ChatFeedbackReq):
+    if req.rating not in ("up", "down"):
+        raise HTTPException(400, "rating은 up 또는 down이어야 합니다.")
+    feedback_id = db.create_chat_feedback(
+        conversation_id=req.conversation_id,
+        message_index=req.message_index,
+        rating=req.rating,
+        reasons=json.dumps(req.reasons, ensure_ascii=False) if req.reasons else "",
+        comment=req.comment,
+        question=req.question,
+        answer=req.answer,
+    )
+    return {"id": feedback_id}
+
+
+@app.get("/api/admin/chat-feedback")
+def admin_chat_feedback(
+    offset: int = 0, limit: int = 20, rating: str = "",
+    user: dict = Depends(auth.require_admin),
+):
+    items = db.list_chat_feedback(offset, limit, rating)
+    return {
+        "items": [
+            {**item, "reasons": json.loads(item["reasons"]) if item["reasons"] else []}
+            for item in items
+        ],
+        "total": db.count_chat_feedback(rating),
+        "summary": db.chat_feedback_summary(),
+        "reason_counts": db.chat_feedback_reason_counts(),
+    }
+
+
 # ── Backoffice: 이체 정책(한도/수수료) ────────────────────────────────
 @app.get("/api/admin/transfer-policy")
 def get_transfer_policy(user: dict = Depends(auth.require_admin)):

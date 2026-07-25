@@ -375,9 +375,11 @@ st.markdown("""<style>
 }
 .action-btn:hover { border-color: var(--blue); background: var(--blue-soft); color: var(--blue-dark); }
 .action-btn svg { width: 14px; height: 14px; pointer-events: none; }
-/* 숨겨진 retry st.button — JS .click()으로만 트리거 */
+.action-btn.active { color: #0B8457; border-color: #0B8457; background: #E3F6EC; }
+/* 숨겨진 retry/좋아요/싫어요 st.button(key가 px_로 시작) — JS .click()으로만 트리거.
+   대신 싫어요 폼의 제출/취소 버튼(key가 px_로 시작하지 않음)은 그대로 보여야 한다. */
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
-  [data-testid="stButton"] {
+  [class*="st-key-px_"] [data-testid="stButton"] {
     position: absolute !important;
     opacity: 0 !important;
     pointer-events: none !important;
@@ -385,7 +387,7 @@ st.markdown("""<style>
     overflow: hidden !important;
 }
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
-  [data-testid="stButton"] button { pointer-events: auto !important; }
+  [class*="st-key-px_"] [data-testid="stButton"] button { pointer-events: auto !important; }
 
 /* ── 입력창 ────────────────────────────────────────────────────── */
 [data-testid="stChatInput"] { margin-right: 150px !important; }
@@ -870,6 +872,31 @@ body.kw-open [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){ dis
     </script>""", height=0)
     st.markdown("<div style='height:4vh'></div>", unsafe_allow_html=True)
 
+_DISLIKE_REASONS = ["부정확한 정보", "원하는 답변이 아님", "응답이 느림/오류", "말투가 별로", "안전/법적 우려", "기타"]
+
+
+def _submit_chat_feedback(conv: dict, msg: dict, msg_index: int, rating: str,
+                           reasons: list[str] | None = None, comment: str = "") -> None:
+    """평가를 백엔드(bank.db, Backoffice 집계용)에 저장 + 대화 JSON에도 남겨(재실행해도 버튼 강조 유지)."""
+    question = ""
+    if msg_index > 0 and conv["messages"][msg_index - 1]["role"] == "user":
+        question = conv["messages"][msg_index - 1]["content"]
+    try:
+        requests.post(f"{_BACKEND_URL}/api/chat-feedback", json={
+            "conversation_id": conv["id"],
+            "message_index": msg_index,
+            "rating": rating,
+            "reasons": reasons or [],
+            "comment": comment,
+            "question": question,
+            "answer": msg["content"],
+        }, timeout=3)
+    except Exception:
+        pass  # 백엔드가 꺼져 있어도 채팅 자체는 계속 동작해야 함
+    msg["feedback"] = {"rating": rating, "reasons": reasons or [], "comment": comment}
+    storage.save_conversation(conv)
+
+
 for i, msg in enumerate(conv["messages"]):
     with st.chat_message(msg["role"]):
         _display = _inject_bank_links(msg["content"]) if msg["role"] == "assistant" else msg["content"]
@@ -877,27 +904,56 @@ for i, msg in enumerate(conv["messages"]):
 
         if msg["role"] == "assistant":
             _cb64 = _base64.b64encode(msg["content"].encode()).decode()
+            _fb = msg.get("feedback") or {}
+            _like_cls = " active" if _fb.get("rating") == "up" else ""
+            _dislike_cls = " active" if _fb.get("rating") == "down" else ""
             st.markdown(f"""
 <div class='msg-actions'>
-  <button class='action-btn' title='좋아요'>
+  <button class='action-btn{_like_cls}' title='좋아요' data-idx="{i}">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
   </button>
-  <button class='action-btn' title='싫어요'>
+  <button class='action-btn{_dislike_cls}' title='싫어요' data-idx="{i}">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>
   </button>
-  <button class='action-btn' title='다시 시도'>
+  <button class='action-btn' title='다시 시도' data-idx="{i}">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-5"/></svg>
   </button>
   <button class='action-btn' title='복사' data-b64="{_cb64}">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
   </button>
 </div>""", unsafe_allow_html=True)
-            if st.button("↺", key=f"retry_{i}"):
+            if st.button("↺", key=f"px_retry_{i}"):
                 conv["messages"] = conv["messages"][:i]
                 storage.save_conversation(conv)
                 if conv["messages"] and conv["messages"][-1]["role"] == "user":
                     st.session_state["_retry_prompt"] = conv["messages"][-1]["content"]
                 st.rerun()
+            if st.button("👍", key=f"px_like_{i}"):
+                st.session_state.pop(f"show_dislike_form_{i}", None)
+                _submit_chat_feedback(conv, msg, i, "up")
+                st.rerun()
+            if st.button("👎", key=f"px_dislike_{i}"):
+                st.session_state[f"show_dislike_form_{i}"] = True
+                st.rerun()
+
+            if st.session_state.get(f"show_dislike_form_{i}"):
+                with st.form(key=f"dislike_form_{i}"):
+                    st.caption("어떤 점이 아쉬웠나요? (선택)")
+                    _selected = [
+                        r for ridx, r in enumerate(_DISLIKE_REASONS)
+                        if st.checkbox(r, key=f"reason_{i}_{ridx}")
+                    ]
+                    _comment = st.text_area("추가로 남기고 싶은 말", key=f"comment_{i}", height=68)
+                    _fc1, _fc2 = st.columns(2)
+                    _submitted = _fc1.form_submit_button("제출", use_container_width=True)
+                    _canceled = _fc2.form_submit_button("취소", use_container_width=True)
+                if _submitted:
+                    st.session_state.pop(f"show_dislike_form_{i}", None)
+                    _submit_chat_feedback(conv, msg, i, "down", reasons=_selected, comment=_comment)
+                    st.rerun()
+                if _canceled:
+                    st.session_state.pop(f"show_dislike_form_{i}", None)
+                    st.rerun()
 
 # ── 이체 확인 카드 헬퍼 ──────────────────────────────────────────────
 def _won_kor(n: int) -> str:
@@ -1144,12 +1200,11 @@ _components.html("""<script>
                 }catch(e2){}
               });
             }catch(e){}
-          }else if(title==='다시 시도'){
-            var msg=self.closest('[data-testid="stChatMessage"]');
-            if(msg){
-              var rb=msg.querySelector('[data-testid="stButton"] button');
-              if(rb){rb.click();flash();}
-            }
+          }else if(title==='다시 시도'||title==='좋아요'||title==='싫어요'){
+            var idx=self.getAttribute('data-idx');
+            var prefix=title==='좋아요'?'px_like_':title==='싫어요'?'px_dislike_':'px_retry_';
+            var rb=pd.querySelector('.st-key-'+prefix+idx+' [data-testid="stButton"] button');
+            if(rb){rb.click();flash();}
           }else{
             flash();
           }

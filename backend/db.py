@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import time
@@ -141,6 +142,17 @@ def init_db() -> None:
                 web_search     INTEGER NOT NULL DEFAULT 0,
                 changed_by     TEXT NOT NULL DEFAULT '',
                 created_at     REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS chat_feedback (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                message_index   INTEGER NOT NULL,
+                rating          TEXT NOT NULL,
+                reasons         TEXT NOT NULL DEFAULT '',
+                comment         TEXT NOT NULL DEFAULT '',
+                question        TEXT NOT NULL DEFAULT '',
+                answer          TEXT NOT NULL,
+                created_at      REAL NOT NULL
             );
             """
         )
@@ -1190,3 +1202,78 @@ def get_chatbot_config_history_entry(history_id: int) -> dict | None:
             (history_id,),
         ).fetchone()
     return dict(row) if row else None
+
+
+# ── AI은행원 답변 평가(좋아요/싫어요) ──────────────────────────────────
+def create_chat_feedback(
+    conversation_id: str,
+    message_index: int,
+    rating: str,
+    reasons: str = "",
+    comment: str = "",
+    question: str = "",
+    answer: str = "",
+) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO chat_feedback"
+            "(conversation_id, message_index, rating, reasons, comment, question, answer, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (conversation_id, message_index, rating, reasons, comment, question, answer, time.time()),
+        )
+        return cur.lastrowid
+
+
+def list_chat_feedback(offset: int = 0, limit: int = 20, rating: str = "") -> list[dict]:
+    with get_conn() as conn:
+        if rating:
+            rows = conn.execute(
+                "SELECT id, conversation_id, message_index, rating, reasons, comment, "
+                "question, answer, created_at FROM chat_feedback WHERE rating = ? "
+                "ORDER BY id DESC LIMIT ? OFFSET ?",
+                (rating, limit, offset),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, conversation_id, message_index, rating, reasons, comment, "
+                "question, answer, created_at FROM chat_feedback "
+                "ORDER BY id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_chat_feedback(rating: str = "") -> int:
+    with get_conn() as conn:
+        if rating:
+            return conn.execute(
+                "SELECT COUNT(*) FROM chat_feedback WHERE rating = ?", (rating,)
+            ).fetchone()[0]
+        return conn.execute("SELECT COUNT(*) FROM chat_feedback").fetchone()[0]
+
+
+def chat_feedback_summary() -> dict:
+    with get_conn() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM chat_feedback").fetchone()[0]
+        up = conn.execute("SELECT COUNT(*) FROM chat_feedback WHERE rating = 'up'").fetchone()[0]
+        down = conn.execute("SELECT COUNT(*) FROM chat_feedback WHERE rating = 'down'").fetchone()[0]
+    return {"total": total, "up": up, "down": down}
+
+
+def chat_feedback_reason_counts() -> list[dict]:
+    """싫어요 이유별 건수 순위(reasons는 JSON 배열 문자열로 저장돼 있어 파이썬에서 집계)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT reasons FROM chat_feedback WHERE rating = 'down' AND reasons != ''"
+        ).fetchall()
+    counts: dict[str, int] = {}
+    for r in rows:
+        try:
+            for reason in json.loads(r["reasons"]):
+                counts[reason] = counts.get(reason, 0) + 1
+        except (ValueError, TypeError):
+            continue
+    return sorted(
+        [{"name": k, "count": v} for k, v in counts.items()],
+        key=lambda x: -x["count"],
+    )

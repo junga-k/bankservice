@@ -2436,7 +2436,7 @@ function ensureBoTabLoaded(name) {
     loadTopProductsGrid("bo-stat-products");
   }
   if (name === "perf") { loadBoPerfInfra(); loadBoInfraConfig(); loadBoBatchPerf(); loadBoFssStatus(); }
-  if (name === "prompt") { loadBoChatbotConfig(); loadBoChatbotHistory(); }
+  if (name === "prompt") { loadBoChatbotConfig(); loadBoChatbotHistory(); loadBoChatFeedback(); }
   if (name === "products") {
     loadBoFssSummary();
     loadBoProductPreview("예금");
@@ -3362,6 +3362,91 @@ function renderDiffLines(oldText, newText) {
   while (j < m) { result.push({ type: "add", line: b[j] }); j++; }
   return result;
 }
+
+/* AI 답변 피드백(좋아요/싫어요) — 프롬프트 관리 탭 */
+let boFeedbackCache = {};
+let boFeedbackOffset = 0;
+let boFeedbackFilter = "down";
+const BO_FEEDBACK_RATING_LABEL = { up: "좋아요", down: "싫어요" };
+
+async function loadBoChatFeedback(reset = true) {
+  if (reset) boFeedbackOffset = 0;
+  try {
+    const res = await apiFetch(
+      `/api/admin/chat-feedback?offset=${boFeedbackOffset}&limit=${BO_PAGE_SIZE}&rating=${boFeedbackFilter}`
+    );
+    if (!res.ok) throw new Error("피드백 조회 실패");
+    const data = await res.json();
+    renderBoFeedbackSummary(data.summary);
+    renderBoFeedbackReasonRank(data.reason_counts);
+    renderBoFeedbackRows(data.items, reset);
+    document.getElementById("bo-feedback-more").style.display =
+      boFeedbackOffset + data.items.length < data.total ? "" : "none";
+    boFeedbackOffset += data.items.length;
+  } catch (err) {
+    console.error("피드백 로드 실패:", err);
+  }
+}
+
+function renderBoFeedbackSummary(s) {
+  const rate = s.total ? Math.round((s.down / s.total) * 100) : 0;
+  document.getElementById("bo-feedback-summary").innerHTML = `
+    <div class="metric"><div class="value">${s.total}</div><div class="label">총 평가</div></div>
+    <div class="metric"><div class="value">${s.up}</div><div class="label">좋아요</div></div>
+    <div class="metric"><div class="value">${s.down}</div><div class="label">싫어요</div></div>
+    <div class="metric"><div class="value">${rate}%</div><div class="label">싫어요 비율</div></div>`;
+  document.getElementById("bo-feedback-total").textContent = `총 ${s.total}건`;
+}
+
+function renderBoFeedbackReasonRank(reasonCounts) {
+  const data = (reasonCounts || []).map((r) => ({ label: r.name, value: r.count }));
+  renderRankedBars("bo-feedback-reason-rank", data);
+}
+
+function renderBoFeedbackRows(items, reset) {
+  if (reset) boFeedbackCache = {};
+  const rows = items
+    .map((f) => {
+      boFeedbackCache[f.id] = f;
+      const d = new Date(f.created_at * 1000).toLocaleDateString("ko-KR");
+      const badge = `<span class="status-badge ${f.rating === "up" ? "ok" : "down"}">${BO_FEEDBACK_RATING_LABEL[f.rating] || f.rating}</span>`;
+      const reasons = (f.reasons || []).join(", ") || "-";
+      const q = f.question ? escapeHtml(f.question.slice(0, 40)) : "-";
+      return `<tr><td>${q}</td><td>${badge}</td><td>${escapeHtml(reasons)}</td><td>${d}</td>` +
+        `<td><div class="bo-row-actions"><button class="btn btn-ghost" type="button" data-feedback-view="${f.id}">보기</button></div></td></tr>`;
+    })
+    .join("");
+  const tbody = document.getElementById("bo-feedback-rows");
+  tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#bo-feedback-more")) loadBoChatFeedback(false);
+  const viewBtn = e.target.closest("[data-feedback-view]");
+  if (viewBtn) {
+    const f = boFeedbackCache[viewBtn.dataset.feedbackView];
+    if (!f) return;
+    const reasons = (f.reasons || []).join(", ") || "-";
+    showModal(
+      `<h3>${BO_FEEDBACK_RATING_LABEL[f.rating] || f.rating} 상세</h3>` +
+        `<div class="cf-row"><span>등록일</span><b>${mpFmtDate(f.created_at)}</b></div>` +
+        (f.rating === "down" ? `<div class="cf-row"><span>이유</span><b>${escapeHtml(reasons)}</b></div>` : "") +
+        (f.comment ? `<div class="cf-row"><span>남긴 말</span><b>${escapeHtml(f.comment)}</b></div>` : "") +
+        `<h3 style="margin-top:16px">질문</h3>` +
+        `<div class="diff-box"><div class="diff-line same" style="white-space:pre-wrap; padding:12px;">${escapeHtml(f.question || "-")}</div></div>` +
+        `<h3 style="margin-top:16px">답변</h3>` +
+        `<div class="diff-box"><div class="diff-line same" style="white-space:pre-wrap; padding:12px;">${escapeHtml(f.answer || "-")}</div></div>`,
+      true
+    );
+  }
+});
+
+document.addEventListener("change", (e) => {
+  if (e.target.id === "bo-feedback-filter") {
+    boFeedbackFilter = e.target.value;
+    loadBoChatFeedback(true);
+  }
+});
 
 let boCcHistoryCache = {};
 let boCcHistoryOffset = 0;

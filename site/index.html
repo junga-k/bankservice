@@ -1150,6 +1150,28 @@
             </form>
           </div>
 
+          <div class="panel">
+            <div class="panel-head"><h3>AI 답변 피드백</h3><span class="panel-total" id="bo-feedback-total"></span></div>
+            <p class="section-desc">고객이 남긴 답변 평가입니다. 부정 평가가 몰리는 이유를 확인하고 위 시스템 프롬프트 수정에 참고하세요.</p>
+            <div class="metric-grid" id="bo-feedback-summary"><!-- JS 렌더 --></div>
+
+            <h3 style="margin-top:20px">싫어요 이유 분포</h3>
+            <div id="bo-feedback-reason-rank"><!-- JS 렌더 --></div>
+
+            <div class="bo-toolbar bo-search-inline" style="margin-top:20px">
+              <select id="bo-feedback-filter">
+                <option value="">전체</option>
+                <option value="up">좋아요</option>
+                <option value="down" selected>싫어요</option>
+              </select>
+            </div>
+            <table class="admin-table">
+              <thead><tr><th>질문</th><th>평가</th><th>이유</th><th>등록일</th><th>관리</th></tr></thead>
+              <tbody id="bo-feedback-rows"><!-- JS 렌더 --></tbody>
+            </table>
+            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-feedback-more">더 보기</button>
+          </div>
+
           <div class="panel bo-ab-panel">
             <div class="panel-head"><h3>프롬프트 A/B 비교</h3><span class="bo-ab-eyebrow">실험 · 저장되지 않음</span></div>
             <p class="section-desc"><strong>현재 저장된 프롬프트</strong>와 <strong>지금 편집 중인 프롬프트</strong>로 같은 질문에
