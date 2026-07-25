@@ -351,9 +351,10 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # 키 입력
 - `site/js/main.js`: 상태카드 4개 매핑 로직(`cards = [...]`)을 `buildInfraStatusCards()`/`renderInfraStatusCards()` 공용 헬퍼로 뽑아 대시보드 스트립(`loadBoDashboardInfra()`, 배지+칩만 남김)과 신규 `loadBoPerfInfra()`(성능관리의 "시스템 상태" 4카드 + "LLM·RAG 사용 현황" 지표, `#bo-health-cards`/`#bo-perf-llm-metrics`/`#bo-perf-llm-config`) 양쪽에서 재사용 — 로직 중복 없이 렌더 타깃만 다르게 호출.
 - 브라우저 실측 검증: 대시보드 상단 배지가 "1/4"로 칩 개수와 일치하는 것, "인프라 연동 현황"/"LLM·RAG 사용 현황" 패널이 대시보드에서 사라진 것, 성능관리 "시스템 상태"가 예약이체폴러 포함 4카드로 뜨는 것, 새 "LLM·RAG 사용 현황" 패널이 실제 수치(현재 설정 요약 포함)로 채워지는 것, `/api/admin/health`가 404로 정리된 것, 콘솔 에러 없음까지 확인.
 
-**스파크라인 KPI 카드: 항목명 위치 수정** — 대상: `site/css/style.css`, `site/js/main.js`
+**스파크라인 KPI 카드: 항목명 위치 수정 + 전체 `.metric` 라벨 굵기 통일** — 대상: `site/css/style.css`, `site/js/main.js`
 - Backoffice 전체 화면 브라우저 재검토 중 사용자가 스크린샷으로 지적: 스파크라인이 있는 카드(대시보드 5칸/이체모니터링 8칸/보안 이벤트 4칸)는 숫자 → 항목명 → 막대그래프 순서라 항목명이 숫자와 막대그래프 사이에 끼어 눈에 잘 안 띔.
-- 새 CSS 모디파이어 `.metric--label-top`(`.metric`을 `flex-direction:column`으로 바꾸고 `.label`에 `order:-1` + `font-weight:500` 부여)을 신설해, DOM 순서(HTML 문자열)는 그대로 두고 시각적 순서만 항목명이 숫자 바로 아래·막대그래프 위로 오도록 재배치 — `renderBoDashboardSummary()`(대시보드 5칸)와 `renderMetricGrid()`(이체모니터링 8칸+보안 이벤트 4칸 공용 헬퍼)에 클래스만 추가. 스파크라인이 없는 다른 `.metric` 카드(배치 테스트 성능, FSS 현황 등)는 항목명이 숫자 바로 아래라 원래도 문제가 없어 그대로 둠 — 전역 `.metric .label` 규칙은 안 건드리고 신규 카드에만 스코프.
+- 새 CSS 모디파이어 `.metric--label-top`(`.metric`을 `flex-direction:column`으로 바꾸고 `.label`에 `order:-1`)을 신설해, DOM 순서(HTML 문자열)는 그대로 두고 시각적 순서만 항목명이 숫자 바로 아래·막대그래프 위로 오도록 재배치 — `renderBoDashboardSummary()`(대시보드 5칸)와 `renderMetricGrid()`(이체모니터링 8칸+보안 이벤트 4칸 공용 헬퍼)에 클래스만 추가.
+- 처음엔 굵기(`font-weight:500`)도 `.metric--label-top .label`에만 스코프했는데, 사용자가 나머지 `.metric` 카드(회원관리·이용통계 요약, 성능관리의 LLM·RAG 지표/배치 테스트 성능/FSS 현황 등 — 스파크라인이 없어 위치는 원래도 문제없던 카드들)도 확인해달라고 해서 점검한 결과 그쪽 라벨은 여전히 400(regular)이라 같은 화면 안에서 굵기가 갈리는 걸 발견 — "다 500으로 통일해줘" 요청에 따라 굵기를 전역 `.metric .label` 규칙으로 올리고 모디파이어에서는 중복 선언 제거.
 
 **남은 작업 (TODO)**
 - Type A(대시보드/이체모니터링), Type B(프롬프트엔지니어링/금융상품관리/FAQ·공지사항 관리/회원관리), Type C(이용통계), Type D(성능관리) 전부 완료 — Backoffice 8개 탭 리디자인 일단락. Type E(시스템설정)는 탭 자체가 삭제되어 더 이상 대상 아님.
