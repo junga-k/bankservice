@@ -529,6 +529,8 @@ def admin_infra_metrics(user: dict = Depends(auth.require_admin)):
 
 
 # ── Backoffice: AI은행원 설정 (성능관리 탭) ──────────────────────────────
+# 답변 스타일(default_style)은 관리자가 고를 수 없다 — 금융 서비스 특성상 항상 llm.DEFAULT_STYLE
+# ("정확" 모드)로 고정한다. config.json에 다른 값이 남아있더라도 응답·저장 시 항상 이 값으로 덮어쓴다.
 @app.get("/api/admin/chatbot-config")
 def get_chatbot_config(user: dict = Depends(auth.require_admin)):
     cfg = config.load()
@@ -536,19 +538,17 @@ def get_chatbot_config(user: dict = Depends(auth.require_admin)):
         "config": {
             "provider": cfg.get("provider") or llm.DEFAULT_PROVIDER,
             "default_model": cfg.get("default_model", ""),
-            "default_style": cfg.get("default_style", list(llm.TEMP_OPTIONS.keys())[1]),
+            "default_style": llm.DEFAULT_STYLE,
             "system_prompt": cfg.get("system_prompt", ""),
             "web_search": bool(cfg.get("web_search", False)),
         },
         "providers": llm.PROVIDERS,
-        "styles": list(llm.TEMP_OPTIONS.keys()),
     }
 
 
 class ChatbotConfigReq(BaseModel):
     provider: str
     default_model: str
-    default_style: str
     system_prompt: str
     web_search: bool
 
@@ -559,23 +559,64 @@ def update_chatbot_config(req: ChatbotConfigReq, user: dict = Depends(auth.requi
         raise HTTPException(400, "지원하지 않는 제공자입니다.")
     if req.default_model not in llm.models_for(req.provider):
         raise HTTPException(400, "지원하지 않는 모델입니다.")
-    if req.default_style not in llm.TEMP_OPTIONS:
-        raise HTTPException(400, "지원하지 않는 답변 스타일입니다.")
     cfg = config.load()
     cfg.update(req.model_dump())
+    cfg["default_style"] = llm.DEFAULT_STYLE
     config.save(cfg)
+    db.create_chatbot_config_history(
+        provider=req.provider,
+        default_model=req.default_model,
+        default_style=llm.DEFAULT_STYLE,
+        system_prompt=req.system_prompt,
+        web_search=req.web_search,
+        changed_by=user.get("name") or user.get("username") or "",
+    )
     return {"ok": True}
 
 
-# ── Backoffice: 답변 스타일 A/B 테스트 ────────────────────────────────
-# 시스템 프롬프트·질문은 고정(A·B 공유)하고, 답변 스타일(temperature)만 바꿔 비교한다.
+@app.get("/api/admin/chatbot-config/history")
+def list_chatbot_config_history(offset: int = 0, limit: int = 20, user: dict = Depends(auth.require_admin)):
+    history = db.list_chatbot_config_history(offset=offset, limit=limit)
+    for h in history:
+        h["web_search"] = bool(h["web_search"])
+    return {"history": history, "total": db.count_chatbot_config_history()}
+
+
+@app.post("/api/admin/chatbot-config/history/{history_id}/restore")
+def restore_chatbot_config_history(history_id: int, user: dict = Depends(auth.require_admin)):
+    entry = db.get_chatbot_config_history_entry(history_id)
+    if entry is None:
+        raise HTTPException(404, "해당 버전을 찾을 수 없습니다.")
+    cfg = config.load()
+    cfg.update({
+        "provider": entry["provider"],
+        "default_model": entry["default_model"],
+        "default_style": llm.DEFAULT_STYLE,  # 과거 버전의 스타일이 무엇이었든 되돌리기도 항상 정확 모드로 고정
+        "system_prompt": entry["system_prompt"],
+        "web_search": bool(entry["web_search"]),
+    })
+    config.save(cfg)
+    db.create_chatbot_config_history(
+        provider=entry["provider"],
+        default_model=entry["default_model"],
+        default_style=llm.DEFAULT_STYLE,
+        system_prompt=entry["system_prompt"],
+        web_search=bool(entry["web_search"]),
+        changed_by=user.get("name") or user.get("username") or "",
+    )
+    return {"ok": True}
+
+
+# ── Backoffice: 프롬프트 A/B 테스트 ──────────────────────────────────
+# "현재 저장된 프롬프트" vs "지금 편집 중인(아직 저장 안 된) 프롬프트"를 같은 질문·같은(고정)
+# 답변 스타일로 비교한다. 답변 스타일은 관리자가 고를 수 없으므로(항상 llm.DEFAULT_STYLE) 여기서도
+# 그 값만 쓴다 — 예전처럼 스타일을 바꿔가며 비교하는 기능은 없앴다.
 class PromptABTestReq(BaseModel):
     question: str
     provider: str
     model: str
-    system_prompt: str
-    style_a: str
-    style_b: str
+    prompt_a: str
+    prompt_b: str
 
 
 @app.post("/api/admin/prompt-ab-test")
@@ -586,16 +627,13 @@ def prompt_ab_test(req: PromptABTestReq, user: dict = Depends(auth.require_admin
         raise HTTPException(400, "지원하지 않는 제공자입니다.")
     if req.model not in llm.models_for(req.provider):
         raise HTTPException(400, "지원하지 않는 모델입니다.")
-    if req.style_a not in llm.TEMP_OPTIONS or req.style_b not in llm.TEMP_OPTIONS:
-        raise HTTPException(400, "지원하지 않는 답변 스타일입니다.")
 
     cfg = config.load()
     api_key = (cfg.get("openai_api_key") or "").strip()
     if not api_key:
         raise HTTPException(400, "OpenAI API 키가 config.json에 없습니다.")
-    sys_prompt = req.system_prompt.strip() or None
 
-    def _run_once(style: str) -> dict:
+    def _run_once(prompt: str) -> dict:
         started = time.perf_counter()
         try:
             text = "".join(llm.stream_chat(
@@ -603,8 +641,8 @@ def prompt_ab_test(req: PromptABTestReq, user: dict = Depends(auth.require_admin
                 api_key=api_key,
                 model=req.model,
                 messages=[{"role": "user", "content": req.question}],
-                temperature=llm.TEMP_OPTIONS[style],
-                system_prompt=sys_prompt,
+                temperature=llm.TEMP_OPTIONS[llm.DEFAULT_STYLE],
+                system_prompt=prompt.strip() or None,
             ))
             ok = True
         except Exception as e:  # 셀별 오류 표시(전체 500 대신)
@@ -614,11 +652,10 @@ def prompt_ab_test(req: PromptABTestReq, user: dict = Depends(auth.require_admin
             "response": text,
             "latency_ms": int((time.perf_counter() - started) * 1000),
             "ok": ok,
-            "style": style,
         }
 
     # A, B 순차 실행(데모 규모에서 충분)
-    return {"a": _run_once(req.style_a), "b": _run_once(req.style_b)}
+    return {"a": _run_once(req.prompt_a), "b": _run_once(req.prompt_b)}
 
 
 # ── Backoffice: 이체 정책(한도/수수료) ────────────────────────────────
@@ -1138,6 +1175,16 @@ def get_inquiries(offset: int = 0, limit: int = 20, user: dict = Depends(auth.ge
     return {
         "inquiries": db.list_inquiries(user["id"], offset, limit),
         "total": db.count_inquiries(user["id"]),
+    }
+
+
+# ── Backoffice: 문의내역 전체 조회 (읽기 전용 — inquiries 테이블에 답변 컬럼이
+# 없어 응답 기능은 없음) ────────────────────────────────────────────────
+@app.get("/api/admin/inquiries")
+def admin_get_inquiries(offset: int = 0, limit: int = 20, q: str = "", user: dict = Depends(auth.require_admin)):
+    return {
+        "inquiries": db.list_all_inquiries(offset, limit, q),
+        "total": db.count_all_inquiries(q),
     }
 
 

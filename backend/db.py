@@ -10,6 +10,8 @@
   faqs(id, question, answer, created_at)                    # 고객센터: FAQ
   documents(id, title, category, description, created_at)   # 고객센터: 서식·약관·설명서
   inquiries(id, user_id, title, content, created_at)         # 고객센터: 문의하기
+  chatbot_config_history(id, provider, default_model, default_style,
+                          system_prompt, web_search, changed_by, created_at)  # AI은행원 설정 저장 이력
 
 금액은 원(KRW) 정수로 저장한다(소수 없음).
 공개 함수만 backend/app.py·transfer_consumer.py 에서 사용한다.
@@ -129,6 +131,16 @@ def init_db() -> None:
                 holder_name  TEXT NOT NULL DEFAULT '',
                 nickname     TEXT NOT NULL DEFAULT '',
                 created_at   REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS chatbot_config_history (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider       TEXT NOT NULL,
+                default_model  TEXT NOT NULL,
+                default_style  TEXT NOT NULL,
+                system_prompt  TEXT NOT NULL,
+                web_search     INTEGER NOT NULL DEFAULT 0,
+                changed_by     TEXT NOT NULL DEFAULT '',
+                created_at     REAL NOT NULL
             );
             """
         )
@@ -671,6 +683,39 @@ def count_inquiries(user_id: int) -> int:
         ).fetchone()[0]
 
 
+# ── Backoffice: 문의내역(전체 조회, 읽기 전용 — 스키마에 답변 컬럼 없음) ──────
+def list_all_inquiries(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
+    with get_conn() as conn:
+        if q:
+            like = f"%{q}%"
+            rows = conn.execute(
+                "SELECT i.id, i.title, i.content, i.created_at, u.username, u.name "
+                "FROM inquiries i JOIN users u ON u.id = i.user_id "
+                "WHERE i.title LIKE ? OR i.content LIKE ? "
+                "ORDER BY i.id DESC LIMIT ? OFFSET ?",
+                (like, like, limit, offset),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT i.id, i.title, i.content, i.created_at, u.username, u.name "
+                "FROM inquiries i JOIN users u ON u.id = i.user_id "
+                "ORDER BY i.id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_all_inquiries(q: str = "") -> int:
+    with get_conn() as conn:
+        if q:
+            like = f"%{q}%"
+            return conn.execute(
+                "SELECT COUNT(*) FROM inquiries WHERE title LIKE ? OR content LIKE ?",
+                (like, like),
+            ).fetchone()[0]
+        return conn.execute("SELECT COUNT(*) FROM inquiries").fetchone()[0]
+
+
 # ── 사용자/인증 (Phase 3) ────────────────────────────────────────────
 def create_user(username: str, password_hash: str, name: str = "",
                 role: str = "user", phone: str = "", email: str = "") -> int:
@@ -1060,3 +1105,48 @@ def sum_user_transfers_today(account_nos: list[str], since_epoch: float) -> int:
             f"AND status IN ('completed', 'pending') AND created_at >= ?",
             (*account_nos, since_epoch),
         ).fetchone()[0]
+
+
+# ── Backoffice: AI은행원 설정 저장 이력 ──────────────────────────────
+def create_chatbot_config_history(
+    provider: str,
+    default_model: str,
+    default_style: str,
+    system_prompt: str,
+    web_search: bool,
+    changed_by: str,
+) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO chatbot_config_history"
+            "(provider, default_model, default_style, system_prompt, web_search, changed_by, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (provider, default_model, default_style, system_prompt, int(web_search), changed_by, time.time()),
+        )
+        return cur.lastrowid
+
+
+def list_chatbot_config_history(offset: int = 0, limit: int = 20) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, provider, default_model, default_style, system_prompt, "
+            "web_search, changed_by, created_at FROM chatbot_config_history "
+            "ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_chatbot_config_history() -> int:
+    with get_conn() as conn:
+        return conn.execute("SELECT COUNT(*) FROM chatbot_config_history").fetchone()[0]
+
+
+def get_chatbot_config_history_entry(history_id: int) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, provider, default_model, default_style, system_prompt, "
+            "web_search, changed_by, created_at FROM chatbot_config_history WHERE id = ?",
+            (history_id,),
+        ).fetchone()
+    return dict(row) if row else None

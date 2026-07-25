@@ -665,6 +665,9 @@ main { min-height: calc(100vh - var(--header-h)); }
   box-shadow: var(--shadow-sm);
 }
 .panel h3 { margin: 0 0 18px; font-size: 17px; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 18px; }
+.panel-head h3 { margin: 0; }
+.panel-total { font-size: 13px; font-weight: 600; color: var(--text-sub); flex-shrink: 0; }
 #acct-detail { margin-top: 24px; }
 
 /* 순수 CSS 막대 차트 (백오피스: 최근 14일 이용 추이) */
@@ -674,30 +677,19 @@ main { min-height: calc(100vh - var(--header-h)); }
 .bar-fill { height: 100%; background: var(--blue); border-radius: 6px; transition: width 0.4s; }
 .bar-row .num { width: 42px; text-align: right; font-size: 13px; color: var(--text); }
 
-/* 순수 CSS 도넛 차트 (conic-gradient) */
-.donut-chart-wrap { display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap; }
-.donut-chart {
-  position: relative;
-  width: 150px; height: 150px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--bg-soft);
+/* 순수 CSS 막대 랭킹 리스트 (백오피스: 은행별 이용 비중 / 이체 상태 분포 —
+   도넛보다 정확한 값 비교에 유리해 dataviz 스킬 + uidesign.tips 권고에 따라 교체) */
+.rank-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.rank-row:last-child { margin-bottom: 0; }
+.rank-row .rank-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.rank-row .rank-name {
+  width: 92px; font-size: 13px; color: var(--text-sub); flex-shrink: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.donut-hole {
-  position: absolute; inset: 22px;
-  background: #fff;
-  border-radius: 50%;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-}
-.donut-hole-value { font-size: 20px; font-weight: 800; color: var(--text); }
-.donut-hole-label { font-size: 11px; color: var(--text-sub); }
-.donut-legend { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 160px; }
-.donut-legend li { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
-.donut-legend li:last-child { border-bottom: none; }
-.donut-legend .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.donut-legend .lg-name { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.donut-legend .lg-pct { color: var(--text-sub); font-size: 12px; width: 40px; text-align: right; flex-shrink: 0; }
+.rank-track { flex: 1; background: var(--bg-soft); border-radius: 6px; height: 22px; overflow: hidden; }
+.rank-fill { height: 100%; border-radius: 6px; transition: width 0.4s; }
+.rank-row .rank-val { width: 56px; text-align: right; font-size: 13px; color: var(--text); flex-shrink: 0; }
+.rank-row .rank-pct { width: 38px; text-align: right; font-size: 12px; color: var(--text-sub); flex-shrink: 0; }
 
 /* ── 상품안내 카테고리 탭바 ──────────────────────────────────────── */
 .cat-tabs { display: flex; gap: var(--space-2); overflow-x: auto; padding-bottom: 4px; }
@@ -1237,6 +1229,12 @@ main { min-height: calc(100vh - var(--header-h)); }
   gap: 4px;
   white-space: nowrap;
 }
+/* 시스템 현황: 6칸을 auto-fit(5+1)에 맡기면 마지막 한 칸이 혼자 남아 정렬이 깨짐 —
+   3열×2행으로 고정해 항상 짝이 맞게 채운다. */
+#bo-sys-overview { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) {
+  #bo-sys-overview { grid-template-columns: repeat(2, 1fr); }
+}
 
 .dashboard-chart-grid {
   display: grid;
@@ -1287,6 +1285,9 @@ main { min-height: calc(100vh - var(--header-h)); }
 .admin-table tr:last-child td { border-bottom: none; }
 .admin-table tbody tr { transition: background var(--dur-fast) var(--ease); }
 .admin-table tbody tr:hover { background: var(--bg-soft); }
+/* 목록+인라인폼 CRUD 화면: 위 폼에 지금 로드된 행이 어느 것인지 표시 */
+.admin-table tbody tr.editing { background: var(--blue-soft); }
+.admin-table tbody tr.editing td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
 /* 이체 내역: 금액·수수료(4·5열)는 우측 정렬 + 자릿수 정렬 */
 #bo-panel-transfers .admin-table th:nth-child(4),
 #bo-panel-transfers .admin-table th:nth-child(5),
@@ -1294,6 +1295,12 @@ main { min-height: calc(100vh - var(--header-h)); }
 #bo-panel-transfers .admin-table td:nth-child(5) {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+/* 버전 이력: 모델 배지 칸은 가운데 정렬(배지 자체의 내부 패딩 때문에 왼쪽정렬 시
+   헤더 텍스트보다 살짝 오른쪽으로 밀려 보이던 문제 — 가운데 정렬하면 패딩과 무관하게 맞음) */
+#bo-panel-prompt .admin-table th:nth-child(2),
+#bo-panel-prompt .admin-table td:nth-child(2) {
+  text-align: center;
 }
 
 .status-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
@@ -1316,6 +1323,52 @@ main { min-height: calc(100vh - var(--header-h)); }
 .status-badge.ok { background: var(--success-soft); color: var(--blue-dark); }
 .status-badge.warn { background: var(--warning-soft); color: var(--warning); }
 .status-badge.down { background: var(--error-soft); color: var(--error); }
+.status-badge.lg { padding: 6px 14px; font-size: 13px; }
+
+/* ── 대시보드 시스템 상태 스트립: "지금 문제가 있는가"를 최상단에서 즉시 확인 ── */
+.bo-health-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 20px;
+  margin-bottom: 24px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.bo-health-main { display: flex; align-items: center; gap: 12px; }
+.bo-health-updated { font-size: 12.5px; color: var(--text-sub); }
+.bo-health-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bo-health-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-sub);
+}
+.bo-health-chip .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.bo-health-chip.ok .dot { background: var(--blue); }
+.bo-health-chip.warn .dot { background: var(--warning); }
+.bo-health-chip.down .dot { background: var(--error); }
+
+/* 클릭 가능한 KPI 카드에만 적용하는 rest→hover 포뮬러(비클릭 카드는 정적 유지) */
+.metric.clickable {
+  cursor: pointer;
+  transition: box-shadow var(--dur-base) var(--ease), transform var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease);
+}
+.metric.clickable:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: var(--blue-line);
+}
+.metric .metric-note { margin-top: 4px; font-size: 11px; color: var(--text-sub); opacity: 0.8; }
 
 /* 이체모니터링 요약: 8칸 — 스파크라인까지 넣으면 한 줄은 비좁아 4열 x 2줄로 고정 */
 #bo-transfer-summary {
@@ -1508,6 +1561,82 @@ main { min-height: calc(100vh - var(--header-h)); }
 .support-tab:hover { background: var(--bg-soft); color: var(--text); }
 .support-tab.active { border-color: var(--blue-line); background: var(--blue-soft); color: var(--blue); }
 
+/* FAQ·공지사항 관리: 두 목록을 한 화면에 쌓아두지 않고 칩으로 전환 (support-tab과 동일 화법) */
+.bo-faq-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.bo-faq-tab {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: #fff;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-sub);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.bo-faq-tab:hover { background: var(--bg-soft); color: var(--text); }
+.bo-faq-tab.active { border-color: var(--blue-line); background: var(--blue-soft); color: var(--blue); }
+
+/* 상품관리: 실시간 상품 미리보기 카테고리 칩 (support-tab/bo-faq-tab과 동일 화법 —
+   전역 .cat-tab 클릭 위임과 충돌하지 않도록 별도 클래스) */
+.bo-cat-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.bo-cat-tab {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: #fff;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-sub);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.bo-cat-tab:hover { background: var(--bg-soft); color: var(--text); }
+.bo-cat-tab.active { border-color: var(--blue-line); background: var(--blue-soft); color: var(--blue); }
+
+/* 상품관리: 미리보기/통계/서식관리를 한 화면에 쌓지 않고 칩으로 전환
+   (bo-faq-tab과 동일 화법 — bo-cat-tab이 이미 이 탭 안에서 쓰이고 있어 클래스 분리) */
+.bo-product-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.bo-product-tab {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: #fff;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-sub);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.bo-product-tab:hover { background: var(--bg-soft); color: var(--text); }
+.bo-product-tab.active { border-color: var(--blue-line); background: var(--blue-soft); color: var(--blue); }
+
+/* 상품관리: FSS 연동 상태 한 줄 요약 */
+.bo-fss-summary-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: 12px 16px;
+  margin-bottom: var(--space-4);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  font-size: 13px;
+  color: var(--text-sub);
+}
+.bo-fss-detail-link {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--blue-dark);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bo-fss-detail-link:hover { text-decoration: underline; }
+
 .account-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-5); }
 .account-tab {
   padding: var(--space-2) var(--space-4);
@@ -1624,6 +1753,37 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 .modal-box h3 { margin: 0 0 16px; font-size: 17px; }
 .modal-box .btn { width: 100%; justify-content: center; margin-top: 16px; }
+/* 프롬프트 diff처럼 내용이 많은 모달용 — 기본 380px 확인창 폭과 별개로 opt-in */
+.modal-box.wide { max-width: 720px; text-align: left; }
+.modal-box.wide .btn { width: auto; }
+
+/* 프롬프트 버전 diff */
+.diff-meta { font-size: 13px; color: var(--text-sub); margin-bottom: 10px; }
+.diff-box {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-height: 420px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.diff-line { padding: 1px 12px; white-space: pre-wrap; }
+.diff-line.add { background: var(--success-soft); }
+.diff-line.del { background: var(--error-soft); text-decoration: line-through; opacity: 0.85; }
+.diff-line.same { color: var(--text-sub); }
+
+/* 버전 이력의 모델 요약 — 원문 ID는 title 툴팁으로, 화면엔 짧은 배지만 */
+.model-badge {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--bg-soft);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
 .modal-close {
   position: absolute;
   top: 12px;
@@ -1932,6 +2092,18 @@ main { min-height: calc(100vh - var(--header-h)); }
 .tf-field input:focus,
 .tf-field select:focus,
 .tf-field textarea:focus { outline: none; border-color: var(--blue); }
+/* 선택지가 하나뿐인 필드(현재 제공자)는 드롭다운 대신 고정 텍스트로 표시 */
+.tf-static-value {
+  height: 46px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  color: var(--text-sub);
+  font-size: var(--text-md);
+}
 #tf-amount { font-size: var(--text-xl); font-weight: 700; text-align: right; }
 .tf-amount-wrap { position: relative; }
 .tf-field .tf-amount-wrap input { padding-right: 42px; }
@@ -2044,8 +2216,11 @@ main { min-height: calc(100vh - var(--header-h)); }
 .auth-form .tf-status { text-align: center; }
 
 /* 프롬프트 엔지니어링: 필드 가로 배치 + 프롬프트 에디터 + A/B 비교 */
-.tf-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.tf-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .tf-row .tf-field { margin-bottom: 18px; }
+.prompt-editor-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.prompt-editor-head label { margin: 0; }
+.prompt-char-count { font-size: 12px; color: var(--text-sub); font-variant-numeric: tabular-nums; }
 .prompt-editor {
   width: 100%;
   min-height: 340px;
@@ -2053,17 +2228,24 @@ main { min-height: calc(100vh - var(--header-h)); }
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   resize: vertical;
 }
-.ab-style {
-  width: 100%;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 15px;
-  font-family: inherit;
-  background: #fff;
-}
 
+/* A/B 테스트 패널: "저장되는 설정"과 구분되는 실험 영역임을 배경 톤 + eyebrow 라벨로 표시 */
+.bo-ab-panel { background: var(--bg-soft); }
+.bo-ab-panel .ab-response { background: #fff; }
+.bo-ab-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-sub);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  flex-shrink: 0;
+}
 .ab-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.ab-col { border-radius: 10px; }
 .ab-col > label {
   display: block;
   margin-bottom: 6px;

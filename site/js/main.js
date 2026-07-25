@@ -100,12 +100,14 @@ document.addEventListener("click", (e) => {
 });
 
 /* ── 범용 모달 ───────────────────────────────────────────────────── */
-function showModal(html) {
+function showModal(html, wide = false) {
   document.getElementById("modal-body").innerHTML = html;
+  document.getElementById("modal-box").classList.toggle("wide", wide);
   document.getElementById("modal-overlay").style.display = "flex";
 }
 function closeModal() {
   document.getElementById("modal-overlay").style.display = "none";
+  document.getElementById("modal-box").classList.remove("wide");
 }
 document.addEventListener("click", (e) => {
   if (e.target.id === "modal-overlay" || e.target.closest("#modal-close") || e.target.closest("#modal-confirm-ok")) {
@@ -939,46 +941,41 @@ function statError() {
   return '<p class="stat-empty">통계를 불러오지 못했습니다 (백엔드 :8000 확인).</p>';
 }
 
-/* 순수 CSS 도넛 차트 (conic-gradient). data: [{label, value, color?}] */
-const DONUT_PALETTE = ["#0FA968", "#0B8457", "#2E86DE", "#8E7CC3", "#F2A93B", "#5F6368"];
-const DONUT_GAP_DEG = 2;
+/* 순수 CSS 막대 랭킹 리스트. data: [{label, value, color?}]. 카테고리가 적을 땐
+   도넛보다 막대가 정확한 값 비교에 유리해(dataviz 스킬 + uidesign.tips "Choose Chart
+   Types Carefully") 도넛 대신 이 컴포넌트를 쓴다. opts.totalId가 있으면 총합을
+   해당 엘리먼트에 "총 N건"으로 표시(도넛 홀 중앙값을 대체). */
+const RANK_PALETTE = ["#0FA968", "#0B8457", "#2E86DE", "#8E7CC3", "#F2A93B", "#5F6368"];
 
-function renderDonutChart(chartId, legendId, data, opts = {}) {
-  const box = document.getElementById(chartId);
+function renderRankedBars(containerId, data, opts = {}) {
+  const box = document.getElementById(containerId);
   if (!box) return;
   const total = data.reduce((s, d) => s + (d.value || 0), 0);
   if (!total) {
-    box.closest(".donut-chart-wrap").innerHTML = statEmpty();
+    box.innerHTML = statEmpty();
+    if (opts.totalId) document.getElementById(opts.totalId).textContent = "";
     return;
   }
 
-  const palette = opts.palette || DONUT_PALETTE;
-  let cursor = 0;
-  const stops = [];
-  data.forEach((d, i) => {
-    const color = d.color || palette[i % palette.length];
-    const share = d.value / total;
-    const start = cursor * 360;
-    const end = (cursor + share) * 360;
-    const gapEnd = Math.max(start, end - DONUT_GAP_DEG);
-    stops.push(`${color} ${start}deg ${gapEnd}deg`, `#fff ${gapEnd}deg ${end}deg`);
-    cursor += share;
-  });
-  box.style.background = `conic-gradient(${stops.join(", ")})`;
-  const valueEl = box.querySelector(".donut-hole-value");
-  if (valueEl) valueEl.textContent = opts.centerValue ?? total;
+  const palette = opts.palette || RANK_PALETTE;
+  const max = Math.max(...data.map((d) => d.value || 0));
+  box.innerHTML = data
+    .map((d, i) => {
+      const color = d.color || palette[i % palette.length];
+      const pct = Math.round((d.value / total) * 100);
+      const width = max ? (d.value / max) * 100 : 0;
+      return `<div class="rank-row">` +
+        `<span class="rank-dot" style="background:${color}"></span>` +
+        `<span class="rank-name">${escapeHtml(d.label)}</span>` +
+        `<div class="rank-track"><div class="rank-fill" style="width:${width}%;background:${color}"></div></div>` +
+        `<span class="rank-val">${d.value}건</span>` +
+        `<span class="rank-pct">${pct}%</span></div>`;
+    })
+    .join("");
 
-  const legendBox = document.getElementById(legendId);
-  if (legendBox) {
-    legendBox.innerHTML = data
-      .map((d, i) => {
-        const color = d.color || palette[i % palette.length];
-        const pct = Math.round((d.value / total) * 100);
-        return `<li><span class="dot" style="background:${color}"></span>` +
-          `<span class="lg-name">${escapeHtml(d.label)}</span>` +
-          `<span class="lg-pct">${pct}%</span></li>`;
-      })
-      .join("");
+  if (opts.totalId) {
+    const totalEl = document.getElementById(opts.totalId);
+    if (totalEl) totalEl.textContent = `총 ${total}건`;
   }
 }
 
@@ -2437,21 +2434,25 @@ function ensureBoTabLoaded(name) {
     loadTopProductsGrid("bo-stat-products");
   }
   if (name === "perf") { loadBoHealth(); loadBoBatchPerf(); loadBoFssStatus(); }
-  if (name === "prompt") loadBoChatbotConfig();
+  if (name === "prompt") { loadBoChatbotConfig(); loadBoChatbotHistory(); }
   if (name === "products") {
+    loadBoFssSummary();
+    loadBoProductPreview("예금");
     loadTopProductsGrid("bo-product-stat-products");
     loadBoDocuments();
   }
-  if (name === "faq") { loadBoNotices(); loadBoFaqs(); }
+  if (name === "faq") { loadBoNotices(); loadBoFaqs(); loadBoInquiries(); }
   if (name === "settings") { loadBoSystemOverview(); loadBoInfraConfig(); }
 }
 
 document.addEventListener("click", (e) => {
   const tab = e.target.closest(".bo-tab");
   if (tab) boGoTab(tab.dataset.boTab);
+  const kpi = e.target.closest(".metric.clickable[data-bo-goto]");
+  if (kpi) boGoTab(kpi.dataset.boGoto);
 });
 
-/* 대시보드: KPI 요약 + 이용 추이 + 은행별 비중/이체 상태 도넛 */
+/* 대시보드: 시스템 상태 스트립 + KPI 요약 + 이용 추이 + 은행별 비중/이체 상태 랭킹 */
 async function loadBoDashboard() {
   try {
     const [usersRes, transfersRes, usageRes, healthRes] = await Promise.all([
@@ -2465,24 +2466,65 @@ async function loadBoDashboard() {
     const usage = await usageRes.json();
     const health = await healthRes.json();
 
-    renderBoDashboardSummary(users, transfers, usage, health);
+    updateHealthStrip(health);
+    const transferTrend = await loadBoDashboardTransferTrend();
+    renderBoDashboardSummary(users, transfers, usage, transferTrend);
     renderBoUsageDaily(usage.daily, "bo-dash-usage-daily");
-    renderBoDashboardStatusDonut(transfers.summary);
+    renderBoDashboardStatusRank(transfers.summary);
   } catch (err) {
     document.getElementById("bo-dash-summary").innerHTML = statError();
     console.error("대시보드 로드 실패:", err);
   }
-  loadBoDashboardBankDonut();
+  loadBoDashboardBankRank();
   loadBoDashboardInfra();
+}
+
+/* 시스템 상태 스트립 최상단 배지 + 업데이트 시각 — health.checks 기준 전체 헬스 요약.
+   Kafka/ES/Phoenix/예약이체폴러 개별 칩은 loadBoDashboardInfra()에서 별도로 채운다
+   (다른 API에서 오는 데이터라 도착 시점이 다름). */
+function updateHealthStrip(health) {
+  const checks = health.checks || [];
+  const okCount = checks.filter((c) => c.status === "ok").length;
+  const cls = okCount === checks.length && checks.length > 0 ? "ok" : okCount === 0 ? "down" : "warn";
+  const label = cls === "ok" ? "정상 운영 중" : cls === "down" ? "장애 발생" : "일부 주의 필요";
+  const badge = document.getElementById("bo-health-badge");
+  if (badge) { badge.className = `status-badge lg ${cls}`; badge.textContent = `${okCount}/${checks.length} · ${label}`; }
+  const updated = document.getElementById("bo-health-updated");
+  if (updated) updated.textContent = "마지막 업데이트 방금 · 10초마다 자동 갱신";
+}
+
+/* 대시보드 KPI 스파크라인용: 최근 이체 300건을 발생일별로 묶어 총 건수/완료금액
+   추세만 뽑는다(이체모니터링 탭의 loadBoTransferSummaryWithTrend와 같은 방식,
+   신규 백엔드 없이 기존 API 재사용). */
+async function loadBoDashboardTransferTrend() {
+  try {
+    const res = await apiFetch(`/api/admin/transfers?offset=0&limit=300&status=`);
+    if (!res.ok) return null;
+    const { transfers } = await res.json();
+    return bucketByDay(
+      transfers,
+      (t) => new Date(t.created_at * 1000).toISOString().slice(0, 10),
+      (acc, t) => {
+        acc = acc || { total: 0, completedAmount: 0 };
+        acc.total++;
+        if (t.status === "completed") acc.completedAmount += t.amount;
+        return acc;
+      }
+    );
+  } catch (err) {
+    console.error("대시보드 이체 추세 로드 실패:", err);
+    return null;
+  }
 }
 
 const INFRA_STATUS_LABEL = { ok: "정상", warn: "주의", down: "연결안됨" };
 
-/* 대시보드: 인프라 연동 현황(Kafka/ES/Phoenix) + LLM·RAG 24h 사용 지표 */
+/* 대시보드: 인프라 연동 현황(Kafka/ES/Phoenix) + LLM·RAG 24h 사용 지표 + 상단 상태 칩 */
 async function loadBoDashboardInfra() {
   const statusBox = document.getElementById("bo-dash-infra-status");
   const metricBox = document.getElementById("bo-dash-infra-metrics");
   const cfgBox = document.getElementById("bo-dash-infra-config");
+  const chipsBox = document.getElementById("bo-health-chips");
   statusBox.textContent = "불러오는 중…";
   try {
     const res = await apiFetch("/api/admin/infra-metrics");
@@ -2503,6 +2545,11 @@ async function loadBoDashboardInfra() {
           `<p>${escapeHtml(c.detail)}</p></div>`
       )
       .join("");
+    if (chipsBox) {
+      chipsBox.innerHTML = cards
+        .map((c) => `<span class="bo-health-chip ${c.status}"><span class="dot"></span>${escapeHtml(c.name)}</span>`)
+        .join("");
+    }
 
     const p = data.phoenix;
     metricBox.innerHTML = `
@@ -2521,25 +2568,45 @@ async function loadBoDashboardInfra() {
   }
 }
 
-function renderBoDashboardSummary(users, transfers, usage, health) {
+/* KPI 5칸: 총 회원수/총 예치금(시계열 API가 없어 스파크라인 없는 "누적" 카드로 정직하게
+   유지) + 총 이체 건수/이체 완료금액/오늘 이용 이벤트(스파크라인+증감 배지). 이체·회원
+   카드는 클릭 시 해당 관리 탭으로 이동(boGoTab 재사용). */
+function renderBoDashboardSummary(users, transfers, usage, transferTrend) {
   const daily = usage.daily || [];
   // daily는 이벤트가 있었던 날짜만 포함(공백 스킵)되므로, 엄밀한 캘린더상 "어제"가 아니라
   // "직전 데이터 존재일" 대비 증감이다. 데모 데이터셋 특성상 이 정도 근사로 충분하다.
   const today = daily.length ? daily[daily.length - 1].count : 0;
-  const prev = daily.length > 1 ? daily[daily.length - 2].count : 0;
-  const trend = trendBadge(today, prev);
+  const prevDay = daily.length > 1 ? daily[daily.length - 2].count : 0;
+  const todayTrend = trendBadge(today, prevDay);
+  const todayDayLabels = daily.map((d) => dayShort(d.day));
+  const todayBars = daily.length >= 2
+    ? sparkBars(daily.map((d) => d.count), "var(--blue)", todayDayLabels.map((d, i) => `${d} · ${daily[i].count}건`))
+    : "";
+  const todayCaption = daily.length >= 2
+    ? `<div class="spark-caption"><span>${todayDayLabels[0]} → ${todayDayLabels[todayDayLabels.length - 1]}</span><span class="cap-val">${today}건</span></div>`
+    : "";
 
-  const checks = health.checks || [];
-  const okCount = checks.filter((c) => c.status === "ok").length;
-  const healthCls = okCount === checks.length && checks.length > 0 ? "ok" : okCount === 0 ? "down" : "warn";
+  const tDays = transferTrend?.days || [];
+  const tDayLabels = tDays.map(dayShort);
+  const tSeries = tDays.map((d) => (transferTrend.byDay[d] && transferTrend.byDay[d].total) || 0);
+  const aSeries = tDays.map((d) => (transferTrend.byDay[d] && transferTrend.byDay[d].completedAmount) || 0);
+  const tBadge = tSeries.length >= 2 ? trendBadge(tSeries[tSeries.length - 1], tSeries[tSeries.length - 2]) : "";
+  const aBadge = aSeries.length >= 2 ? trendBadge(aSeries[aSeries.length - 1], aSeries[aSeries.length - 2]) : "";
+  const tBars = tSeries.length >= 2
+    ? sparkBars(tSeries, "var(--blue)", tDayLabels.map((d, i) => `${d} · ${tSeries[i]}건`)) : "";
+  const aBars = aSeries.length >= 2
+    ? sparkBars(aSeries, "var(--blue)", tDayLabels.map((d, i) => `${d} · ${won(aSeries[i])}`)) : "";
+  const tCaption = tSeries.length >= 2
+    ? `<div class="spark-caption"><span>${tDayLabels[0]} → ${tDayLabels[tDayLabels.length - 1]}</span><span class="cap-val">${tSeries[tSeries.length - 1]}건</span></div>` : "";
+  const aCaption = aSeries.length >= 2
+    ? `<div class="spark-caption"><span>${tDayLabels[0]} → ${tDayLabels[tDayLabels.length - 1]}</span><span class="cap-val">${won(aSeries[aSeries.length - 1])}</span></div>` : "";
 
   document.getElementById("bo-dash-summary").innerHTML = `
-    <div class="metric"><div class="value">${users.total}</div><div class="label">총 회원수</div></div>
-    <div class="metric"><div class="value">${won(users.total_balance)}</div><div class="label">총 예치금</div></div>
-    <div class="metric"><div class="value">${transfers.summary.total}</div><div class="label">총 이체 건수</div></div>
-    <div class="metric"><div class="value">${won(transfers.summary.completed_amount || 0)}</div><div class="label">이체 완료금액</div></div>
-    <div class="metric"><div class="value">${today}${trend}</div><div class="label">오늘 이용 이벤트</div></div>
-    <div class="metric"><div class="value"><span class="status-badge ${healthCls}">${okCount}/${checks.length} 정상</span></div><div class="label">시스템 상태</div></div>`;
+    <div class="metric clickable" data-bo-goto="members"><div class="value">${users.total}</div><div class="label">총 회원수</div><div class="metric-note">누적</div></div>
+    <div class="metric"><div class="value">${won(users.total_balance)}</div><div class="label">총 예치금</div><div class="metric-note">누적</div></div>
+    <div class="metric clickable" data-bo-goto="transfers"><div class="value">${transfers.summary.total}${tBadge}</div><div class="label">총 이체 건수</div>${tBars}${tCaption}</div>
+    <div class="metric clickable" data-bo-goto="transfers"><div class="value">${won(transfers.summary.completed_amount || 0)}${aBadge}</div><div class="label">이체 완료금액</div>${aBars}${aCaption}</div>
+    <div class="metric"><div class="value">${today}${todayTrend}</div><div class="label">오늘 이용 이벤트</div>${todayBars}${todayCaption}</div>`;
 }
 
 /* 증감 퍼센트 배지. good: "up"(증가=좋음, 기본값) | "down"(감소=좋음) | "neutral"(볼륨성 지표라 항상 회색).
@@ -2558,28 +2625,30 @@ function trendBadge(current, previous, good = "up") {
   return `<span class="trend-badge ${cls}">${isUp ? "▲" : "▼"} ${Math.abs(pct)}%</span>`;
 }
 
-function renderBoDashboardStatusDonut(summary) {
+/* 이체 상태 분포: 카테고리가 아니라 상태이므로 임의 색이 아니라 상태 토큰을 쓴다
+   (완료=good, 대기=warning, 실패=error). */
+function renderBoDashboardStatusRank(summary) {
   const data = [
-    { label: "완료", value: summary.completed, color: "#0FA968" },
-    { label: "대기", value: summary.pending, color: "#F2A93B" },
-    { label: "실패", value: summary.failed, color: "#C5221F" },
+    { label: "완료", value: summary.completed, color: "var(--blue-dark)" },
+    { label: "대기", value: summary.pending, color: "var(--warning)" },
+    { label: "실패", value: summary.failed, color: "var(--error)" },
   ];
-  renderDonutChart("bo-dash-donut-transfers", "bo-dash-donut-transfers-legend", data, { centerValue: summary.total });
+  renderRankedBars("bo-dash-rank-transfers", data, { totalId: "bo-dash-rank-transfers-total" });
 }
 
-async function loadBoDashboardBankDonut() {
+async function loadBoDashboardBankRank() {
   try {
     const res = await fetch("/api/stats/banks?limit=20");
     const { banks } = await res.json();
     if (!banks.length) {
-      document.getElementById("bo-dash-donut-banks").closest(".donut-chart-wrap").innerHTML = statEmpty();
+      document.getElementById("bo-dash-rank-banks").innerHTML = statEmpty();
       return;
     }
     const top = banks.slice(0, 5);
     const restTotal = banks.slice(5).reduce((s, b) => s + b.count, 0);
     const data = top.map((b) => ({ label: b.name, value: b.count }));
-    if (restTotal > 0) data.push({ label: "기타", value: restTotal, color: "#5F6368" });
-    renderDonutChart("bo-dash-donut-banks", "bo-dash-donut-banks-legend", data);
+    if (restTotal > 0) data.push({ label: "기타", value: restTotal, color: "var(--text-sub)" });
+    renderRankedBars("bo-dash-rank-banks", data, { totalId: "bo-dash-rank-banks-total" });
   } catch (err) {
     console.error("은행 비중 로드 실패:", err);
   }
@@ -3020,56 +3089,90 @@ async function loadBoChatbotConfig() {
   try {
     const res = await apiFetch("/api/admin/chatbot-config");
     if (!res.ok) throw new Error("은행원 설정을 불러오지 못했습니다.");
-    const { config: cfg, providers, styles } = await res.json();
+    const { config: cfg, providers } = await res.json();
     boChatbotProviders = providers;
 
-    const providerSel = document.getElementById("bo-cc-provider");
-    providerSel.innerHTML = Object.keys(providers)
-      .map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
-      .join("");
-    providerSel.value = cfg.provider;
-    fillBoChatbotModels(cfg.provider, cfg.default_model);
-
-    const styleSel = document.getElementById("bo-cc-style");
-    styleSel.innerHTML = styles
-      .map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`)
-      .join("");
-    styleSel.value = cfg.default_style;
+    // 제공자는 현재 OpenAI 하나뿐이라(Gemini는 PROVIDERS에 미등록된 비활성 코드) 선택 UI
+    // 대신 고정 텍스트로 표시하고, 실제 값은 히든 인풋에만 담아 저장/증감비교 로직을 그대로 재사용한다.
+    const providerVal = cfg.provider || Object.keys(providers)[0] || "";
+    document.getElementById("bo-cc-provider").value = providerVal;
+    const providerDisplay = document.getElementById("bo-cc-provider-display");
+    if (providerDisplay) providerDisplay.textContent = providerVal;
+    fillBoChatbotModels(providerVal, cfg.default_model);
 
     document.getElementById("bo-cc-prompt").value = cfg.system_prompt || "";
     document.getElementById("bo-cc-websearch").checked = !!cfg.web_search;
 
-    // 답변 스타일 A/B 테스트: 두 스타일 select를 채우고 대비되는 기본값 지정
-    const styleOptions = styles
-      .map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`)
-      .join("");
-    const abStyleA = document.getElementById("bo-ab-style-a");
-    const abStyleB = document.getElementById("bo-ab-style-b");
-    if (abStyleA && abStyleB) {
-      abStyleA.innerHTML = styleOptions;
-      abStyleB.innerHTML = styleOptions;
-      abStyleA.value = cfg.default_style;                       // A = 현재 기본 스타일
-      const other = styles.find((s) => s !== cfg.default_style);
-      abStyleB.value = other || cfg.default_style;              // B = 대비되는 다른 스타일
-    }
+    // 로드 직후 값을 스냅샷으로 저장 — 이후 변경 여부를 이 스냅샷과 비교해 "저장되지 않은
+    // 변경사항" 배지를 띄운다(탭을 벗어나면 조용히 유실되던 문제 방지). boCcSavedPrompt는
+    // A/B 비교의 "현재 저장된 프롬프트"(A) 쪽으로 그대로 재사용한다.
+    boCcSnapshot = boCcCurrentValues();
+    boCcSavedPrompt = cfg.system_prompt || "";
+    updateBoCcCharCount();
+    updateBoCcDirty();
   } catch (err) {
     if (statusEl) { statusEl.className = "tf-status err"; statusEl.textContent = err.message; }
     console.error("은행원 설정 로드 실패:", err);
   }
 }
 
+/* 모델 ID → 친숙한 이름 + 성능/비용 티어. 실제 저장값(ID)은 그대로 두고 표시만 바꾼다.
+   "성능차이를 모르겠다"는 피드백 반영 — mini는 빠름·저렴, 나머지는 상대적 위치를 짧게 표기. */
+const BO_MODEL_DISPLAY = {
+  "gpt-4o-mini": { label: "GPT-4 mini", tier: "빠름·저렴" },
+  "gpt-4o": { label: "GPT-4", tier: "표준" },
+  "gpt-4.1-mini": { label: "GPT-4.1 mini", tier: "최신·경량" },
+};
+function boModelDisplay(id) {
+  return BO_MODEL_DISPLAY[id] || { label: id, tier: "" };
+}
+
 function fillBoChatbotModels(provider, selected) {
   const modelSel = document.getElementById("bo-cc-model");
   const models = (boChatbotProviders[provider] && boChatbotProviders[provider].models) || [];
   modelSel.innerHTML = models
-    .map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`)
+    .map((m) => {
+      const d = boModelDisplay(m);
+      const text = d.tier ? `${d.label} · ${d.tier}` : d.label;
+      return `<option value="${escapeHtml(m)}" title="${escapeHtml(m)}">${escapeHtml(text)}</option>`;
+    })
     .join("");
   if (models.includes(selected)) modelSel.value = selected;
 }
 
+/* 프롬프트 엔지니어링: 로드/저장 시점 스냅샷과 현재 폼 값을 비교해 미저장 변경사항 배지 표시 */
+let boCcSnapshot = null;
+let boCcSavedPrompt = "";   // 마지막으로 로드/저장된 시스템 프롬프트 — 프롬프트 A/B 비교의 "A" 값
+
+function boCcCurrentValues() {
+  return JSON.stringify({
+    provider: document.getElementById("bo-cc-provider").value,
+    model: document.getElementById("bo-cc-model").value,
+    prompt: document.getElementById("bo-cc-prompt").value,
+    websearch: document.getElementById("bo-cc-websearch").checked,
+  });
+}
+
+function updateBoCcDirty() {
+  const dirtyEl = document.getElementById("bo-cc-dirty");
+  if (!dirtyEl || boCcSnapshot === null) return;
+  dirtyEl.style.display = boCcCurrentValues() === boCcSnapshot ? "none" : "";
+}
+
+function updateBoCcCharCount() {
+  const el = document.getElementById("bo-cc-charcount");
+  const promptEl = document.getElementById("bo-cc-prompt");
+  if (el && promptEl) el.textContent = `${promptEl.value.length}자`;
+}
+
+document.addEventListener("input", (e) => {
+  if (!e.target.closest || !e.target.closest("#bo-chatbot-config-form")) return;
+  if (e.target.id === "bo-cc-prompt") updateBoCcCharCount();
+  updateBoCcDirty();
+});
 document.addEventListener("change", (e) => {
-  if (e.target.id !== "bo-cc-provider") return;
-  fillBoChatbotModels(e.target.value, "");
+  if (!e.target.closest || !e.target.closest("#bo-chatbot-config-form")) return;
+  updateBoCcDirty();
 });
 
 document.addEventListener("submit", async (e) => {
@@ -3085,7 +3188,6 @@ document.addEventListener("submit", async (e) => {
       body: JSON.stringify({
         provider: document.getElementById("bo-cc-provider").value,
         default_model: document.getElementById("bo-cc-model").value,
-        default_style: document.getElementById("bo-cc-style").value,
         system_prompt: document.getElementById("bo-cc-prompt").value,
         web_search: document.getElementById("bo-cc-websearch").checked,
       }),
@@ -3096,6 +3198,10 @@ document.addEventListener("submit", async (e) => {
     }
     statusEl.className = "tf-status ok";
     statusEl.textContent = "저장되었습니다.";
+    boCcSnapshot = boCcCurrentValues();
+    boCcSavedPrompt = document.getElementById("bo-cc-prompt").value;
+    updateBoCcDirty();
+    loadBoChatbotHistory(true);
   } catch (err) {
     statusEl.className = "tf-status err";
     statusEl.textContent = err.message;
@@ -3123,7 +3229,8 @@ document.addEventListener("click", async (e) => {
   statusEl.className = "tf-status";
   statusEl.textContent = "실행 중…";
   try {
-    // 제공자·모델·시스템 프롬프트는 위 AI은행원 설정의 현재 값을 공유하고, 답변 스타일만 A/B로 다르게
+    // 제공자·모델·답변 스타일은 위 AI은행원 설정의 현재 값을 공유하고, 프롬프트만 A(저장된 버전)/
+    // B(지금 편집 중인 버전)로 다르게 — 저장 전에 변경이 실제로 응답을 어떻게 바꾸는지 미리 확인한다.
     const res = await apiFetch("/api/admin/prompt-ab-test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -3131,9 +3238,8 @@ document.addEventListener("click", async (e) => {
         question,
         provider: document.getElementById("bo-cc-provider").value,
         model: document.getElementById("bo-cc-model").value,
-        system_prompt: document.getElementById("bo-cc-prompt").value,
-        style_a: document.getElementById("bo-ab-style-a").value,
-        style_b: document.getElementById("bo-ab-style-b").value,
+        prompt_a: boCcSavedPrompt,
+        prompt_b: document.getElementById("bo-cc-prompt").value,
       }),
     });
     if (!res.ok) {
@@ -3155,16 +3261,130 @@ document.addEventListener("click", async (e) => {
   }
 });
 
-// "이 스타일 적용" → 위 설정의 기본 답변 스타일로 반영(저장은 관리자가 직접)
+// A/B 비교 결과 선택: A(저장된 프롬프트)로 되돌리거나, B(지금 편집 중인 프롬프트)를 바로 저장.
 document.addEventListener("click", (e) => {
-  const which = e.target.getAttribute && e.target.getAttribute("data-ab-apply-style");
-  if (!which) return;
-  const src = document.getElementById(`bo-ab-style-${which}`);
-  document.getElementById("bo-cc-style").value = src.value;
-  document.getElementById("bo-chatbot-config-form").scrollIntoView({ behavior: "smooth", block: "start" });
-  const statusEl = document.getElementById("bo-cc-status");
-  statusEl.className = "tf-status";
-  statusEl.textContent = `${which.toUpperCase()} 답변 스타일을 기본값으로 반영했습니다. '저장'을 눌러 적용하세요.`;
+  if (!e.target.closest("#bo-ab-pick-a")) return;
+  const ta = document.getElementById("bo-cc-prompt");
+  ta.value = boCcSavedPrompt;
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
+  ta.scrollIntoView({ behavior: "smooth", block: "center" });
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#bo-ab-pick-b")) return;
+  document.getElementById("bo-chatbot-config-form").requestSubmit();
+});
+
+/* ── Backoffice: 프롬프트 버전 이력(diff/되돌리기) ─────────────────── */
+
+/* 두 텍스트를 줄 단위로 비교하는 순수 JS diff(LCS 기반, 외부 라이브러리 없음). */
+function renderDiffLines(oldText, newText) {
+  const a = (oldText || "").split("\n");
+  const b = (newText || "").split("\n");
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const result = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { result.push({ type: "same", line: a[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { result.push({ type: "del", line: a[i] }); i++; }
+    else { result.push({ type: "add", line: b[j] }); j++; }
+  }
+  while (i < n) { result.push({ type: "del", line: a[i] }); i++; }
+  while (j < m) { result.push({ type: "add", line: b[j] }); j++; }
+  return result;
+}
+
+let boCcHistoryCache = {};
+let boCcHistoryOffset = 0;
+let boCcHistoryLatestId = null;
+
+async function loadBoChatbotHistory(reset = true) {
+  if (reset) boCcHistoryOffset = 0;
+  try {
+    const res = await apiFetch(`/api/admin/chatbot-config/history?offset=${boCcHistoryOffset}&limit=${BO_PAGE_SIZE}`);
+    if (!res.ok) throw new Error("버전 이력 조회 실패");
+    const data = await res.json();
+    if (reset && boCcHistoryOffset === 0 && data.history.length) {
+      boCcHistoryLatestId = data.history[0].id;
+    }
+    renderBoCcHistoryRows(data.history, reset);
+    document.getElementById("bo-cc-history-more").style.display =
+      boCcHistoryOffset + data.history.length < data.total ? "" : "none";
+    boCcHistoryOffset += data.history.length;
+  } catch (err) {
+    console.error("버전 이력 로드 실패:", err);
+  }
+}
+
+function renderBoCcHistoryRows(history, reset) {
+  if (reset) boCcHistoryCache = {};
+  const rows = history
+    .map((h) => {
+      boCcHistoryCache[h.id] = h;
+      const when = mpFmtDate(h.created_at);
+      const modelDisp = boModelDisplay(h.default_model);
+      const summary = `<span class="model-badge" title="${escapeHtml(h.default_model)}">${escapeHtml(modelDisp.label)}</span>`;
+      const actions = h.id === boCcHistoryLatestId
+        ? `<div class="bo-row-actions"><span class="status-badge ok">현재 적용 중</span></div>`
+        : `<div class="bo-row-actions">` +
+          `<button class="btn btn-ghost" type="button" data-cc-diff="${h.id}">비교</button>` +
+          `<button class="btn btn-ghost" type="button" data-cc-restore="${h.id}">되돌리기</button>` +
+          `</div>`;
+      return `<tr><td>${when}</td><td>${summary}</td><td>${escapeHtml(h.changed_by || "-")}</td><td>${actions}</td></tr>`;
+    })
+    .join("");
+  const tbody = document.getElementById("bo-cc-history-rows");
+  tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#bo-cc-history-more")) return;
+  loadBoChatbotHistory(false);
+});
+
+document.addEventListener("click", (e) => {
+  const diffBtn = e.target.closest("[data-cc-diff]");
+  if (!diffBtn) return;
+  const entry = boCcHistoryCache[diffBtn.dataset.ccDiff];
+  if (!entry) return;
+  const currentPrompt = document.getElementById("bo-cc-prompt").value;
+  const currentProvider = document.getElementById("bo-cc-provider").value;
+  const currentModel = document.getElementById("bo-cc-model").value;
+  const lines = renderDiffLines(entry.system_prompt, currentPrompt);
+  const diffHtml = lines
+    .map((l) => `<div class="diff-line ${l.type}">${escapeHtml(l.line) || "&nbsp;"}</div>`)
+    .join("");
+  const metaBits = [];
+  if (entry.provider !== currentProvider) metaBits.push(`제공자: ${escapeHtml(entry.provider)} → ${escapeHtml(currentProvider)}`);
+  if (entry.default_model !== currentModel) metaBits.push(`모델: ${escapeHtml(entry.default_model)} → ${escapeHtml(currentModel)}`);
+  showModal(
+    `<h3>${mpFmtDate(entry.created_at)} 버전 → 현재 비교</h3>` +
+      (metaBits.length ? `<div class="diff-meta">${metaBits.join(" · ")}</div>` : "") +
+      `<div class="diff-box">${diffHtml}</div>`,
+    true
+  );
+});
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-cc-restore]");
+  if (!btn) return;
+  const entry = boCcHistoryCache[btn.dataset.ccRestore];
+  if (!entry) return;
+  if (!confirm(`${mpFmtDate(entry.created_at)} 저장된 버전으로 되돌릴까요? 되돌리기 전 상태도 이력에 남습니다.`)) return;
+  try {
+    const res = await apiFetch(`/api/admin/chatbot-config/history/${entry.id}/restore`, { method: "POST" });
+    if (!res.ok) throw new Error("되돌리기에 실패했습니다.");
+    await loadBoChatbotConfig();
+    await loadBoChatbotHistory(true);
+  } catch (err) {
+    console.error("되돌리기 실패:", err);
+    alert(err.message);
+  }
 });
 
 /* ── Backoffice: 이체 정책(한도/수수료) ──────────────────────────── */
@@ -3314,6 +3534,17 @@ document.addEventListener("click", async (e) => {
   }
 });
 
+/* ── Backoffice: FAQ·공지사항·문의내역 관리 — 칩으로 목록 전환(다 이미 로드돼 있고 표시만 토글) ── */
+document.addEventListener("click", (e) => {
+  const tab = e.target.closest(".bo-faq-tab");
+  if (!tab) return;
+  const name = tab.dataset.boFaqTab;
+  document.querySelectorAll(".bo-faq-tab").forEach((b) => b.classList.toggle("active", b === tab));
+  document.getElementById("bo-faqtab-notices").style.display = name === "notices" ? "" : "none";
+  document.getElementById("bo-faqtab-faq").style.display = name === "faq" ? "" : "none";
+  document.getElementById("bo-faqtab-inquiries").style.display = name === "inquiries" ? "" : "none";
+});
+
 /* ── Backoffice: 공지사항 관리 ───────────────────────────────────── */
 let boNoticeOffset = 0, boNoticeQuery = "";
 let boNoticeCache = {};
@@ -3342,7 +3573,7 @@ function renderBoNoticeRows(notices, reset) {
     .map((n) => {
       boNoticeCache[n.id] = n;
       const d = new Date(n.created_at * 1000).toLocaleDateString("ko-KR");
-      return `<tr><td>${escapeHtml(n.title)}</td><td>${d}</td>` +
+      return `<tr data-id="${n.id}"><td>${escapeHtml(n.title)}</td><td>${d}</td>` +
         `<td><div class="bo-row-actions">` +
         `<button class="btn btn-ghost bo-edit-btn" type="button" data-kind="notice" data-id="${n.id}">수정</button>` +
         `<button class="btn btn-ghost bo-del-btn" type="button" data-kind="notice" data-id="${n.id}">삭제</button>` +
@@ -3362,6 +3593,8 @@ function boNoticeStartEdit(id) {
   document.getElementById("bo-notice-submit-btn").textContent = "수정 완료";
   document.getElementById("bo-notice-cancel-btn").style.display = "";
   document.getElementById("bo-notice-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelectorAll("#bo-notice-rows tr.editing").forEach((tr) => tr.classList.remove("editing"));
+  document.querySelector(`#bo-notice-rows tr[data-id="${id}"]`)?.classList.add("editing");
 }
 
 function boNoticeCancelEdit() {
@@ -3369,6 +3602,7 @@ function boNoticeCancelEdit() {
   document.getElementById("bo-notice-form").reset();
   document.getElementById("bo-notice-submit-btn").textContent = "등록";
   document.getElementById("bo-notice-cancel-btn").style.display = "none";
+  document.querySelectorAll("#bo-notice-rows tr.editing").forEach((tr) => tr.classList.remove("editing"));
 }
 
 document.addEventListener("click", (e) => {
@@ -3442,7 +3676,7 @@ function renderBoFaqRows(faqs, reset) {
     .map((f) => {
       boFaqCache[f.id] = f;
       const d = new Date(f.created_at * 1000).toLocaleDateString("ko-KR");
-      return `<tr><td>${escapeHtml(f.question)}</td><td>${d}</td>` +
+      return `<tr data-id="${f.id}"><td>${escapeHtml(f.question)}</td><td>${d}</td>` +
         `<td><div class="bo-row-actions">` +
         `<button class="btn btn-ghost bo-edit-btn" type="button" data-kind="faq" data-id="${f.id}">수정</button>` +
         `<button class="btn btn-ghost bo-del-btn" type="button" data-kind="faq" data-id="${f.id}">삭제</button>` +
@@ -3462,6 +3696,8 @@ function boFaqStartEdit(id) {
   document.getElementById("bo-faq-submit-btn").textContent = "수정 완료";
   document.getElementById("bo-faq-cancel-btn").style.display = "";
   document.getElementById("bo-faq-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelectorAll("#bo-faq-rows tr.editing").forEach((tr) => tr.classList.remove("editing"));
+  document.querySelector(`#bo-faq-rows tr[data-id="${id}"]`)?.classList.add("editing");
 }
 
 function boFaqCancelEdit() {
@@ -3469,6 +3705,7 @@ function boFaqCancelEdit() {
   document.getElementById("bo-faq-form").reset();
   document.getElementById("bo-faq-submit-btn").textContent = "등록";
   document.getElementById("bo-faq-cancel-btn").style.display = "none";
+  document.querySelectorAll("#bo-faq-rows tr.editing").forEach((tr) => tr.classList.remove("editing"));
 }
 
 document.addEventListener("click", (e) => {
@@ -3514,6 +3751,144 @@ document.addEventListener("submit", async (e) => {
   }
 });
 
+/* ── Backoffice: 문의내역(읽기 전용 — 답변 기능 없음) ──────────────────── */
+let boInquiryOffset = 0, boInquiryQuery = "";
+let boInquiryCache = {};
+
+async function loadBoInquiries(reset = true) {
+  if (reset) boInquiryOffset = 0;
+  try {
+    const res = await apiFetch(
+      `/api/admin/inquiries?offset=${boInquiryOffset}&limit=${BO_PAGE_SIZE}&q=${encodeURIComponent(boInquiryQuery)}`
+    );
+    if (!res.ok) throw new Error("문의내역 조회 실패");
+    const data = await res.json();
+    renderBoInquiryRows(data.inquiries, reset);
+    document.getElementById("bo-inquiry-more").style.display =
+      boInquiryOffset + data.inquiries.length < data.total ? "" : "none";
+    boInquiryOffset += data.inquiries.length;
+  } catch (err) {
+    console.error("문의내역 로드 실패:", err);
+  }
+}
+
+function renderBoInquiryRows(inquiries, reset) {
+  if (reset) boInquiryCache = {};
+  const rows = inquiries
+    .map((iq) => {
+      boInquiryCache[iq.id] = iq;
+      const d = new Date(iq.created_at * 1000).toLocaleDateString("ko-KR");
+      const author = escapeHtml(iq.name || iq.username);
+      return `<tr><td>${author}</td><td>${escapeHtml(iq.title)}</td><td>${d}</td>` +
+        `<td><div class="bo-row-actions">` +
+        `<button class="btn btn-ghost" type="button" data-inquiry-view="${iq.id}">보기</button>` +
+        `</div></td></tr>`;
+    })
+    .join("");
+  const tbody = document.getElementById("bo-inquiry-rows");
+  tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#bo-inquiry-search-btn")) {
+    boInquiryQuery = document.getElementById("bo-inquiry-search").value.trim();
+    loadBoInquiries(true);
+  }
+  if (e.target.closest("#bo-inquiry-more")) loadBoInquiries(false);
+  const viewBtn = e.target.closest("[data-inquiry-view]");
+  if (viewBtn) {
+    const iq = boInquiryCache[viewBtn.dataset.inquiryView];
+    if (!iq) return;
+    showModal(
+      `<h3>${escapeHtml(iq.title)}</h3>` +
+        `<div class="diff-meta">${escapeHtml(iq.name || iq.username)} · ${mpFmtDate(iq.created_at)}</div>` +
+        `<div class="diff-box"><div class="diff-line same" style="white-space:pre-wrap; padding:12px;">${escapeHtml(iq.content)}</div></div>`,
+      true
+    );
+  }
+});
+
+/* ── Backoffice: 상품관리 — 미리보기/통계/서식관리를 칩으로 전환(다 이미 로드돼 있고 표시만 토글) ── */
+document.addEventListener("click", (e) => {
+  const tab = e.target.closest(".bo-product-tab");
+  if (!tab) return;
+  const name = tab.dataset.boProductTab;
+  document.querySelectorAll(".bo-product-tab").forEach((b) => b.classList.toggle("active", b === tab));
+  document.getElementById("bo-producttab-preview").style.display = name === "preview" ? "" : "none";
+  document.getElementById("bo-producttab-stats").style.display = name === "stats" ? "" : "none";
+  document.getElementById("bo-producttab-documents").style.display = name === "documents" ? "" : "none";
+});
+
+/* ── Backoffice: 실시간 상품 미리보기 (고객 페이지와 동일한 /api/products 재사용,
+   단 렌더링은 확인용 테이블이라 아코디언/검색/정렬 없는 별도의 가벼운 렌더러) ── */
+async function loadBoProductPreview(category) {
+  const tbody = document.getElementById("bo-product-preview-rows");
+  tbody.innerHTML = `<tr><td colspan="3">불러오는 중…</td></tr>`;
+  try {
+    const res = await apiFetch(`/api/products?category=${encodeURIComponent(category)}`);
+    if (!res.ok) throw new Error("상품 조회 실패");
+    const { products } = await res.json();
+    renderBoProductPreviewRows(products);
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="3">${statError()}</td></tr>`;
+    console.error("상품 미리보기 로드 실패:", err);
+  }
+}
+
+function renderBoProductPreviewRows(products) {
+  const tbody = document.getElementById("bo-product-preview-rows");
+  if (!products.length) {
+    tbody.innerHTML = `<tr><td colspan="3">${statEmpty()}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = products
+    .map((p) => {
+      const { isLoan, minRate, maxRate } = getProductRateRange(p);
+      let rateText = "-";
+      if (minRate != null && maxRate != null) {
+        rateText = minRate === maxRate
+          ? `${maxRate.toFixed(2)}%`
+          : isLoan
+            ? `${minRate.toFixed(2)}~${maxRate.toFixed(2)}%`
+            : `최고 ${maxRate.toFixed(2)}%`;
+      }
+      return `<tr><td>${bankBadge(p.bank)}</td><td>${escapeHtml(p.product_name)}</td><td>${rateText}</td></tr>`;
+    })
+    .join("");
+}
+
+document.addEventListener("click", (e) => {
+  const tab = e.target.closest(".bo-cat-tab");
+  if (!tab) return;
+  document.querySelectorAll("#bo-product-cat-tabs .bo-cat-tab").forEach((t) => t.classList.toggle("active", t === tab));
+  loadBoProductPreview(tab.dataset.category);
+});
+
+/* ── Backoffice: FSS 연동 상태 한 줄 요약 (성능관리 탭의 /api/admin/fss-status 재사용) ── */
+async function loadBoFssSummary() {
+  const badge = document.getElementById("bo-fss-key-badge");
+  const text = document.getElementById("bo-fss-summary-text");
+  try {
+    const res = await apiFetch("/api/admin/fss-status");
+    if (!res.ok) throw new Error("FSS 상태 조회 실패");
+    const data = await res.json();
+    const ok = data.status === "ok";
+    badge.className = `status-badge ${ok ? "ok" : "warn"}`;
+    badge.textContent = ok ? "FSS 연동 정상" : "FSS 연동 주의";
+    text.textContent = `총 ${data.products ?? "-"}개 상품 · 최신 공시일 ${data.latest_dcls ?? "-"}`;
+  } catch (err) {
+    badge.className = "status-badge down";
+    badge.textContent = "FSS 상태 확인 실패";
+    text.textContent = "";
+    console.error("FSS 요약 로드 실패:", err);
+  }
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#bo-fss-detail-link")) return;
+  boGoTab("perf");
+});
+
 /* ── Backoffice: 서식·약관·설명서 관리 ─────────────────────────────── */
 let boDocOffset = 0, boDocQuery = "";
 let boDocCache = {};
@@ -3542,7 +3917,7 @@ function renderBoDocRows(docs, reset) {
     .map((doc) => {
       boDocCache[doc.id] = doc;
       const d = new Date(doc.created_at * 1000).toLocaleDateString("ko-KR");
-      return `<tr><td>${escapeHtml(doc.title)}</td><td>${escapeHtml(doc.category)}</td><td>${d}</td>` +
+      return `<tr data-id="${doc.id}"><td>${escapeHtml(doc.title)}</td><td>${escapeHtml(doc.category)}</td><td>${d}</td>` +
         `<td><div class="bo-row-actions">` +
         `<button class="btn btn-ghost bo-edit-btn" type="button" data-kind="document" data-id="${doc.id}">수정</button>` +
         `<button class="btn btn-ghost bo-del-btn" type="button" data-kind="document" data-id="${doc.id}">삭제</button>` +
@@ -3563,6 +3938,8 @@ function boDocStartEdit(id) {
   document.getElementById("bo-doc-submit-btn").textContent = "수정 완료";
   document.getElementById("bo-doc-cancel-btn").style.display = "";
   document.getElementById("bo-document-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelectorAll("#bo-doc-rows tr.editing").forEach((tr) => tr.classList.remove("editing"));
+  document.querySelector(`#bo-doc-rows tr[data-id="${id}"]`)?.classList.add("editing");
 }
 
 function boDocCancelEdit() {
@@ -3570,6 +3947,7 @@ function boDocCancelEdit() {
   document.getElementById("bo-document-form").reset();
   document.getElementById("bo-doc-submit-btn").textContent = "등록";
   document.getElementById("bo-doc-cancel-btn").style.display = "none";
+  document.querySelectorAll("#bo-doc-rows tr.editing").forEach((tr) => tr.classList.remove("editing"));
 }
 
 document.addEventListener("click", (e) => {

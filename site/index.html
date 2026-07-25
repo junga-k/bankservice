@@ -929,7 +929,7 @@
             <button type="button" class="bo-tab" data-bo-tab="transfers">이체모니터링</button>
             <button type="button" class="bo-tab" data-bo-tab="usage">이용통계</button>
             <button type="button" class="bo-tab" data-bo-tab="perf">성능관리</button>
-            <button type="button" class="bo-tab" data-bo-tab="prompt">프롬프트 엔지니어링</button>
+            <button type="button" class="bo-tab" data-bo-tab="prompt">프롬프트 관리</button>
             <button type="button" class="bo-tab" data-bo-tab="products">금융상품관리</button>
             <button type="button" class="bo-tab" data-bo-tab="faq">FAQ·공지사항 관리</button>
             <button type="button" class="bo-tab" data-bo-tab="settings">시스템설정</button>
@@ -940,32 +940,16 @@
 
         <!-- 대시보드 -->
         <div class="bo-panel" id="bo-panel-dashboard">
-          <div class="metric-grid" id="bo-dash-summary"><!-- JS 렌더 --></div>
-
-          <div class="dashboard-chart-grid">
-            <div class="panel">
-              <h3>최근 14일 이용 추이</h3>
-              <div id="bo-dash-usage-daily"><!-- JS 렌더 --></div>
+          <!-- 시스템 상태 스트립: "지금 뭔가 문제가 있는가"를 스크롤 없이 최우선으로 -->
+          <div class="bo-health-strip">
+            <div class="bo-health-main">
+              <span class="status-badge lg" id="bo-health-badge">확인 중…</span>
+              <span class="bo-health-updated" id="bo-health-updated"></span>
             </div>
-            <div class="panel">
-              <h3>은행별 이용 비중</h3>
-              <div class="donut-chart-wrap">
-                <div class="donut-chart" id="bo-dash-donut-banks">
-                  <div class="donut-hole"><span class="donut-hole-value">0</span><span class="donut-hole-label">건</span></div>
-                </div>
-                <ul class="donut-legend" id="bo-dash-donut-banks-legend"><!-- JS 렌더 --></ul>
-              </div>
-            </div>
-            <div class="panel">
-              <h3>이체 상태 분포</h3>
-              <div class="donut-chart-wrap">
-                <div class="donut-chart" id="bo-dash-donut-transfers">
-                  <div class="donut-hole"><span class="donut-hole-value">0</span><span class="donut-hole-label">건</span></div>
-                </div>
-                <ul class="donut-legend" id="bo-dash-donut-transfers-legend"><!-- JS 렌더 --></ul>
-              </div>
-            </div>
+            <div class="bo-health-chips" id="bo-health-chips"><!-- JS 렌더 --></div>
           </div>
+
+          <div class="metric-grid" id="bo-dash-summary"><!-- JS 렌더 --></div>
 
           <div class="panel">
             <h3>인프라 연동 현황</h3>
@@ -975,6 +959,21 @@
             <h3>LLM · RAG 사용 현황 (최근 24시간)</h3>
             <div class="metric-grid" id="bo-dash-infra-metrics"><!-- JS 렌더 --></div>
             <p class="tf-hint" id="bo-dash-infra-config"></p>
+          </div>
+
+          <div class="dashboard-chart-grid">
+            <div class="panel">
+              <h3>최근 14일 이용 추이</h3>
+              <div id="bo-dash-usage-daily"><!-- JS 렌더 --></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h3>은행별 이용 비중</h3><span class="panel-total" id="bo-dash-rank-banks-total"></span></div>
+              <div id="bo-dash-rank-banks"><!-- JS 렌더 --></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h3>이체 상태 분포</h3><span class="panel-total" id="bo-dash-rank-transfers-total"></span></div>
+              <div id="bo-dash-rank-transfers"><!-- JS 렌더 --></div>
+            </div>
           </div>
         </div>
 
@@ -1102,40 +1101,41 @@
         <div class="bo-panel" id="bo-panel-prompt" style="display:none">
           <div class="panel">
             <h3>AI은행원 설정</h3>
-            <p class="section-desc">은행원의 제공자·모델·답변 스타일·시스템 프롬프트를 관리합니다.
-              저장하면 새로 시작하는 대화부터 자동 반영됩니다. (이미 열려 있는 대화창은 새로고침 필요)</p>
+            <p class="section-desc">은행원의 제공자·모델·시스템 프롬프트를 관리합니다. 금융 서비스 특성상 답변은 항상
+              정확·사실 기반 모드로 응답합니다. 저장하면 새로 시작하는 대화부터 자동 반영됩니다. (이미 열려 있는 대화창은 새로고침 필요)</p>
             <form id="bo-chatbot-config-form">
               <div class="tf-row">
                 <div class="tf-field">
-                  <label for="bo-cc-provider">제공자</label>
-                  <select id="bo-cc-provider"></select>
+                  <label>제공자</label>
+                  <div class="tf-static-value" id="bo-cc-provider-display">OpenAI</div>
+                  <input type="hidden" id="bo-cc-provider" value="OpenAI" />
                 </div>
                 <div class="tf-field">
                   <label for="bo-cc-model">기본 모델</label>
                   <select id="bo-cc-model"></select>
                 </div>
-                <div class="tf-field">
-                  <label for="bo-cc-style">답변 스타일</label>
-                  <select id="bo-cc-style"></select>
-                </div>
               </div>
               <div class="tf-field">
-                <label for="bo-cc-prompt">시스템 프롬프트</label>
+                <div class="prompt-editor-head">
+                  <label for="bo-cc-prompt">시스템 프롬프트</label>
+                  <span class="prompt-char-count" id="bo-cc-charcount">0자</span>
+                </div>
                 <textarea id="bo-cc-prompt" class="prompt-editor"></textarea>
               </div>
               <div class="tf-form-footer">
                 <label class="tf-inline-check"><input type="checkbox" id="bo-cc-websearch" /> 웹 검색 사용</label>
+                <span class="trend-badge down" id="bo-cc-dirty" style="display:none">저장되지 않은 변경사항</span>
                 <button class="btn btn-primary" type="submit">저장</button>
                 <span class="tf-status" id="bo-cc-status"></span>
               </div>
             </form>
           </div>
 
-          <div class="panel">
-            <h3>답변 스타일 A/B 테스트</h3>
-            <p class="section-desc">위 시스템 프롬프트를 A·B에 동일하게 적용한 상태에서, <strong>답변 스타일만 바꿔</strong>
-              같은 질문의 답변을 나란히 비교합니다. '이 스타일 적용'을 누르면 위 설정의 기본 답변 스타일로 반영됩니다.
-              (제공자·모델은 위 설정값을 사용)</p>
+          <div class="panel bo-ab-panel">
+            <div class="panel-head"><h3>프롬프트 A/B 비교</h3><span class="bo-ab-eyebrow">실험 · 저장되지 않음</span></div>
+            <p class="section-desc"><strong>현재 저장된 프롬프트</strong>와 <strong>지금 편집 중인 프롬프트</strong>로 같은 질문에
+              어떻게 다르게 답하는지 비교합니다. B가 더 낫다고 판단되면 위에서 바로 '저장'을 누르면 됩니다.
+              (제공자·모델·답변 스타일은 위 설정값을 사용)</p>
             <div class="bo-toolbar bo-ab-toolbar">
               <textarea id="bo-ab-question" placeholder="샘플 질문 (예: 적금 추천해줘)" rows="2"></textarea>
               <div class="bo-ab-toolbar-actions">
@@ -1144,31 +1144,69 @@
               </div>
             </div>
             <div class="ab-grid">
-              <div class="ab-col">
-                <label for="bo-ab-style-a">A 답변 스타일</label>
-                <select id="bo-ab-style-a" class="ab-style"></select>
+              <div class="ab-col" id="bo-ab-col-a">
+                <label>A · 현재 저장된 프롬프트</label>
                 <div class="ab-response" id="bo-ab-resp-a"></div>
                 <div class="ab-foot">
                   <span class="ab-lat" id="bo-ab-lat-a"></span>
-                  <button class="btn btn-ghost" type="button" data-ab-apply-style="a">이 스타일 적용</button>
+                  <button class="btn btn-ghost" type="button" id="bo-ab-pick-a">이 대답으로 선택하기</button>
                 </div>
               </div>
-              <div class="ab-col">
-                <label for="bo-ab-style-b">B 답변 스타일</label>
-                <select id="bo-ab-style-b" class="ab-style"></select>
+              <div class="ab-col" id="bo-ab-col-b">
+                <label>B · 지금 편집 중인 프롬프트</label>
                 <div class="ab-response" id="bo-ab-resp-b"></div>
                 <div class="ab-foot">
                   <span class="ab-lat" id="bo-ab-lat-b"></span>
-                  <button class="btn btn-ghost" type="button" data-ab-apply-style="b">이 스타일 적용</button>
+                  <button class="btn btn-ghost" type="button" id="bo-ab-pick-b">이 대답으로 선택하기</button>
                 </div>
               </div>
             </div>
+          </div>
+
+          <div class="panel">
+            <h3>버전 이력</h3>
+            <p class="section-desc">저장할 때마다 이전 설정이 자동으로 기록됩니다. 과거 버전과 현재 시스템 프롬프트를 비교하거나, 문제가 생기면 이전 버전으로 되돌릴 수 있습니다.</p>
+            <table class="admin-table">
+              <thead>
+                <tr><th>저장일시</th><th>모델</th><th>변경자</th><th></th></tr>
+              </thead>
+              <tbody id="bo-cc-history-rows"></tbody>
+            </table>
+            <button class="btn btn-ghost" type="button" id="bo-cc-history-more" style="display:none">더 보기</button>
           </div>
         </div>
 
         <!-- 금융상품관리 -->
         <div class="bo-panel" id="bo-panel-products" style="display:none">
-          <div class="panel">
+          <div class="bo-fss-summary-strip">
+            <span class="status-badge" id="bo-fss-key-badge">확인 중…</span>
+            <span id="bo-fss-summary-text"></span>
+            <button type="button" class="bo-fss-detail-link" id="bo-fss-detail-link">성능관리에서 자세히 보기 →</button>
+          </div>
+
+          <div class="bo-product-tabs">
+            <button type="button" class="bo-product-tab active" data-bo-product-tab="preview">상품 미리보기</button>
+            <button type="button" class="bo-product-tab" data-bo-product-tab="stats">인기 상품 통계</button>
+            <button type="button" class="bo-product-tab" data-bo-product-tab="documents">서식·약관·설명서</button>
+          </div>
+
+          <div class="panel" id="bo-producttab-preview">
+            <h3>실시간 상품 미리보기</h3>
+            <p class="section-desc">고객이 지금 보고 있는 실제 상품·금리입니다(금융감독원 API 실시간 조회).</p>
+            <div class="bo-cat-tabs" id="bo-product-cat-tabs">
+              <button type="button" class="bo-cat-tab active" data-category="예금">예금</button>
+              <button type="button" class="bo-cat-tab" data-category="적금">적금</button>
+              <button type="button" class="bo-cat-tab" data-category="주택담보대출">주택담보대출</button>
+              <button type="button" class="bo-cat-tab" data-category="전세자금대출">전세자금대출</button>
+              <button type="button" class="bo-cat-tab" data-category="신용대출">신용대출</button>
+            </div>
+            <table class="admin-table">
+              <thead><tr><th>은행</th><th>상품명</th><th>금리</th></tr></thead>
+              <tbody id="bo-product-preview-rows"></tbody>
+            </table>
+          </div>
+
+          <div class="panel" id="bo-producttab-stats" style="display:none">
             <h3>FSS 상품 조회 통계</h3>
             <p class="section-desc">고객 상품안내 페이지에서 조회된 데이터 기준입니다.</p>
             <div class="panel">
@@ -1177,17 +1215,19 @@
             </div>
           </div>
 
-          <div class="panel">
+          <div class="panel" id="bo-producttab-documents" style="display:none">
             <h3>서식·약관·설명서 관리</h3>
             <form id="bo-document-form" class="bo-inline-form">
-              <div class="tf-field"><label for="bo-doc-title">제목</label><input id="bo-doc-title" type="text" required /></div>
-              <div class="tf-field">
-                <label for="bo-doc-category">구분</label>
-                <select id="bo-doc-category">
-                  <option value="약관">약관</option>
-                  <option value="서식">서식</option>
-                  <option value="설명서">설명서</option>
-                </select>
+              <div class="tf-row">
+                <div class="tf-field"><label for="bo-doc-title">제목</label><input id="bo-doc-title" type="text" required /></div>
+                <div class="tf-field">
+                  <label for="bo-doc-category">구분</label>
+                  <select id="bo-doc-category">
+                    <option value="약관">약관</option>
+                    <option value="서식">서식</option>
+                    <option value="설명서">설명서</option>
+                  </select>
+                </div>
               </div>
               <div class="tf-field"><label for="bo-doc-desc">설명</label><textarea id="bo-doc-desc" rows="2"></textarea></div>
               <div class="tf-form-footer">
@@ -1210,7 +1250,13 @@
 
         <!-- FAQ·공지사항 관리 -->
         <div class="bo-panel" id="bo-panel-faq" style="display:none">
-          <div class="panel">
+          <div class="bo-faq-tabs">
+            <button type="button" class="bo-faq-tab active" data-bo-faq-tab="notices">공지사항</button>
+            <button type="button" class="bo-faq-tab" data-bo-faq-tab="faq">FAQ</button>
+            <button type="button" class="bo-faq-tab" data-bo-faq-tab="inquiries">문의내역</button>
+          </div>
+
+          <div class="panel" id="bo-faqtab-notices">
             <h3>공지사항 관리</h3>
             <form id="bo-notice-form" class="bo-inline-form">
               <div class="tf-field"><label for="bo-notice-title">제목</label><input id="bo-notice-title" type="text" required /></div>
@@ -1232,7 +1278,7 @@
             <button class="btn btn-ghost bo-btn-right" type="button" id="bo-notice-more">더 보기</button>
           </div>
 
-          <div class="panel">
+          <div class="panel" id="bo-faqtab-faq" style="display:none">
             <h3>FAQ 관리</h3>
             <form id="bo-faq-form" class="bo-inline-form">
               <div class="tf-field"><label for="bo-faq-question">질문</label><input id="bo-faq-question" type="text" required /></div>
@@ -1252,6 +1298,20 @@
               <tbody id="bo-faq-rows"><!-- JS 렌더 --></tbody>
             </table>
             <button class="btn btn-ghost bo-btn-right" type="button" id="bo-faq-more">더 보기</button>
+          </div>
+
+          <div class="panel" id="bo-faqtab-inquiries" style="display:none">
+            <h3>문의내역</h3>
+            <p class="section-desc">고객이 남긴 문의를 조회합니다(읽기 전용).</p>
+            <div class="bo-toolbar bo-search-inline">
+              <input type="text" id="bo-inquiry-search" placeholder="제목/내용 검색" />
+              <button class="btn btn-ghost" type="button" id="bo-inquiry-search-btn">검색</button>
+            </div>
+            <table class="admin-table">
+              <thead><tr><th>작성자</th><th>제목</th><th>등록일</th><th></th></tr></thead>
+              <tbody id="bo-inquiry-rows"><!-- JS 렌더 --></tbody>
+            </table>
+            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-inquiry-more">더 보기</button>
           </div>
         </div>
 
