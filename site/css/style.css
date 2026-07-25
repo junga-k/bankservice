@@ -1524,6 +1524,15 @@ main { min-height: calc(100vh - var(--header-h)); }
   font-size: 13px;
 }
 .bo-search-inline .btn { padding: 6px 14px; font-size: 13px; white-space: nowrap; flex-shrink: 0; }
+.bo-search-inline select {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--text);
+}
 
 /* A/B 테스트 샘플 질문: 길게 쓸 수 있으므로 한 줄 입력 대신 여러 줄 textarea + 하단 버튼 */
 .bo-ab-toolbar { flex-direction: column; align-items: stretch; }

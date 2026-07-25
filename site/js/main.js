@@ -2377,8 +2377,10 @@ const BO_TABS = ["dashboard", "members", "transfers", "usage", "perf", "prompt",
 const boLoaded = {};   // 탭별 최초 로드 여부(지연 로드)
 let boUserOffset = 0;
 let boUserQuery = "";
+let boUserRole = "";
 let boTransferOffset = 0;
 let boTransferStatus = "";
+let boTransferQuery = "";
 const BO_PAGE_SIZE = 20;
 
 function boGoTab(name) {
@@ -2433,7 +2435,7 @@ function ensureBoTabLoaded(name) {
     loadBoUsageStats();
     loadTopProductsGrid("bo-stat-products");
   }
-  if (name === "perf") { loadBoHealth(); loadBoInfraConfig(); loadBoBatchPerf(); loadBoFssStatus(); }
+  if (name === "perf") { loadBoPerfInfra(); loadBoInfraConfig(); loadBoBatchPerf(); loadBoFssStatus(); }
   if (name === "prompt") { loadBoChatbotConfig(); loadBoChatbotHistory(); }
   if (name === "products") {
     loadBoFssSummary();
@@ -2454,18 +2456,15 @@ document.addEventListener("click", (e) => {
 /* 대시보드: 시스템 상태 스트립 + KPI 요약 + 이용 추이 + 은행별 비중/이체 상태 랭킹 */
 async function loadBoDashboard() {
   try {
-    const [usersRes, transfersRes, usageRes, healthRes] = await Promise.all([
+    const [usersRes, transfersRes, usageRes] = await Promise.all([
       apiFetch("/api/admin/users?limit=1"),
       apiFetch("/api/admin/transfers?limit=1"),
       apiFetch("/api/admin/usage-stats"),
-      apiFetch("/api/admin/health"),
     ]);
     const users = await usersRes.json();
     const transfers = await transfersRes.json();
     const usage = await usageRes.json();
-    const health = await healthRes.json();
 
-    updateHealthStrip(health);
     const transferTrend = await loadBoDashboardTransferTrend();
     renderBoDashboardSummary(users, transfers, usage, transferTrend);
     renderBoUsageDaily(usage.daily, "bo-dash-usage-daily");
@@ -2476,20 +2475,6 @@ async function loadBoDashboard() {
   }
   loadBoDashboardBankRank();
   loadBoDashboardInfra();
-}
-
-/* 시스템 상태 스트립 최상단 배지 + 업데이트 시각 — health.checks 기준 전체 헬스 요약.
-   Kafka/ES/Phoenix/예약이체폴러 개별 칩은 loadBoDashboardInfra()에서 별도로 채운다
-   (다른 API에서 오는 데이터라 도착 시점이 다름). */
-function updateHealthStrip(health) {
-  const checks = health.checks || [];
-  const okCount = checks.filter((c) => c.status === "ok").length;
-  const cls = okCount === checks.length && checks.length > 0 ? "ok" : okCount === 0 ? "down" : "warn";
-  const label = cls === "ok" ? "정상 운영 중" : cls === "down" ? "장애 발생" : "일부 주의 필요";
-  const badge = document.getElementById("bo-health-badge");
-  if (badge) { badge.className = `status-badge lg ${cls}`; badge.textContent = `${okCount}/${checks.length} · ${label}`; }
-  const updated = document.getElementById("bo-health-updated");
-  if (updated) updated.textContent = "마지막 업데이트 방금 · 10초마다 자동 갱신";
 }
 
 /* 대시보드 KPI 스파크라인용: 최근 이체 300건을 발생일별로 묶어 총 건수/완료금액
@@ -2518,37 +2503,70 @@ async function loadBoDashboardTransferTrend() {
 
 const INFRA_STATUS_LABEL = { ok: "정상", warn: "주의", down: "연결안됨" };
 
-/* 대시보드: 인프라 연동 현황(Kafka/ES/Phoenix) + LLM·RAG 24h 사용 지표 + 상단 상태 칩 */
+/* /api/admin/infra-metrics 응답을 상태카드 4개(Kafka/ES/Phoenix/예약이체폴러) 배열로
+   정규화 — 대시보드 스트립과 성능관리 "시스템 상태" 패널이 공유해서 쓴다. */
+function buildInfraStatusCards(data) {
+  return [
+    { name: "Kafka", ...data.kafka },
+    { name: "Elasticsearch", ...data.elasticsearch },
+    { name: "Phoenix (LLM 추적)", ...data.phoenix },
+    { name: "예약 이체 폴러", ...data.scheduled_poller },
+  ];
+}
+
+function renderInfraStatusCards(targetId, cards) {
+  const box = document.getElementById(targetId);
+  if (!box) return;
+  box.innerHTML = cards
+    .map(
+      (c) =>
+        `<div class="status-card"><div class="status-card-head"><b>${escapeHtml(c.name)}</b>` +
+        `<span class="status-badge ${c.status}">${INFRA_STATUS_LABEL[c.status] || c.status}</span></div>` +
+        `<p>${escapeHtml(c.detail)}</p></div>`
+    )
+    .join("");
+}
+
+/* 대시보드: "지금 문제가 있는가" 최상단 배지 + 칩만 채운다(상세 상태카드·LLM·RAG
+   지표는 성능관리 탭 소관 — loadBoPerfInfra() 참고). */
 async function loadBoDashboardInfra() {
-  const statusBox = document.getElementById("bo-dash-infra-status");
-  const metricBox = document.getElementById("bo-dash-infra-metrics");
-  const cfgBox = document.getElementById("bo-dash-infra-config");
   const chipsBox = document.getElementById("bo-health-chips");
-  statusBox.textContent = "불러오는 중…";
   try {
     const res = await apiFetch("/api/admin/infra-metrics");
     if (!res.ok) throw new Error("인프라 지표 조회 실패");
     const data = await res.json();
+    const cards = buildInfraStatusCards(data);
 
-    const cards = [
-      { name: "Kafka", ...data.kafka },
-      { name: "Elasticsearch", ...data.elasticsearch },
-      { name: "Phoenix (LLM 추적)", ...data.phoenix },
-      { name: "예약 이체 폴러", ...data.scheduled_poller },
-    ];
-    statusBox.innerHTML = cards
-      .map(
-        (c) =>
-          `<div class="status-card"><div class="status-card-head"><b>${escapeHtml(c.name)}</b>` +
-          `<span class="status-badge ${c.status}">${INFRA_STATUS_LABEL[c.status] || c.status}</span></div>` +
-          `<p>${escapeHtml(c.detail)}</p></div>`
-      )
-      .join("");
+    const okCount = cards.filter((c) => c.status === "ok").length;
+    const cls = okCount === cards.length ? "ok" : okCount === 0 ? "down" : "warn";
+    const label = cls === "ok" ? "정상 운영 중" : cls === "down" ? "장애 발생" : "일부 주의 필요";
+    const badge = document.getElementById("bo-health-badge");
+    if (badge) { badge.className = `status-badge lg ${cls}`; badge.textContent = `${okCount}/${cards.length} · ${label}`; }
+    const updated = document.getElementById("bo-health-updated");
+    if (updated) updated.textContent = "마지막 업데이트 방금 · 10초마다 자동 갱신";
+
     if (chipsBox) {
       chipsBox.innerHTML = cards
         .map((c) => `<span class="bo-health-chip ${c.status}"><span class="dot"></span>${escapeHtml(c.name)}</span>`)
         .join("");
     }
+  } catch (err) {
+    console.error("인프라 지표 로드 실패:", err);
+  }
+}
+
+/* 성능관리: 인프라 연동 상태카드(4개) + LLM·RAG 24h 사용 지표 */
+async function loadBoPerfInfra() {
+  const cardsBox = document.getElementById("bo-health-cards");
+  const metricBox = document.getElementById("bo-perf-llm-metrics");
+  const cfgBox = document.getElementById("bo-perf-llm-config");
+  if (cardsBox) cardsBox.textContent = "불러오는 중…";
+  try {
+    const res = await apiFetch("/api/admin/infra-metrics");
+    if (!res.ok) throw new Error("인프라 지표 조회 실패");
+    const data = await res.json();
+
+    renderInfraStatusCards("bo-health-cards", buildInfraStatusCards(data));
 
     const p = data.phoenix;
     metricBox.innerHTML = `
@@ -2562,7 +2580,7 @@ async function loadBoDashboardInfra() {
       `현재 설정: ${lc.provider || "-"} · ${lc.model || "-"} · ` +
       `RAG top_k=${rc.top_k} · 캐시 ${rc.cache_enabled ? "사용중" : "미사용"}`;
   } catch (err) {
-    statusBox.innerHTML = statError();
+    if (cardsBox) cardsBox.innerHTML = statError();
     console.error("인프라 지표 로드 실패:", err);
   }
 }
@@ -2676,7 +2694,7 @@ async function loadBoUsers(reset = true) {
   if (reset) boUserOffset = 0;
   try {
     const res = await apiFetch(
-      `/api/admin/users?offset=${boUserOffset}&limit=${BO_PAGE_SIZE}&q=${encodeURIComponent(boUserQuery)}`
+      `/api/admin/users?offset=${boUserOffset}&limit=${BO_PAGE_SIZE}&q=${encodeURIComponent(boUserQuery)}&role=${encodeURIComponent(boUserRole)}`
     );
     if (!res.ok) throw new Error("회원 목록 조회 실패");
     const data = await res.json();
@@ -2701,15 +2719,54 @@ function renderBoUserRows(users, reset) {
   const rows = users
     .map((u) => {
       const d = new Date(u.created_at * 1000).toLocaleDateString("ko-KR");
+      const statusBadge = u.is_active
+        ? `<span class="status-badge ok">활성</span>`
+        : `<span class="status-badge down">탈퇴</span>`;
       return `<tr><td>${escapeHtml(u.username)}</td><td>${escapeHtml(u.name)}</td>` +
-        `<td>${escapeHtml(u.role)}</td><td>${d}</td></tr>`;
+        `<td>${escapeHtml(u.role)}</td><td>${statusBadge}</td><td>${d}</td>` +
+        `<td><div class="bo-row-actions"><button class="btn btn-ghost" type="button" data-user-view="${u.id}">보기</button></div></td></tr>`;
     })
     .join("");
   const tbody = document.getElementById("bo-user-rows");
   tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
 }
 
-document.addEventListener("click", (e) => {
+document.addEventListener("click", async (e) => {
+  const viewBtn = e.target.closest("[data-user-view]");
+  if (viewBtn) {
+    showModal("<p>불러오는 중…</p>", true);
+    try {
+      const res = await apiFetch(`/api/admin/users/${viewBtn.dataset.userView}`);
+      if (!res.ok) throw new Error("회원 상세 조회 실패");
+      const data = await res.json();
+      const u = data.user;
+      const joined = new Date(u.created_at * 1000).toLocaleDateString("ko-KR");
+      const accountRows = data.accounts.length
+        ? data.accounts
+            .map(
+              (a) =>
+                `<tr><td>${bankBadge(a.bank_name)} ${escapeHtml(a.bank_name)}</td>` +
+                `<td>${escapeHtml(a.account_no)}</td><td>${won(a.balance)}</td>` +
+                `<td>${a.is_primary ? '<span class="status-badge ok">주계좌</span>' : ""}</td></tr>`
+            )
+            .join("")
+        : `<tr><td colspan="4" class="mp-empty">보유 계좌가 없습니다.</td></tr>`;
+      showModal(
+        `<h3>${escapeHtml(u.name)} (${escapeHtml(u.username)})</h3>` +
+          `<div class="cf-row"><span>권한</span><b>${escapeHtml(u.role)}</b></div>` +
+          `<div class="cf-row"><span>상태</span><b>${u.is_active ? "활성" : "탈퇴"}</b></div>` +
+          `<div class="cf-row"><span>가입일</span><b>${joined}</b></div>` +
+          `<h3 style="margin-top:20px">보유 계좌</h3>` +
+          `<table class="admin-table"><thead><tr><th>은행</th><th>계좌번호</th><th>잔액</th><th></th></tr></thead>` +
+          `<tbody>${accountRows}</tbody></table>`,
+        true
+      );
+    } catch (err) {
+      showModal(`<p>회원 상세를 불러오지 못했습니다.</p>`, true);
+      console.error("회원 상세 로드 실패:", err);
+    }
+    return;
+  }
   if (e.target.closest("#bo-user-search-btn")) {
     boUserQuery = document.getElementById("bo-user-search").value.trim();
     loadBoUsers(true);
@@ -2717,12 +2774,19 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("#bo-user-more")) loadBoUsers(false);
 });
 
+document.addEventListener("change", (e) => {
+  if (e.target.id === "bo-user-role-filter") {
+    boUserRole = e.target.value;
+    loadBoUsers(true);
+  }
+});
+
 /* 이체모니터링 */
 async function loadBoTransfers(reset = true) {
   if (reset) boTransferOffset = 0;
   try {
     const res = await apiFetch(
-      `/api/admin/transfers?offset=${boTransferOffset}&limit=${BO_PAGE_SIZE}&status=${boTransferStatus}`
+      `/api/admin/transfers?offset=${boTransferOffset}&limit=${BO_PAGE_SIZE}&status=${boTransferStatus}&q=${encodeURIComponent(boTransferQuery)}`
     );
     if (!res.ok) throw new Error("이체 내역 조회 실패");
     const data = await res.json();
@@ -2987,6 +3051,10 @@ document.addEventListener("click", (e) => {
     loadBoTransfers(true);
   }
   if (e.target.closest("#bo-transfer-more")) loadBoTransfers(false);
+  if (e.target.closest("#bo-transfer-search-btn")) {
+    boTransferQuery = document.getElementById("bo-transfer-search").value.trim();
+    loadBoTransfers(true);
+  }
 });
 
 /* 이용통계: 요약(전체/조회/검색) + 최근 14일 추이 */
@@ -2994,9 +3062,11 @@ async function loadBoUsageStats() {
   try {
     const res = await apiFetch("/api/admin/usage-stats");
     if (!res.ok) throw new Error("이용통계 조회 실패");
-    const { summary, daily } = await res.json();
+    const { summary, daily, categories } = await res.json();
     renderBoUsageSummary(summary);
     renderBoUsageDaily(daily);
+    renderBoUsageSourceRank(summary);
+    renderBoUsageCategoryRank(categories);
   } catch (err) {
     console.error("이용통계 로드 실패:", err);
   }
@@ -3007,6 +3077,22 @@ function renderBoUsageSummary(s) {
     <div class="metric"><div class="value">${s.total}</div><div class="label">총 이벤트</div></div>
     <div class="metric"><div class="value">${s.view}</div><div class="label">조회</div></div>
     <div class="metric"><div class="value">${s.search}</div><div class="label">검색</div></div>`;
+}
+
+function renderBoUsageSourceRank(s) {
+  renderRankedBars(
+    "bo-usage-source-rank",
+    [
+      { label: "조회", value: s.view },
+      { label: "검색", value: s.search },
+    ],
+    { totalId: "bo-usage-source-rank-total" }
+  );
+}
+
+function renderBoUsageCategoryRank(categories) {
+  const data = (categories || []).map((c) => ({ label: c.name, value: c.count }));
+  renderRankedBars("bo-usage-category-rank", data, { totalId: "bo-usage-category-rank-total" });
 }
 
 function renderBoUsageDaily(daily, targetId = "bo-usage-daily") {
@@ -3024,28 +3110,7 @@ function renderBoUsageDaily(daily, targetId = "bo-usage-daily") {
     .join("");
 }
 
-/* 성능관리: 시스템 상태 + 배치 테스트 성능 스냅샷 */
-async function loadBoHealth() {
-  const box = document.getElementById("bo-health-cards");
-  box.textContent = "불러오는 중…";
-  try {
-    const res = await apiFetch("/api/admin/health");
-    if (!res.ok) throw new Error("상태 조회 실패");
-    const { checks } = await res.json();
-    box.innerHTML = checks
-      .map(
-        (c) =>
-          `<div class="status-card"><div class="status-card-head"><b>${escapeHtml(c.name)}</b>` +
-          `<span class="status-badge ${c.status}">${{ ok: "정상", warn: "주의", down: "연결안됨" }[c.status] || c.status}</span></div>` +
-          `<p>${escapeHtml(c.detail)}</p></div>`
-      )
-      .join("");
-  } catch (err) {
-    box.textContent = "상태를 불러오지 못했습니다.";
-    console.error("시스템 상태 로드 실패:", err);
-  }
-}
-
+/* 성능관리: 배치 테스트 성능 스냅샷 */
 async function loadBoBatchPerf() {
   const box = document.getElementById("bo-batch-perf");
   try {

@@ -49,7 +49,7 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # 키 입력
 ## 아키텍처 큰 그림
 
 ### 두 계층으로 나뉜다
-- **`backend/`** = FastAPI REST + 데이터/인프라 계층. `backend/app.py`가 엔드포인트, `db.py`(SQLite `bank.db`), `auth.py`(JWT), `kafka_io.py`, `health.py`, `infra_metrics.py`. 여기서 `rag.py`/`fss_fetcher.py`도 호출한다.
+- **`backend/`** = FastAPI REST + 데이터/인프라 계층. `backend/app.py`가 엔드포인트, `db.py`(SQLite `bank.db`), `auth.py`(JWT), `kafka_io.py`, `infra_metrics.py`. 여기서 `rag.py`/`fss_fetcher.py`도 호출한다.
 - **루트 `*.py`** = Streamlit 챗봇 + LLM/RAG/캐시/검색 모듈. `app.py`가 UI, 나머지는 단일 책임 모듈.
 
 `app.py`는 `llm.stream_chat()`, `agent.run_agent()`, `rag.*`, `cache.*`, `search.*`, `storage.*`, `tracing.init_tracing()`만 호출한다. 제공자·저장·검색 세부는 각 모듈 내부에만 둔다.
@@ -325,5 +325,31 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # 키 입력
 - `loadBoSystemOverview()`(대시보드와 100% 중복 조회)는 함수 자체를 완전히 삭제. `BO_TABS`에서 `"settings"` 제거, `ensureBoTabLoaded`의 `"settings"` 분기 삭제하고 `loadBoInfraConfig()` 호출을 `"perf"` 분기로 이동. `#bo-panel-settings` HTML 블록 전체 삭제, "인프라 설정" 패널만 `#bo-panel-perf`의 "시스템 상태" 바로 아래로 재배치(안내문 그대로 재사용). CSS는 `#bo-sys-overview` 전용 그리드 규칙(3열×2행 고정 — 바로 이전 세션에서 정렬 맞추려 만든 규칙) 삭제, 공유 폰트크기 셀렉터에서도 `#bo-sys-overview` 제거(`#bo-dash-summary`는 유지).
 - 브라우저 실측 검증: 사이드바 8개 탭 확인, 성능관리 탭에 API 키 상태 배지·AI은행원 제공자/모델/웹검색 사용여부·기존 캐시/RAG/Redis/ES 6줄이 전부 정상 표시, 콘솔 에러 없음, `boGoTab("settings")`처럼 사라진 탭명을 호출해도 기존 안전장치(`if (!BO_TABS.includes(name)) name = "dashboard"`)가 그대로 작동해 대시보드로 안전하게 폴백하는 것까지 확인.
 
+**회원관리(Type B) 리디자인 — 상태 배지 + 권한 필터 + 회원 상세(보유 계좌) 모달** — 대상: `backend/db.py`, `backend/app.py`, `site/index.html`, `site/css/style.css`, `site/js/main.js`
+- 다른 Type B 화면(프롬프트관리/금융상품관리/FAQ·공지사항 관리)은 전부 "목록+인라인폼(CRUD)" 화법이었지만, 회원관리는 생성/수정/삭제가 없는 **순수 조회 전용 목록**이라 같은 화법(수정 중인 행 하이라이트 등)이 그대로 안 맞음 — CRUD 패턴을 억지로 이식하는 대신 이 화면에 실제로 부족한 정보가 뭔지부터 확인. 갭 3개 발견: (1) `users.is_active` 컬럼은 이미 있는데 목록 쿼리가 안 뽑아서 회원이 활성인지 탈퇴했는지 알 수 없었음, (2) 검색만 있고 관리자 계정만 걸러보는 필터가 없었음, (3) 총 계좌수/총 예치금은 전체 합계일 뿐이라 특정 회원의 보유 계좌·잔액을 볼 방법이 전혀 없었음.
+- 이 프로젝트가 "회원 목록(password_hash 제외 — 개인정보/보안)" 주석까지 붙여가며 관리자 화면에서도 PII(이메일·전화번호) 노출을 의도적으로 피해온 것을 확인하고(문의내역 목록도 이메일 없이 이름만 노출), 이번 확장도 **PII는 그대로 제외**하고 DB에 이미 있는 비PII 정보(활성 상태, 계좌·잔액)만 추가하는 것으로 스코프를 한정.
+- `db.list_users`/`count_users`에 `role` 파라미터 추가(검색 조건과 AND로 결합) + SELECT에 `is_active` 추가. 신규 `db.get_user_by_id()`(`get_user_by_username()`과 동일 패턴, password_hash/email/phone 제외 원칙 유지)와 신규 `GET /api/admin/users/{id}`(관리자 전용, 없으면 404) — 계좌 목록은 새 코드 없이 기존 `db.list_accounts(user_id)` 그대로 재사용.
+- 프런트: 검색창 옆에 권한 필터 `<select>`(전체/관리자/일반회원) 추가, 목록에 `상태`(활성/탈퇴, `status-badge` — 성능관리 API 키 상태와 동일 톤) · `관리`(보기 버튼) 컬럼 추가. "보기" 클릭 시 FAQ·공지사항 관리의 문의내역 "보기"(`data-inquiry-view` → `showModal`) 패턴을 그대로 재사용해 회원 상세 모달을 띄우고, 그 안에 `bankBadge()`/`won()` 등 기존 헬퍼로 보유 계좌 테이블(은행/계좌번호/잔액/주계좌 배지)을 렌더.
+- 레퍼런스 재확인: uibowl.io에서 "회원관리" 패턴 카테고리를 검색했으나 매칭되는 카테고리가 없었음(이전 세션의 "관리자 대시보드 패턴 없음" 결과와 동일하게 정직히 기록) — 대신 이 프로젝트에 이미 정착된 컴포넌트(상태 배지, 문의내역 상세 모달 패턴)를 그대로 재사용.
+- 브라우저 실측 검증: 권한 필터를 "관리자"로 바꾸면 admin 계정 1건만 남는 것, "보기" 클릭 시 demo 계정의 계좌 3개(신한/국민/카카오뱅크)와 잔액이 API 응답과 정확히 일치해 렌더되는 것, 콘솔 에러 없음까지 확인.
+
+**이체모니터링(Type A) — 이체 내역 계좌번호 검색 추가** — 대상: `backend/db.py`, `backend/app.py`, `site/index.html`, `site/js/main.js`
+- 이 탭은 이전 세션들에서 이미 상당히 다듬어져 있었음(KPI 8+4칸 스파크라인+증감 배지, 보안 이벤트 좌측 상태 컬러바, 예약/지연 취소 버튼, 상태 필터 알약형 칩) — 그래서 시각적으로 새로 손대기보다 실제로 부족한 기능이 뭔지부터 확인. 다른 관리 목록 화면(회원관리·상품관리·FAQ·공지사항·문의내역)은 전부 검색창이 있는데 **이체 내역만 상태 필터뿐, 계좌번호로 찾는 방법이 없었음** — 이 한 가지 갭만 보완.
+- `db.list_transfers`/`count_transfers`에 `q` 파라미터 추가(`from_account LIKE ? OR to_account LIKE ?`를 `status` 조건과 AND로 결합 — 회원관리에서 만든 다중 조건 조합 패턴 재사용), `admin_transfers()`에 `q` 스루. 프런트는 상태 필터 칩 위에 회원관리와 동일한 `.bo-search-inline` 검색 툴바 추가.
+- 브라우저 실측 검증: `1002-333` 검색 시 해당 문자열이 출금 또는 입금 계좌번호에 포함된 행만 남는 것, 상태 필터와 동시 적용 시 AND로 좁혀지는 것(31건 → 13건) 확인. 콘솔 에러 없음.
+
+**이용통계(Type C) — 조회/검색 비중 + 카테고리별 관심도 랭킹 추가** — 대상: `backend/db.py`, `backend/app.py`, `site/index.html`, `site/js/main.js`
+- `usage_events`에 `bank`/`product`/`category` 컬럼이 모두 있는데, 대시보드가 이미 `bank` 기준 랭킹을, 이 탭이 `product` 기준 TOP5를 보여주면서도 **`category`(예금/적금/대출 3종) 단위 집계는 Backoffice 어디에도 없었음** — 이 갭을 신규 `db.stats_usage_by_category()`(`stats_banks()`와 동일한 GROUP BY 패턴)로 채움. `admin_usage_stats()` 응답에 `categories` 필드로 얹어서 새 엔드포인트 없이 확장.
+- 조회(view)/검색(search) 건수도 요약 카드에 숫자로만 있고 상대적 비중이 안 보였음 — 대시보드가 이체 상태(완료/대기/실패)를 메트릭 카드 **+ 랭킹 막대** 두 방식으로 함께 보여주는 것과 동일한 화법을 적용, `renderRankedBars`(대시보드 은행 비중/이체 상태 분포에서 이미 쓰던 함수) 그대로 재사용해 신규 CSS 없이 두 패널(조회 vs 검색 비중/카테고리별 관심도) 추가.
+- "최근 14일 이용 추이"(일자별 라벨+숫자 막대)는 이미 스파크라인보다 정보량이 많은 형태라 그대로 유지 — 다른 탭과 억지로 시각 통일하지 않음.
+- 브라우저 실측 검증: 조회 79%(270건)/검색 21%(70건), 카테고리별 관심도 6개 항목(예금 38%~전세자금대출 7%)이 실데이터로 정확히 렌더되는 것, 합계 배지("총 340건"/"총 308건") 정상 표시, 콘솔 에러 없음 확인.
+
+**성능관리(Type D) — 인프라 연동 현황 + LLM·RAG 성능 지표를 대시보드에서 이관** — 대상: `backend/health.py`(삭제), `backend/app.py`, `site/index.html`, `site/js/main.js`
+- "성능관리에서 추가로 더 제공할 정보는 없어?" 질문에 다시 살펴보니, 대시보드 전용으로 만들어진 `/api/admin/infra-metrics`(`infra_metrics.py`)가 이미 계산해두고 있는데 정작 "성능관리" 탭엔 없는 정보가 있었음: (1) **예약이체 폴러 상태** — 성능관리의 "시스템 상태"는 `backend/health.py`의 단순 헬스체크(Phoenix/Kafka/ES 3개, ok/warn/down만)를 썼는데, 대시보드는 이미 `infra_metrics.py` 기반 4개(폴러 포함, 상세 수치 포함)를 씀. 대시보드 상단 배지도 여전히 `health.check_all()`(3개) 기준이라 바로 아래 칩 4개와 분모가 어긋나는 기존 버그까지 같이 발견(예: "0/3"인데 칩은 4개). (2) **LLM·RAG 실시간 성능 지표**(LLM 평균 응답 지연·요청 수·RAG 검색 횟수·캐시 히트율) — `infra_metrics.phoenix_metrics()`가 이미 계산하는데 "성능관리"라는 이름의 탭엔 전혀 없고 대시보드에만 있었음.
+- 대시보드는 이미 최상단에 "지금 문제가 있는가" 요약 스트립(배지+칩)이 따로 있어서 그 아래 "인프라 연동 현황"(상태카드)·"LLM·RAG 사용 현황"(지표) 두 패널이 사실상 스트립과 내용이 겹침 — 시스템설정 탭 제거 때와 같은 논리(중복 삭제, 보완 정보는 목적에 맞는 탭으로 이관)로 이 두 패널을 대시보드에서 통째로 들어내 성능관리로 옮김. 대시보드엔 스트립(배지+칩)만 남음.
+- `backend/health.py`는 이관 후 유일한 소비처(`admin_health()`)가 사라져 완전한 죽은 코드가 돼서 파일째 삭제(`app.py`의 `import health`, `GET /api/admin/health` 엔드포인트도 함께 제거) — `infra_metrics.py`가 상태(status/detail)까지 포함한 상위 호환 데이터라 남겨둘 이유가 없었음.
+- `site/js/main.js`: 상태카드 4개 매핑 로직(`cards = [...]`)을 `buildInfraStatusCards()`/`renderInfraStatusCards()` 공용 헬퍼로 뽑아 대시보드 스트립(`loadBoDashboardInfra()`, 배지+칩만 남김)과 신규 `loadBoPerfInfra()`(성능관리의 "시스템 상태" 4카드 + "LLM·RAG 사용 현황" 지표, `#bo-health-cards`/`#bo-perf-llm-metrics`/`#bo-perf-llm-config`) 양쪽에서 재사용 — 로직 중복 없이 렌더 타깃만 다르게 호출.
+- 브라우저 실측 검증: 대시보드 상단 배지가 "1/4"로 칩 개수와 일치하는 것, "인프라 연동 현황"/"LLM·RAG 사용 현황" 패널이 대시보드에서 사라진 것, 성능관리 "시스템 상태"가 예약이체폴러 포함 4카드로 뜨는 것, 새 "LLM·RAG 사용 현황" 패널이 실제 수치(현재 설정 요약 포함)로 채워지는 것, `/api/admin/health`가 404로 정리된 것, 콘솔 에러 없음까지 확인.
+
 **남은 작업 (TODO)**
-- Type B 나머지(금융상품관리/FAQ·공지사항 관리/회원관리)에 리스트+인라인폼 화법 확장, Type A 나머지(이체모니터링), Type C(이용통계) 리디자인. Type D(성능관리)는 인프라 설정 흡수까지는 완료, 전체 리디자인은 아직. Type E(시스템설정)는 탭 자체가 삭제되어 더 이상 대상 아님.
+- Type A(대시보드/이체모니터링), Type B(프롬프트엔지니어링/금융상품관리/FAQ·공지사항 관리/회원관리), Type C(이용통계), Type D(성능관리) 전부 완료 — Backoffice 8개 탭 리디자인 일단락. Type E(시스템설정)는 탭 자체가 삭제되어 더 이상 대상 아님.

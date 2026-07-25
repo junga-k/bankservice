@@ -22,7 +22,7 @@ from pydantic import BaseModel
 import config
 import fss_fetcher
 import llm
-from backend import auth, db, health, infra_metrics, kafka_io
+from backend import auth, db, infra_metrics, kafka_io
 
 SITE_DIR = Path(__file__).resolve().parent.parent / "site"
 
@@ -457,26 +457,34 @@ def admin_demo_account(user: dict = Depends(auth.require_admin)):
 # ── Backoffice: 회원관리 ──────────────────────────────────────────────
 @app.get("/api/admin/users")
 def admin_users(
-    offset: int = 0, limit: int = 20, q: str = "",
+    offset: int = 0, limit: int = 20, q: str = "", role: str = "",
     user: dict = Depends(auth.require_admin),
 ):
     return {
-        "users": db.list_users(offset, limit, q),
-        "total": db.count_users(q),
+        "users": db.list_users(offset, limit, q, role),
+        "total": db.count_users(q, role),
         "account_count": db.count_accounts(),
         "total_balance": db.sum_balance(),
     }
 
 
+@app.get("/api/admin/users/{user_id}")
+def admin_user_detail(user_id: int, user: dict = Depends(auth.require_admin)):
+    target = db.get_user_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="회원을 찾을 수 없습니다.")
+    return {"user": target, "accounts": db.list_accounts(user_id)}
+
+
 # ── Backoffice: 이체모니터링 ──────────────────────────────────────────
 @app.get("/api/admin/transfers")
 def admin_transfers(
-    offset: int = 0, limit: int = 20, status: str = "",
+    offset: int = 0, limit: int = 20, status: str = "", q: str = "",
     user: dict = Depends(auth.require_admin),
 ):
     return {
-        "transfers": db.list_transfers(offset, limit, status),
-        "total": db.count_transfers(status),
+        "transfers": db.list_transfers(offset, limit, status, q),
+        "total": db.count_transfers(status, q),
         "summary": db.transfer_summary(),
     }
 
@@ -499,13 +507,7 @@ def admin_security_events(
     }
 
 
-# ── Backoffice: 성능관리 ──────────────────────────────────────────────
-@app.get("/api/admin/health")
-def admin_health(user: dict = Depends(auth.require_admin)):
-    return {"checks": health.check_all()}
-
-
-# ── Backoffice: 대시보드 인프라 실시간 지표 ────────────────────────────
+# ── Backoffice: 인프라 실시간 지표 (대시보드 스트립 + 성능관리 공용) ────
 @app.get("/api/admin/infra-metrics")
 def admin_infra_metrics(user: dict = Depends(auth.require_admin)):
     cfg = config.load()
@@ -690,7 +692,11 @@ def update_transfer_policy(req: TransferPolicyReq, user: dict = Depends(auth.req
 # ── Backoffice: 이용통계 ──────────────────────────────────────────────
 @app.get("/api/admin/usage-stats")
 def admin_usage_stats(user: dict = Depends(auth.require_admin)):
-    return {"summary": db.stats_usage_summary(), "daily": db.stats_usage_daily()}
+    return {
+        "summary": db.stats_usage_summary(),
+        "daily": db.stats_usage_daily(),
+        "categories": db.stats_usage_by_category(),
+    }
 
 
 # ── 계좌 조회 ────────────────────────────────────────────────────────

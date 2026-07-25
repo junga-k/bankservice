@@ -300,32 +300,43 @@ def get_transfer(transfer_id: int) -> dict | None:
     return dict(row) if row else None
 
 
-def list_transfers(offset: int = 0, limit: int = 20, status: str = "") -> list[dict]:
-    """이체 내역 최신순 목록(Backoffice 이체모니터링용)."""
+def list_transfers(offset: int = 0, limit: int = 20, status: str = "", q: str = "") -> list[dict]:
+    """이체 내역 최신순 목록(Backoffice 이체모니터링용). q 있으면 출금/입금 계좌번호 부분검색."""
     with get_conn() as conn:
+        clauses = []
+        params: list = []
         if status:
-            rows = conn.execute(
-                "SELECT id, from_account, to_account, to_bank, to_holder, amount, fee, memo, "
-                "status, error, scheduled_at, created_at FROM transfers WHERE status = ? "
-                "ORDER BY id DESC LIMIT ? OFFSET ?",
-                (status, limit, offset),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT id, from_account, to_account, to_bank, to_holder, amount, fee, memo, "
-                "status, error, scheduled_at, created_at FROM transfers ORDER BY id DESC LIMIT ? OFFSET ?",
-                (limit, offset),
-            ).fetchall()
+            clauses.append("status = ?")
+            params.append(status)
+        if q:
+            like = f"%{q}%"
+            clauses.append("(from_account LIKE ? OR to_account LIKE ?)")
+            params += [like, like]
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = conn.execute(
+            f"SELECT id, from_account, to_account, to_bank, to_holder, amount, fee, memo, "
+            f"status, error, scheduled_at, created_at FROM transfers "
+            f"{where} ORDER BY id DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
-def count_transfers(status: str = "") -> int:
+def count_transfers(status: str = "", q: str = "") -> int:
     with get_conn() as conn:
+        clauses = []
+        params: list = []
         if status:
-            return conn.execute(
-                "SELECT COUNT(*) FROM transfers WHERE status = ?", (status,)
-            ).fetchone()[0]
-        return conn.execute("SELECT COUNT(*) FROM transfers").fetchone()[0]
+            clauses.append("status = ?")
+            params.append(status)
+        if q:
+            like = f"%{q}%"
+            clauses.append("(from_account LIKE ? OR to_account LIKE ?)")
+            params += [like, like]
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        return conn.execute(
+            f"SELECT COUNT(*) FROM transfers {where}", tuple(params)
+        ).fetchone()[0]
 
 
 def account_exists(account_no: str) -> bool:
@@ -459,6 +470,17 @@ def stats_banks(limit: int = 10) -> list[dict]:
             "WHERE bank IS NOT NULL AND bank <> '' "
             "GROUP BY bank ORDER BY count DESC, bank LIMIT ?",
             (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def stats_usage_by_category() -> list[dict]:
+    """카테고리별 이벤트 수(두 소스 합산) 순위."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT category AS name, COUNT(*) AS count FROM usage_events "
+            "WHERE category IS NOT NULL AND category <> '' "
+            "GROUP BY category ORDER BY count DESC",
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -916,35 +938,53 @@ def deactivate_user(user_id: int) -> None:
         conn.execute("UPDATE users SET is_active = 0 WHERE id = ?", (user_id,))
 
 
-def list_users(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
-    """회원 목록(password_hash 제외 — 개인정보/보안). q 있으면 아이디/이름 부분 검색."""
+def list_users(offset: int = 0, limit: int = 20, q: str = "", role: str = "") -> list[dict]:
+    """회원 목록(password_hash·email·phone 제외 — 개인정보/보안). q 있으면 아이디/이름 부분 검색, role 있으면 권한 필터."""
     with get_conn() as conn:
+        clauses = []
+        params: list = []
         if q:
             like = f"%{q}%"
-            rows = conn.execute(
-                "SELECT id, username, name, role, created_at FROM users "
-                "WHERE username LIKE ? OR name LIKE ? ORDER BY id LIMIT ? OFFSET ?",
-                (like, like, limit, offset),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT id, username, name, role, created_at FROM users "
-                "ORDER BY id LIMIT ? OFFSET ?",
-                (limit, offset),
-            ).fetchall()
+            clauses.append("(username LIKE ? OR name LIKE ?)")
+            params += [like, like]
+        if role:
+            clauses.append("role = ?")
+            params.append(role)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = conn.execute(
+            f"SELECT id, username, name, role, created_at, is_active FROM users "
+            f"{where} ORDER BY id LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
-# ── 관리자 집계 (개인정보 없는 요약만) ───────────────────────────────
-def count_users(q: str = "") -> int:
+def get_user_by_id(user_id: int) -> dict | None:
+    """회원 상세용(password_hash·email·phone 제외 — 목록과 동일한 개인정보 제외 원칙)."""
     with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, username, name, role, created_at, is_active FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+# ── 관리자 집계 (개인정보 없는 요약만) ───────────────────────────────
+def count_users(q: str = "", role: str = "") -> int:
+    with get_conn() as conn:
+        clauses = []
+        params: list = []
         if q:
             like = f"%{q}%"
-            return conn.execute(
-                "SELECT COUNT(*) FROM users WHERE username LIKE ? OR name LIKE ?",
-                (like, like),
-            ).fetchone()[0]
-        return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            clauses.append("(username LIKE ? OR name LIKE ?)")
+            params += [like, like]
+        if role:
+            clauses.append("role = ?")
+            params.append(role)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        return conn.execute(
+            f"SELECT COUNT(*) FROM users {where}", tuple(params)
+        ).fetchone()[0]
 
 
 def count_accounts() -> int:
