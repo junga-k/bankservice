@@ -330,18 +330,30 @@ function bankLogoFallback(img, name) {
 /* ── 내 계좌 (계좌조회 + 이체) ──────────────────────────────────── */
 const won = (n) => Number(n).toLocaleString("ko-KR") + "원";
 
-/* Backoffice 지표 카드용 미니 스파크라인. 실제 데이터(날짜별 발생 건수)만 그린다 —
-   시계열이 2개 미만이면 추세라 부를 게 없으므로 빈 문자열(렌더 안 함). */
-function sparklineSvg(values, color) {
+/* Backoffice 지표 카드용 미니 막대 차트. 실제 데이터(날짜별 발생 건수)만 그린다 —
+   시계열이 2개 미만이면 추세라 부를 게 없으므로 빈 문자열(렌더 안 함).
+   최근(마지막) 막대만 accentColor로 강조하고 나머지는 CSS 기본색(de-emphasis)으로 둔다.
+   titles가 있으면 막대별 title 속성으로 날짜·값을 네이티브 툴팁으로 보여준다(보너스 채널). */
+function sparkBars(values, accentColor, titles) {
   if (!values || values.length < 2) return "";
   const max = Math.max(1, ...values);
-  const w = 100, h = 20;
-  const pts = values
-    .map((v, i) => `${((i / (values.length - 1)) * w).toFixed(1)},${(h - (v / max) * h).toFixed(1)}`)
-    .join(" ");
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">` +
-    `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const bars = values
+    .map((v, i) => {
+      const pct = Math.max(6, Math.round((v / max) * 100));
+      const isNow = i === values.length - 1;
+      const style = isNow ? `height:${pct}%;background:${accentColor}` : `height:${pct}%`;
+      const title = titles && titles[i] ? ` title="${escapeHtml(titles[i])}"` : "";
+      return `<div class="bar${isNow ? " now" : ""}" style="${style}"${title}></div>`;
+    })
+    .join("");
+  return `<div class="spark-bars">${bars}</div>`;
 }
+
+/* "YYYY-MM-DD" 날짜키를 "M/D" 짧은 표기로. 스파크 캡션·막대 title에 사용. */
+const dayShort = (d) => {
+  const [, m, day] = d.split("-");
+  return `${Number(m)}/${Number(day)}`;
+};
 
 /* items를 날짜별로 묶어 {days:[정렬된 날짜키...], byDay:{날짜키: {...}}} 형태로 반환.
    dayFn(item)으로 날짜키, bucketFn(acc, item)으로 각 날짜 버킷을 누적한다.
@@ -1616,9 +1628,18 @@ function updateFindIdButtonState() {
   const btn = document.getElementById("findid-submit");
   if (btn) btn.disabled = !findIdOtpVerified;
 }
+/* STEP 1 "다음" — 아이디찾기와 동일하게 이메일 인증 완료 여부로만 활성화 */
+function updateResetPwStep1ButtonState() {
+  const btn = document.getElementById("resetpw-to-step2");
+  if (btn) btn.disabled = !resetPwOtpVerified;
+}
+/* STEP 2 "비밀번호 재설정" — 인증 완료 + 새 비밀번호 두 칸이 모두 채워지고(4자 이상) 일치할 때만 활성화 */
 function updateResetPwButtonState() {
   const btn = document.getElementById("resetpw-submit");
-  if (btn) btn.disabled = !resetPwOtpVerified;
+  if (!btn) return;
+  const pw = document.getElementById("resetpw-new").value;
+  const pw2 = document.getElementById("resetpw-new2").value;
+  btn.disabled = !(resetPwOtpVerified && pw.length >= 4 && pw === pw2);
 }
 function resetFindIdVerification() {
   findIdOtpVerified = false; findIdOtpExpected = "";
@@ -1634,6 +1655,7 @@ function resetResetPwVerification() {
   if (row) row.style.display = "none";
   const hint = document.getElementById("resetpw-otp-hint");
   if (hint) { hint.className = "tf-hint"; hint.textContent = ""; }
+  updateResetPwStep1ButtonState();
   updateResetPwButtonState();
 }
 
@@ -1700,6 +1722,7 @@ document.addEventListener("click", (e) => {
       resetPwOtpVerified = false;
       hint.className = "tf-status err"; hint.textContent = "인증번호가 일치하지 않습니다.";
     }
+    updateResetPwStep1ButtonState();
     updateResetPwButtonState();
     return;
   }
@@ -1728,6 +1751,11 @@ async function handleFindId() {
 }
 
 /* 비밀번호 찾기 2단계 위저드 — signupGoStep과 동일한 패턴 */
+/* 새 비밀번호 입력 중에도 실시간으로 CTA 활성화 상태를 갱신 */
+document.addEventListener("input", (e) => {
+  if (e.target.id === "resetpw-new" || e.target.id === "resetpw-new2") updateResetPwButtonState();
+});
+
 function resetpwGoStep(n) {
   [1, 2].forEach((i) => {
     document.getElementById(`resetpw-step-${i}`).style.display = i === n ? "block" : "none";
@@ -1858,6 +1886,12 @@ async function loadMyProfile() {
     document.getElementById("mp-name").value = p.name || "";
     document.getElementById("mp-phone").value = p.phone || "";
     document.getElementById("mp-email").value = p.email || "";
+    document.getElementById("mp-profile-avatar").textContent = (p.name || p.username || "?").trim().charAt(0);
+    document.getElementById("mp-profile-name").textContent = p.name || p.username;
+    document.getElementById("mp-profile-username").textContent = "@" + p.username;
+    document.getElementById("mp-profile-joined").textContent = p.created_at
+      ? new Date(p.created_at * 1000).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" }) + " 가입"
+      : "";
   } catch (err) { mpStatus("mp-profile-status", err.message); }
 }
 async function saveMyProfile() {
@@ -2032,8 +2066,11 @@ async function loadMyAccounts() {
     box.innerHTML = accounts.map((a) =>
       `<div class="mp-acct" data-acc-id="${a.id}">
          <div class="mp-acct-head">
-           <span>${bankBadge(a.bank_name)} ${escapeHtml(a.bank_name)} ${escapeHtml(a.account_no)}</span>
-           ${a.is_primary ? '<span class="mp-primary-badge">대표</span>' : ""}
+           <span class="mp-acct-logo">${bankBadge(a.bank_name)}</span>
+           <div class="mp-acct-titles">
+             <div class="mp-acct-bank">${escapeHtml(a.bank_name)} ${a.is_primary ? '<span class="mp-primary-badge">대표</span>' : ""}</div>
+             <div class="mp-acct-no">${escapeHtml(a.account_no)}</div>
+           </div>
          </div>
          <div class="mp-acct-bal">${won(a.balance)}</div>
          <div class="mp-acct-actions">
@@ -2077,10 +2114,13 @@ async function loadMyFavorites() {
     const res = await apiFetch("/api/me/favorites");
     if (!res.ok) throw new Error("즐겨찾기 조회 실패");
     const { favorites } = await res.json();
-    if (!favorites.length) { box.innerHTML = `<p class="tf-hint">등록된 즐겨찾기가 없습니다.</p>`; return; }
+    if (!favorites.length) { box.innerHTML = `<p class="mp-empty">등록된 즐겨찾기가 없습니다.</p>`; return; }
     box.innerHTML = favorites.map((f) =>
       `<div class="mp-fav">
-         <span><b>${escapeHtml(f.nickname || f.holder_name || "-")}</b> · ${escapeHtml(f.bank_name)} ${escapeHtml(f.account_no)}</span>
+         <div class="mp-fav-info">
+           <span class="mp-fav-name">${escapeHtml(f.nickname || f.holder_name || "-")}</span>
+           <span class="mp-fav-sub">${escapeHtml(f.bank_name)} ${escapeHtml(f.account_no)}</span>
+         </div>
          <button type="button" class="btn btn-ghost mp-fav-del" data-fav-id="${f.id}">삭제</button>
        </div>`
     ).join("");
@@ -2113,11 +2153,15 @@ async function loadMyScheduled() {
     const res = await apiFetch("/api/me/scheduled-transfers");
     if (!res.ok) throw new Error("예약이체 조회 실패");
     const { transfers } = await res.json();
-    if (!transfers.length) { box.innerHTML = `<p class="tf-hint">대기 중인 예약/지연 이체가 없습니다.</p>`; return; }
+    if (!transfers.length) { box.innerHTML = `<p class="mp-empty">대기 중인 예약/지연 이체가 없습니다.</p>`; return; }
     box.innerHTML = transfers.map((t) =>
       `<div class="mp-sched">
-         <span>${t.status === "scheduled" ? "예약" : "지연"} · ${escapeHtml(t.to_holder || "")} ${escapeHtml(t.to_account)} · ${won(t.amount)}</span>
-         <span class="mp-sched-time">${t.scheduled_at ? mpFmtDate(t.scheduled_at) : ""}</span>
+         <span class="mp-sched-badge ${t.status === "scheduled" ? "info" : "warn"}">${t.status === "scheduled" ? "예약" : "지연"}</span>
+         <div class="mp-sched-info">
+           <span class="mp-sched-to">${escapeHtml(t.to_holder || "")} ${escapeHtml(t.to_account)}</span>
+           <span class="mp-sched-time">${t.scheduled_at ? mpFmtDate(t.scheduled_at) : ""}</span>
+         </div>
+         <span class="mp-sched-amt">${won(t.amount)}</span>
          <button type="button" class="btn btn-ghost mp-sched-cancel" data-tid="${t.id}">취소</button>
        </div>`
     ).join("");
@@ -2131,7 +2175,7 @@ async function loadMyInquiries() {
     const res = await apiFetch("/api/inquiries");
     if (!res.ok) throw new Error("문의 내역 조회 실패");
     const { inquiries } = await res.json();
-    if (!inquiries.length) { box.innerHTML = `<p class="tf-hint">문의 내역이 없습니다.</p>`; return; }
+    if (!inquiries.length) { box.innerHTML = `<p class="mp-empty">문의 내역이 없습니다.</p>`; return; }
     box.innerHTML = inquiries.map((q) =>
       `<div class="mp-inquiry">
          <div class="mp-inquiry-head"><b>${escapeHtml(q.title)}</b><span class="mp-sec-time">${mpFmtDate(q.created_at)}</span></div>
@@ -2169,7 +2213,7 @@ async function loadMyStatementList() {
 function renderMyStatementList() {
   const box = document.getElementById("mp-stmt-list");
   if (!mpStatementTx.length) {
-    box.innerHTML = '<p class="tf-hint">거래내역이 없습니다.</p>';
+    box.innerHTML = '<p class="mp-empty">거래내역이 없습니다.</p>';
     updateStmtSelectCount();
     return;
   }
@@ -2310,6 +2354,7 @@ document.addEventListener("click", async (e) => {
   }
   const favDel = t.closest(".mp-fav-del");
   if (favDel) {
+    if (!window.confirm("이 즐겨찾기를 삭제하시겠습니까?")) return;
     const res = await apiFetch(`/api/me/favorites/${favDel.dataset.favId}`, { method: "DELETE" });
     if (res.ok) loadMyFavorites();
     return;
@@ -2475,7 +2520,7 @@ function renderBoDashboardSummary(users, transfers, usage, health) {
   // "직전 데이터 존재일" 대비 증감이다. 데모 데이터셋 특성상 이 정도 근사로 충분하다.
   const today = daily.length ? daily[daily.length - 1].count : 0;
   const prev = daily.length > 1 ? daily[daily.length - 2].count : 0;
-  const trend = usageTrendBadge(today, prev);
+  const trend = trendBadge(today, prev);
 
   const checks = health.checks || [];
   const okCount = checks.filter((c) => c.status === "ok").length;
@@ -2490,16 +2535,20 @@ function renderBoDashboardSummary(users, transfers, usage, health) {
     <div class="metric"><div class="value"><span class="status-badge ${healthCls}">${okCount}/${checks.length} 정상</span></div><div class="label">시스템 상태</div></div>`;
 }
 
-function usageTrendBadge(today, prev) {
-  if (prev === 0) {
-    return today > 0
-      ? `<span class="trend-badge up">▲ 신규</span>`
-      : `<span class="trend-badge flat">− 0%</span>`;
+/* 증감 퍼센트 배지. good: "up"(증가=좋음, 기본값) | "down"(감소=좋음) | "neutral"(볼륨성 지표라 항상 회색).
+   화살표는 항상 실제 증감 방향을 가리키고, 배지 색만 good 기준으로 판단한다
+   (예: 실패 건수가 늘면 good="down"이라 ▲ 이지만 빨간 down 스타일로 표시). */
+function trendBadge(current, previous, good = "up") {
+  if (previous === 0) {
+    if (current === 0) return `<span class="trend-badge flat">− 0%</span>`;
+    const cls = good === "down" ? "down" : good === "neutral" ? "flat" : "up";
+    return `<span class="trend-badge ${cls}">▲ 신규</span>`;
   }
-  const pct = Math.round(((today - prev) / prev) * 100);
-  if (pct > 0) return `<span class="trend-badge up">▲ ${pct}%</span>`;
-  if (pct < 0) return `<span class="trend-badge down">▼ ${Math.abs(pct)}%</span>`;
-  return `<span class="trend-badge flat">− 0%</span>`;
+  const pct = Math.round(((current - previous) / previous) * 100);
+  if (pct === 0) return `<span class="trend-badge flat">− 0%</span>`;
+  const isUp = pct > 0;
+  const cls = good === "neutral" ? "flat" : isUp === (good === "up") ? "up" : "down";
+  return `<span class="trend-badge ${cls}">${isUp ? "▲" : "▼"} ${Math.abs(pct)}%</span>`;
 }
 
 function renderBoDashboardStatusDonut(summary) {
@@ -2642,19 +2691,77 @@ async function loadBoTransferSummaryWithTrend(summary) {
   renderBoTransferSummary(summary, trend);
 }
 
-function renderBoTransferSummary(s, trend) {
+/* 이체모니터링 8칸 지표 메타. valueColor 없으면 .value 기본색(브랜드 블루)을 그대로 쓴다.
+   good: 그 지표가 늘어나는 게 관리자에게 좋은 신호인지("up"/"down") 아니면 단순 볼륨성이라
+   판단할 게 아닌지("neutral") — trendBadge의 화살표 색(빨강/초록/회색)을 결정한다. */
+const BO_TRANSFER_METRIC_META = {
+  total:           { label: "총 이체",   sparkColor: "var(--text-sub)",  good: "neutral" },
+  completed:       { label: "완료",      valueColor: "var(--blue-dark)", sparkColor: "var(--blue)",     good: "up" },
+  pending:         { label: "대기",      valueColor: "var(--warning)",   sparkColor: "var(--warning)",  good: "down" },
+  failed:          { label: "실패",      valueColor: "var(--error)",     sparkColor: "var(--error)",    good: "down" },
+  scheduled:       { label: "예약",      valueColor: "var(--info)",      sparkColor: "var(--info)",     good: "neutral" },
+  delayed:         { label: "지연",      valueColor: "#6D28D9",          sparkColor: "#6D28D9",         good: "down" },
+  canceled:        { label: "취소",      valueColor: "var(--text-sub)",  sparkColor: "var(--text-sub)", good: "neutral" },
+  completedAmount: { label: "완료 금액", sparkColor: "var(--blue)",      good: "up", amount: true },
+};
+
+/* 보안 이벤트 4칸 지표 메타 — 형식은 BO_TRANSFER_METRIC_META와 동일. */
+const BO_SECURITY_METRIC_META = {
+  total:         { label: "최근 24시간",   sparkColor: "var(--text-sub)", good: "down" },
+  password_fail: { label: "비밀번호 실패", valueColor: "var(--error)",    sparkColor: "var(--error)",   good: "down" },
+  limit:         { label: "한도 초과",     valueColor: "var(--warning)",  sparkColor: "var(--warning)", good: "down" },
+  new_payee:     { label: "신규 수취계좌", valueColor: "var(--info)",     sparkColor: "var(--info)",    good: "neutral" },
+};
+
+/* meta 테이블 기반 공유 렌더러. values는 {지표키: 누적값}, trend는 bucketByDay() 결과.
+   각 카드: 큰 값(+증감 배지) · 라벨 · 미니 막대 · "날짜범위 · 최근값" 캡션. */
+function renderMetricGrid(containerId, values, trend, meta) {
+  const box = document.getElementById(containerId);
+  if (!box) return;
   const days = trend?.days || [];
-  const series = (key) => days.map((d) => (trend.byDay[d] && trend.byDay[d][key]) || 0);
-  const spark = (key, color) => sparklineSvg(series(key), color);
-  document.getElementById("bo-transfer-summary").innerHTML = `
-    <div class="metric"><div class="value">${s.total}</div><div class="label">총 이체</div>${spark("total", "var(--text-sub)")}</div>
-    <div class="metric"><div class="value" style="color:var(--blue-dark)">${s.completed}</div><div class="label">완료</div>${spark("completed", "var(--blue)")}</div>
-    <div class="metric"><div class="value" style="color:var(--warning)">${s.pending}</div><div class="label">대기</div>${spark("pending", "var(--warning)")}</div>
-    <div class="metric"><div class="value" style="color:var(--error)">${s.failed}</div><div class="label">실패</div>${spark("failed", "var(--error)")}</div>
-    <div class="metric"><div class="value" style="color:var(--info)">${s.scheduled || 0}</div><div class="label">예약</div>${spark("scheduled", "var(--info)")}</div>
-    <div class="metric"><div class="value" style="color:#6D28D9">${s.delayed || 0}</div><div class="label">지연</div>${spark("delayed", "#6D28D9")}</div>
-    <div class="metric"><div class="value" style="color:var(--text-sub)">${s.canceled || 0}</div><div class="label">취소</div>${spark("canceled", "var(--text-sub)")}</div>
-    <div class="metric"><div class="value">${won(s.completed_amount)}</div><div class="label">완료 금액</div>${spark("completedAmount", "var(--blue)")}</div>`;
+  const dayLabels = days.map(dayShort);
+  box.innerHTML = Object.keys(meta)
+    .map((key) => {
+      const m = meta[key];
+      const value = values[key] || 0;
+      const series = days.map((d) => (trend.byDay[d] && trend.byDay[d][key]) || 0);
+      const fmtNum = (n) => (m.amount ? won(n) : `${n}건`);
+      const valueText = m.amount ? won(value) : value;
+      const valueStyle = m.valueColor ? ` style="color:${m.valueColor}"` : "";
+      const badge = series.length >= 2
+        ? trendBadge(series[series.length - 1], series[series.length - 2], m.good)
+        : "";
+      const titles = dayLabels.map((d, i) => `${d} · ${fmtNum(series[i])}`);
+      const bars = sparkBars(series, m.sparkColor, titles);
+      const caption = series.length >= 2
+        ? `<div class="spark-caption"><span>${dayLabels[0]} → ${dayLabels[dayLabels.length - 1]}</span>` +
+          `<span class="cap-val">${fmtNum(series[series.length - 1])}</span></div>`
+        : "";
+      return `<div class="metric">` +
+        `<div class="value"${valueStyle}>${valueText}${badge}</div>` +
+        `<div class="label">${escapeHtml(m.label)}</div>${bars}${caption}</div>`;
+    })
+    .join("");
+}
+
+function renderBoTransferSummary(s, trend) {
+  const values = {
+    total: s.total, completed: s.completed, pending: s.pending, failed: s.failed,
+    scheduled: s.scheduled || 0, delayed: s.delayed || 0, canceled: s.canceled || 0,
+    completedAmount: s.completed_amount || 0,
+  };
+  renderMetricGrid("bo-transfer-summary", values, trend, BO_TRANSFER_METRIC_META);
+}
+
+function renderBoSecuritySummary(summary, trend) {
+  const bt = summary.by_type || {};
+  const values = {
+    total: summary.last_24h || 0,
+    password_fail: bt.password_fail || 0,
+    limit: (bt.limit_once || 0) + (bt.limit_daily || 0),
+    new_payee: bt.new_payee || 0,
+  };
+  renderMetricGrid("bo-security-summary", values, trend, BO_SECURITY_METRIC_META);
 }
 
 // 예약/지연 대기 큐 렌더 (예정 시각 오름차순)
@@ -2709,14 +2816,12 @@ const SEC_EVENT_LABEL = {
 // 이체 보안 이벤트 목록 + 요약
 async function loadBoSecurityEvents() {
   const box = document.getElementById("bo-security-events");
-  const sumBox = document.getElementById("bo-security-summary");
   if (!box) return;
   try {
     const res = await apiFetch("/api/admin/security-events?limit=30");
     if (!res.ok) throw new Error("보안 이벤트 조회 실패");
     const { events, summary } = await res.json();
 
-    const bt = summary.by_type || {};
     const trend = bucketByDay(
       events,
       (e) => new Date(e.created_at * 1000).toISOString().slice(0, 10),
@@ -2729,13 +2834,7 @@ async function loadBoSecurityEvents() {
         return acc;
       }
     );
-    const secSeries = (key) => trend.days.map((d) => (trend.byDay[d] && trend.byDay[d][key]) || 0);
-    const secSpark = (key, color) => sparklineSvg(secSeries(key), color);
-    sumBox.innerHTML = `
-      <div class="metric"><div class="value">${summary.last_24h || 0}</div><div class="label">최근 24시간</div>${secSpark("total", "var(--text-sub)")}</div>
-      <div class="metric"><div class="value" style="color:var(--error)">${bt.password_fail || 0}</div><div class="label">비밀번호 실패</div>${secSpark("password_fail", "var(--error)")}</div>
-      <div class="metric"><div class="value" style="color:var(--warning)">${(bt.limit_once || 0) + (bt.limit_daily || 0)}</div><div class="label">한도 초과</div>${secSpark("limit", "var(--warning)")}</div>
-      <div class="metric"><div class="value" style="color:var(--info)">${bt.new_payee || 0}</div><div class="label">신규 수취계좌</div>${secSpark("new_payee", "var(--info)")}</div>`;
+    renderBoSecuritySummary(summary, trend);
 
     if (!events.length) {
       box.innerHTML = `<p class="tf-hint">기록된 보안 이벤트가 없습니다.</p>`;
@@ -3643,7 +3742,7 @@ function renderNoticeList(notices, reset) {
     )
     .join("");
   const box = document.getElementById("notice-list");
-  if (reset) box.innerHTML = notices.length ? rows : statEmpty();
+  if (reset) box.innerHTML = notices.length ? rows : '<p class="support-empty">등록된 공지사항이 없습니다.</p>';
   else box.innerHTML += rows;
 }
 
@@ -3679,7 +3778,7 @@ function renderFaqList(faqs, reset) {
     )
     .join("");
   const box = document.getElementById("faq-list");
-  if (reset) box.innerHTML = faqs.length ? rows : statEmpty();
+  if (reset) box.innerHTML = faqs.length ? rows : '<p class="support-empty">등록된 FAQ가 없습니다.</p>';
   else box.innerHTML += rows;
 }
 
@@ -3716,7 +3815,7 @@ function renderDocumentList(documents, reset) {
     )
     .join("");
   const box = document.getElementById("document-list");
-  if (reset) box.innerHTML = documents.length ? rows : statEmpty();
+  if (reset) box.innerHTML = documents.length ? rows : '<p class="support-empty">등록된 서식·약관·설명서가 없습니다.</p>';
   else box.innerHTML += rows;
 }
 
@@ -3750,7 +3849,7 @@ async function loadInquiries() {
               `<div class="tf-hint">${fmtDate(q.created_at)}</div><p>${escapeHtml(q.content)}</p></div>`
           )
           .join("")
-      : statEmpty();
+      : '<p class="support-empty">등록된 문의 내역이 없습니다.</p>';
   } catch (err) {
     console.error("문의 내역 로드 실패:", err);
   }

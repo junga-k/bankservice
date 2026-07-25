@@ -386,6 +386,14 @@
         </div>
 
         <div id="mypage-authed">
+          <div class="panel mp-profile-card">
+            <div class="mp-profile-avatar" id="mp-profile-avatar">?</div>
+            <div class="mp-profile-info">
+              <div class="mp-profile-name"><span id="mp-profile-name">-</span>님</div>
+              <div class="mp-profile-meta"><span id="mp-profile-username">-</span><span class="mp-profile-dot">&middot;</span><span id="mp-profile-joined"></span></div>
+            </div>
+          </div>
+
           <div class="account-tabs mypage-tabs">
             <button type="button" class="account-tab mypage-tab active" data-mypage-tab="profile">내 정보</button>
             <button type="button" class="account-tab mypage-tab" data-mypage-tab="security">보안</button>
@@ -418,8 +426,10 @@
                   <label for="mp-email">이메일</label>
                   <input id="mp-email" type="email" />
                 </div>
-                <button class="btn btn-primary" type="submit">저장</button>
-                <span id="mp-profile-status" class="tf-status"></span>
+                <div class="tf-form-footer">
+                  <button class="btn btn-primary" type="submit">저장</button>
+                  <span id="mp-profile-status" class="tf-status"></span>
+                </div>
               </form>
             </div>
           </div>
@@ -439,8 +449,10 @@
                   <label for="mp-new-pw">새 비밀번호</label>
                   <input id="mp-new-pw" type="password" autocomplete="new-password" required />
                 </div>
-                <button class="btn btn-primary" type="submit">변경</button>
-                <span id="mp-password-status" class="tf-status"></span>
+                <div class="tf-form-footer">
+                  <button class="btn btn-primary" type="submit">변경</button>
+                  <span id="mp-password-status" class="tf-status"></span>
+                </div>
               </form>
             </div>
 
@@ -457,8 +469,10 @@
                   <label for="mp-tpw-new">새 이체 비밀번호 (숫자 6자리)</label>
                   <input id="mp-tpw-new" type="password" inputmode="numeric" maxlength="6" autocomplete="off" required />
                 </div>
-                <button class="btn btn-primary" type="submit">설정 / 변경</button>
-                <span id="mp-tpw-status" class="tf-status"></span>
+                <div class="tf-form-footer">
+                  <button class="btn btn-primary" type="submit">설정 / 변경</button>
+                  <span id="mp-tpw-status" class="tf-status"></span>
+                </div>
               </form>
             </div>
 
@@ -471,8 +485,10 @@
                 <div class="auth-agree-row">
                   <label><input type="checkbox" id="mp-agree-marketing" /> <span>(선택) 마케팅 정보 수신 동의</span></label>
                 </div>
-                <button class="btn btn-primary" type="submit">저장</button>
-                <span id="mp-consent-status" class="tf-status"></span>
+                <div class="tf-form-footer">
+                  <button class="btn btn-primary" type="submit">저장</button>
+                  <span id="mp-consent-status" class="tf-status"></span>
+                </div>
               </form>
             </div>
 
@@ -515,8 +531,10 @@
                 <div class="auth-agree-row">
                   <label><input type="checkbox" id="mp-acc-primary" /> <span>대표계좌로 지정</span></label>
                 </div>
-                <button class="btn btn-primary" type="submit">계좌 추가</button>
-                <span id="mp-add-account-status" class="tf-status"></span>
+                <div class="tf-form-footer">
+                  <button class="btn btn-primary" type="submit">계좌 추가</button>
+                  <span id="mp-add-account-status" class="tf-status"></span>
+                </div>
               </form>
             </div>
           </div>
@@ -546,8 +564,10 @@
                   <label for="mp-fav-nickname">별칭 <span class="tf-optional">(선택)</span></label>
                   <input id="mp-fav-nickname" type="text" maxlength="20" placeholder="예: 엄마" />
                 </div>
-                <button class="btn btn-primary" type="submit">추가</button>
-                <span id="mp-add-fav-status" class="tf-status"></span>
+                <div class="tf-form-footer">
+                  <button class="btn btn-primary" type="submit">추가</button>
+                  <span id="mp-add-fav-status" class="tf-status"></span>
+                </div>
               </form>
             </div>
           </div>
@@ -599,8 +619,10 @@
                   <label for="mp-withdraw-pw">비밀번호 확인</label>
                   <input id="mp-withdraw-pw" type="password" autocomplete="current-password" required />
                 </div>
-                <button class="btn btn-danger" type="submit">회원 탈퇴</button>
-                <span id="mp-withdraw-status" class="tf-status"></span>
+                <div class="tf-form-footer">
+                  <button class="btn btn-danger" type="submit">회원 탈퇴</button>
+                  <span id="mp-withdraw-status" class="tf-status"></span>
+                </div>
               </form>
             </div>
           </div>
@@ -611,6 +633,23 @@
 
     <!-- ── 로그인 / 회원가입 ───────────────────────────────────── -->
     <section id="auth" class="section">
+      <aside class="auth-aside" aria-hidden="true">
+        <div class="auth-aside-inner">
+          <div class="auth-aside-brand">
+            <img src="img/logo-mark.svg" alt="" class="auth-aside-logo" />
+            <span class="auth-aside-brand-text">매치뱅크</span>
+          </div>
+          <h1 class="auth-aside-title">은행 금융상품을<br />한눈에, AI에게 물어보세요</h1>
+          <p class="auth-aside-desc">예금·적금부터 은행 업무까지,<br />질문하면 AI가 찾아 안내합니다.</p>
+          <ul class="auth-aside-stats">
+            <li><b>16개</b>은행</li>
+            <li><b>5종</b>금융상품</li>
+            <li><b>금융감독원</b>공식 데이터</li>
+          </ul>
+        </div>
+      </aside>
+
+      <div class="auth-main">
       <div class="container auth-container">
 
         <div class="auth-logo-wrap">
@@ -704,7 +743,7 @@
                 </div>
                 <div class="tf-hint" id="resetpw-otp-hint"></div>
               </div>
-              <button class="btn btn-primary tf-next" type="button" id="resetpw-to-step2">다음</button>
+              <button class="btn btn-primary tf-next" type="button" id="resetpw-to-step2" disabled>다음</button>
               <div id="resetpw-step1-status" class="tf-status"></div>
             </div>
 
@@ -722,7 +761,7 @@
               </div>
               <div class="tf-confirm-actions">
                 <button class="btn btn-ghost" type="button" id="resetpw-back-step1">이전</button>
-                <button class="btn btn-primary" type="submit" id="resetpw-submit">비밀번호 재설정</button>
+                <button class="btn btn-primary" type="submit" id="resetpw-submit" disabled>비밀번호 재설정</button>
               </div>
               <div id="resetpw-status" class="tf-status"></div>
             </div>
@@ -879,6 +918,7 @@
         </div>
 
       </div>
+      </div><!-- /.auth-main -->
     </section>
 
     <!-- ── Backoffice (관리자 전용) ────────────────────────────── -->
@@ -1271,13 +1311,13 @@
 
         <!-- 공지사항 -->
         <div class="support-panel" id="support-panel-notices">
-          <div id="notice-list"><!-- JS 렌더 --></div>
+          <div class="panel"><div id="notice-list"><!-- JS 렌더 --></div></div>
           <button class="btn btn-ghost" type="button" id="notice-more">더 보기</button>
         </div>
 
         <!-- FAQ -->
         <div class="support-panel" id="support-panel-faq" style="display:none">
-          <div id="faq-list"><!-- JS 렌더 --></div>
+          <div class="panel"><div id="faq-list"><!-- JS 렌더 --></div></div>
           <button class="btn btn-ghost" type="button" id="faq-more">더 보기</button>
         </div>
 
@@ -1300,8 +1340,10 @@
                   <label for="inquiry-content">문의 내용</label>
                   <textarea id="inquiry-content" rows="4" required></textarea>
                 </div>
-                <button class="btn btn-primary" type="submit">등록</button>
-                <div id="inquiry-status" class="tf-status"></div>
+                <div class="tf-form-footer">
+                  <button class="btn btn-primary" type="submit">등록</button>
+                  <div id="inquiry-status" class="tf-status"></div>
+                </div>
               </form>
             </div>
 
@@ -1314,7 +1356,7 @@
 
         <!-- 서식·약관·설명서 -->
         <div class="support-panel" id="support-panel-documents" style="display:none">
-          <div id="document-list"><!-- JS 렌더 --></div>
+          <div class="panel"><div id="document-list"><!-- JS 렌더 --></div></div>
           <button class="btn btn-ghost" type="button" id="document-more">더 보기</button>
         </div>
       </div>
