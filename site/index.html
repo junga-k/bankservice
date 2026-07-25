@@ -932,7 +932,6 @@
             <button type="button" class="bo-tab" data-bo-tab="prompt">프롬프트 관리</button>
             <button type="button" class="bo-tab" data-bo-tab="products">금융상품관리</button>
             <button type="button" class="bo-tab" data-bo-tab="faq">FAQ·공지사항 관리</button>
-            <button type="button" class="bo-tab" data-bo-tab="settings">시스템설정</button>
           </nav>
         </aside>
 
@@ -1080,6 +1079,12 @@
           <div class="panel">
             <h3>시스템 상태</h3>
             <div class="status-card-grid" id="bo-health-cards"><!-- JS 렌더 --></div>
+          </div>
+          <div class="panel">
+            <h3>인프라 설정 (읽기 전용)</h3>
+            <p class="section-desc">API 키 등 민감 정보는 표시되지 않습니다. 변경이 필요하면 서버에서
+              settings_page.py를 실행하세요.</p>
+            <div id="bo-infra-config"><!-- JS 렌더 --></div>
           </div>
           <div class="panel">
             <h3>최근 배치 테스트 성능</h3>
@@ -1312,21 +1317,6 @@
               <tbody id="bo-inquiry-rows"><!-- JS 렌더 --></tbody>
             </table>
             <button class="btn btn-ghost bo-btn-right" type="button" id="bo-inquiry-more">더 보기</button>
-          </div>
-        </div>
-
-        <!-- 시스템설정 -->
-        <div class="bo-panel" id="bo-panel-settings" style="display:none">
-          <div class="panel">
-            <h3>시스템 현황</h3>
-            <div class="metric-grid" id="bo-sys-overview"><!-- JS 렌더 --></div>
-          </div>
-
-          <div class="panel">
-            <h3>인프라 설정 (읽기 전용)</h3>
-            <p class="section-desc">API 키 등 민감 정보는 표시되지 않습니다. 변경이 필요하면 서버에서
-              settings_page.py를 실행하세요.</p>
-            <div id="bo-infra-config"><!-- JS 렌더 --></div>
           </div>
         </div>
 

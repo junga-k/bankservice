@@ -1219,8 +1219,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .trend-badge.flat { background: var(--bg-soft); color: var(--text-sub); }
 /* 요약 카드: 긴 금액(총 예치금·이체 완료금액)이 줄바꿈되어 카드 높이·정렬이
    틀어지지 않도록, 값 글자크기를 통일하고 한 줄로 고정한다. */
-#bo-dash-summary .metric .value,
-#bo-sys-overview .metric .value {
+#bo-dash-summary .metric .value {
   font-size: 22px;
   display: flex;
   align-items: center;
@@ -1228,12 +1227,6 @@ main { min-height: calc(100vh - var(--header-h)); }
   flex-wrap: wrap;
   gap: 4px;
   white-space: nowrap;
-}
-/* 시스템 현황: 6칸을 auto-fit(5+1)에 맡기면 마지막 한 칸이 혼자 남아 정렬이 깨짐 —
-   3열×2행으로 고정해 항상 짝이 맞게 채운다. */
-#bo-sys-overview { grid-template-columns: repeat(3, 1fr); }
-@media (max-width: 900px) {
-  #bo-sys-overview { grid-template-columns: repeat(2, 1fr); }
 }
 
 .dashboard-chart-grid {

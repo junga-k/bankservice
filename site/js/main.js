@@ -2373,7 +2373,7 @@ document.addEventListener("click", async (e) => {
 });
 
 /* ── Backoffice (관리자 전용) ───────────────────────────────────────── */
-const BO_TABS = ["dashboard", "members", "transfers", "usage", "perf", "prompt", "products", "faq", "settings"];
+const BO_TABS = ["dashboard", "members", "transfers", "usage", "perf", "prompt", "products", "faq"];
 const boLoaded = {};   // 탭별 최초 로드 여부(지연 로드)
 let boUserOffset = 0;
 let boUserQuery = "";
@@ -2433,7 +2433,7 @@ function ensureBoTabLoaded(name) {
     loadBoUsageStats();
     loadTopProductsGrid("bo-stat-products");
   }
-  if (name === "perf") { loadBoHealth(); loadBoBatchPerf(); loadBoFssStatus(); }
+  if (name === "perf") { loadBoHealth(); loadBoInfraConfig(); loadBoBatchPerf(); loadBoFssStatus(); }
   if (name === "prompt") { loadBoChatbotConfig(); loadBoChatbotHistory(); }
   if (name === "products") {
     loadBoFssSummary();
@@ -2442,7 +2442,6 @@ function ensureBoTabLoaded(name) {
     loadBoDocuments();
   }
   if (name === "faq") { loadBoNotices(); loadBoFaqs(); loadBoInquiries(); }
-  if (name === "settings") { loadBoSystemOverview(); loadBoInfraConfig(); }
 }
 
 document.addEventListener("click", (e) => {
@@ -4017,29 +4016,12 @@ document.addEventListener("click", async (e) => {
   }
 });
 
-/* ── Backoffice: 시스템설정 (시스템 현황 + 인프라 설정 읽기전용) ───── */
-async function loadBoSystemOverview() {
-  const box = document.getElementById("bo-sys-overview");
-  try {
-    const [usersRes, transfersRes, usageRes] = await Promise.all([
-      apiFetch("/api/admin/users?limit=1"),
-      apiFetch("/api/admin/transfers?limit=1"),
-      apiFetch("/api/admin/usage-stats"),
-    ]);
-    const users = await usersRes.json();
-    const transfers = await transfersRes.json();
-    const usage = await usageRes.json();
-    box.innerHTML = `
-      <div class="metric"><div class="value">${users.total}</div><div class="label">총 회원수</div></div>
-      <div class="metric"><div class="value">${users.account_count}</div><div class="label">총 계좌수</div></div>
-      <div class="metric"><div class="value">${won(users.total_balance)}</div><div class="label">총 예치금</div></div>
-      <div class="metric"><div class="value">${transfers.summary.total}</div><div class="label">총 이체건수</div></div>
-      <div class="metric"><div class="value">${won(transfers.summary.completed_amount || 0)}</div><div class="label">이체 완료금액</div></div>
-      <div class="metric"><div class="value">${usage.summary.total}</div><div class="label">총 이용이벤트</div></div>`;
-  } catch (err) {
-    box.innerHTML = statError();
-    console.error("시스템 현황 로드 실패:", err);
+/* ── Backoffice: 인프라 설정 (읽기전용, 성능관리 탭) ───── */
+function boInfraRowValue(value) {
+  if (value && typeof value === "object" && value.badge) {
+    return `<span class="status-badge ${value.badge}">${escapeHtml(value.text)}</span>`;
   }
+  return escapeHtml(String(value));
 }
 
 async function loadBoInfraConfig() {
@@ -4049,6 +4031,11 @@ async function loadBoInfraConfig() {
     if (!res.ok) throw new Error("인프라 설정 조회 실패");
     const cfg = await res.json();
     const rows = [
+      ["OpenAI API 키", cfg.openai_key_set ? { badge: "ok", text: "설정됨" } : { badge: "down", text: "미설정" }],
+      ["FSS API 키", cfg.fss_key_set ? { badge: "ok", text: "설정됨" } : { badge: "down", text: "미설정" }],
+      ["AI은행원 제공자", cfg.chatbot_provider],
+      ["AI은행원 모델", cfg.chatbot_model ? boModelDisplay(cfg.chatbot_model).label : "-"],
+      ["웹 검색 사용", cfg.chatbot_web_search ? "사용" : "미사용"],
       ["시맨틱 캐시", cfg.cache_enabled ? "사용" : "미사용"],
       ["RAG 검색 결과 수", cfg.rag_top_k],
       ["캐시 유사도 임계값", cfg.cache_threshold],
@@ -4057,7 +4044,7 @@ async function loadBoInfraConfig() {
       ["Redis 주소", `${cfg.redis_host}:${cfg.redis_port}`],
     ];
     box.innerHTML = `<ol class="topcat-list">${rows
-      .map(([label, value]) => `<li><span class="p-name">${escapeHtml(label)}</span><span class="p-count">${escapeHtml(String(value))}</span></li>`)
+      .map(([label, value]) => `<li><span class="p-name">${escapeHtml(label)}</span><span class="p-count">${boInfraRowValue(value)}</span></li>`)
       .join("")}</ol>`;
   } catch (err) {
     box.innerHTML = statError();

@@ -1153,6 +1153,11 @@ def admin_delete_document(document_id: int, user: dict = Depends(auth.require_ad
 def admin_infra_config(user: dict = Depends(auth.require_admin)):
     cfg = config.load()
     return {
+        "openai_key_set": bool(cfg.get("openai_api_key")),
+        "fss_key_set": bool(cfg.get("fss_api_key")),
+        "chatbot_provider": cfg.get("provider") or llm.DEFAULT_PROVIDER,
+        "chatbot_model": cfg.get("default_model", ""),
+        "chatbot_web_search": bool(cfg.get("web_search", False)),
         "cache_enabled": bool(cfg.get("cache_enabled", False)),
         "rag_top_k": cfg.get("rag_top_k"),
         "cache_threshold": cfg.get("cache_threshold"),
