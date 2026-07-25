@@ -656,6 +656,11 @@ main { min-height: calc(100vh - var(--header-h)); }
 .metric .value { font-size: 34px; font-weight: 800; color: var(--blue); }
 .metric .label { margin-top: 6px; color: var(--text-sub); font-size: 14px; }
 
+/* 스파크라인이 있는 카드: 항목명이 숫자와 막대그래프 사이에 끼어 눈에 덜 띄므로
+   맨 위로 올리고 굵기를 살짝 올려 가독성을 높인다. */
+.metric--label-top { display: flex; flex-direction: column; }
+.metric--label-top .label { order: -1; margin-top: 0; margin-bottom: 6px; font-weight: 500; }
+
 .panel {
   background: #fff;
   border: 1px solid var(--border);

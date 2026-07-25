@@ -2619,11 +2619,11 @@ function renderBoDashboardSummary(users, transfers, usage, transferTrend) {
     ? `<div class="spark-caption"><span>${tDayLabels[0]} → ${tDayLabels[tDayLabels.length - 1]}</span><span class="cap-val">${won(aSeries[aSeries.length - 1])}</span></div>` : "";
 
   document.getElementById("bo-dash-summary").innerHTML = `
-    <div class="metric clickable" data-bo-goto="members"><div class="value">${users.total}</div><div class="label">총 회원수</div><div class="metric-note">누적</div></div>
-    <div class="metric"><div class="value">${won(users.total_balance)}</div><div class="label">총 예치금</div><div class="metric-note">누적</div></div>
-    <div class="metric clickable" data-bo-goto="transfers"><div class="value">${transfers.summary.total}${tBadge}</div><div class="label">총 이체 건수</div>${tBars}${tCaption}</div>
-    <div class="metric clickable" data-bo-goto="transfers"><div class="value">${won(transfers.summary.completed_amount || 0)}${aBadge}</div><div class="label">이체 완료금액</div>${aBars}${aCaption}</div>
-    <div class="metric"><div class="value">${today}${todayTrend}</div><div class="label">오늘 이용 이벤트</div>${todayBars}${todayCaption}</div>`;
+    <div class="metric metric--label-top clickable" data-bo-goto="members"><div class="value">${users.total}</div><div class="label">총 회원수</div><div class="metric-note">누적</div></div>
+    <div class="metric metric--label-top"><div class="value">${won(users.total_balance)}</div><div class="label">총 예치금</div><div class="metric-note">누적</div></div>
+    <div class="metric metric--label-top clickable" data-bo-goto="transfers"><div class="value">${transfers.summary.total}${tBadge}</div><div class="label">총 이체 건수</div>${tBars}${tCaption}</div>
+    <div class="metric metric--label-top clickable" data-bo-goto="transfers"><div class="value">${won(transfers.summary.completed_amount || 0)}${aBadge}</div><div class="label">이체 완료금액</div>${aBars}${aCaption}</div>
+    <div class="metric metric--label-top"><div class="value">${today}${todayTrend}</div><div class="label">오늘 이용 이벤트</div>${todayBars}${todayCaption}</div>`;
 }
 
 /* 증감 퍼센트 배지. good: "up"(증가=좋음, 기본값) | "down"(감소=좋음) | "neutral"(볼륨성 지표라 항상 회색).
@@ -2876,7 +2876,7 @@ function renderMetricGrid(containerId, values, trend, meta) {
         ? `<div class="spark-caption"><span>${dayLabels[0]} → ${dayLabels[dayLabels.length - 1]}</span>` +
           `<span class="cap-val">${fmtNum(series[series.length - 1])}</span></div>`
         : "";
-      return `<div class="metric">` +
+      return `<div class="metric metric--label-top">` +
         `<div class="value"${valueStyle}>${valueText}${badge}</div>` +
         `<div class="label">${escapeHtml(m.label)}</div>${bars}${caption}</div>`;
     })
