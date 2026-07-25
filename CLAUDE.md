@@ -28,6 +28,8 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # 키 입력
 
 모든 외부 서비스는 **없어도 앱이 죽지 않도록** try/except로 감싸져 있다(연결 안 되면 기능만 비활성/degrade).
 
+Kafka·Elasticsearch·Phoenix 3개를 매번 따로 띄우는 대신 `./start_infra.sh`로 한 번에 기동할 수 있다(이미 떠 있는 서비스는 건드리지 않음). Docker Desktop이 "일시정지(paused)" 상태면 `docker desktop start`로는 안 풀리고 `docker desktop restart`를 써야 하는데, 이 스크립트가 그 판단까지 자동으로 해준다.
+
 ### 초기 데이터 시드
 `db.init_db()`가 서버 기동 시 스키마 생성 + 컬럼 마이그레이션(`ALTER TABLE ADD COLUMN` 멱등 루프)을 수행한다. 데모 데이터는 스크립트로 채운다:
 ```bash
