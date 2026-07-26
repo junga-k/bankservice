@@ -1679,7 +1679,12 @@
   </div>
 
   <!-- ── 맨 위로 이동 플로팅 버튼 (스크롤 시 노출) ───────────────── -->
-  <button id="scroll-top" class="scroll-top" type="button" aria-label="맨 위로 이동" title="맨 위로">↑</button>
+  <button id="scroll-top" class="scroll-top" type="button" aria-label="맨 위로 이동" title="맨 위로">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+      <line x1="12" y1="17" x2="12" y2="9"/>
+      <polyline points="7.5 13 12 8.5 16.5 13"/>
+    </svg>
+  </button>
 
   <!-- ── 스크롤 유도 힌트: 화면 진입 시 아래에 더 볼 내용이 있으면 노출,
        스크롤을 시작하면 사라진다(uidesign.tips "Prompt User to Scroll") ── -->

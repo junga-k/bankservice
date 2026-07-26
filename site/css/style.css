@@ -2477,7 +2477,10 @@ main { min-height: calc(100vh - var(--header-h)); }
 /* ── 맨 위로 이동 플로팅 버튼 ─────────────────────────────────────── */
 .scroll-top {
   position: fixed;
-  right: 24px;
+  /* 화면 가장자리가 아니라 중앙 콘텐츠 컬럼(--maxw) 바로 바깥쪽 여백에 붙도록 —
+     컬럼 오른쪽 끝에서 버튼 너비(46px)+간격(18px)만큼 떨어뜨려 콘텐츠와 겹치지
+     않게 하고, 좁은 화면(여백이 부족한 경우)에서는 24px 최소 여백으로 폴백 */
+  right: max(24px, calc((100vw - var(--maxw)) / 2 - 64px));
   bottom: 24px;
   width: 46px;
   height: 46px;
@@ -2485,8 +2488,9 @@ main { min-height: calc(100vh - var(--header-h)); }
   border: 1px solid var(--blue-line);
   background: var(--blue);
   color: #fff;
-  font-size: 22px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
   opacity: 0;
