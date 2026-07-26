@@ -261,11 +261,11 @@ main { min-height: calc(100vh - var(--header-h)); }
   .hero-inner { text-align: center; padding: 0; }
 }
 .hero h1 {
-  font-size: 44px;
-  line-height: 1.32;
+  font-size: 36px;
+  line-height: 1.35;
   font-weight: 800;
   letter-spacing: -0.5px;
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--space-5);
   color: #fff;
 }
 .hero h1 .accent { color: #8CF5C4; }
