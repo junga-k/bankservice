@@ -444,8 +444,13 @@ Kafka·Elasticsearch·Phoenix 3개를 매번 따로 띄우는 대신 `./start_in
 - **컴포넌트 6종 14개 variant**: Button(Primary/Ghost×Default/Hover/Disabled), Input & Form(Text Input 4상태+Checkbox+Select), Card & Chip(rest→hover 공식 재현), Nav Link, Badge & Status(Status/Trend), Data Viz(Stat Card/Ranked Bar) — 전부 변수 바인딩.
 - **소비자 화면 8개**: Home/AI은행원/내계좌/상품안내/고객센터/마이페이지/로그인·회원가입/footer — 전부 위 컴포넌트 인스턴스로 조립, 화면마다 실제 사이트 스크린샷과 대조 검증.
 - **버그 패턴 발견(반복 3회)**: Figma auto-layout 프레임은 기본으로 흰 배경이 채워지는데, 색깔 있는 배경(히어로 그린 그라디언트, TOP추천 카드) 위에 얹는 텍스트 컨테이너에서 이 기본 흰 배경을 안 지우면 내용이 통째로 가려짐 — 매번 발견 즉시 `fills=[]`로 수정. 그 외 "FILL 사이징은 appendChild 이후에 설정" 순서 오류, "컴포넌트셋 안 variant는 로컬 좌표로 배치"(페이지 좌표와 이중 적용하면 부모 프레임 밖으로 밀려나 안 보임), "스크립트 실패 시 그 스크립트 안의 이전 작업까지 통째로 롤백"(atomic) 등도 발견 즉시 수정.
-- **다음 단계(범위 밖으로 명시적으로 미룸)**: Backoffice 9개 탭은 이번 v1에 포함 안 함. 재개 시 상태 원장(`/tmp/dsb-state-matchbank-001.json`)을 읽어서 이어감 — 세션이 끊겨도 "매치뱅크 디자인시스템 이어서 진행해줘"로 재개 가능.
+- **1차 범위(v1) 완료** — 이후 세션에서 Backoffice 9개 탭도 이어서 완료(아래 항목 참고).
+
+**Figma 디자인시스템 — Backoffice 9개 탭 화면 조립 (전체 범위 완료)** — 대상: Figma(코드 변경 없음)
+- 위 v1(파운데이션+컴포넌트+소비자 화면 8개)에 이어서 Backoffice 9개 탭(대시보드/회원관리/이체모니터링/이용통계/성능관리/프롬프트관리/금융상품관리/FAQ·공지사항관리/배너관리)도 같은 파일에 조립 완료 — 상태 원장(`/tmp/dsb-state-matchbank-001.json`)을 읽어 재개, 새 페이지 9개 추가.
+- 관리자 헤더(상단 nav에 "Backoffice" 활성 표시)+사이드바(9개 탭, 현재 탭 강조)를 공통 셸로 매번 재사용해 조립. KPI는 Stat Card, 비중/분포는 Ranked Bar, 상태 표시는 Status Badge, 목록은 테이블형 레이아웃으로 재현 — 전부 이미 만든 컴포넌트 인스턴스 재사용, 새 컴포넌트 추가 없음.
+- **버그 수정**: (1) 헤더 nav 라벨 fill 지정 코드를 한 줄로 과하게 압축하다 문법이 꼬여 스크립트 자체가 실패(전체 스크린 재시도로 해결). (2) 배너관리 화면에서 목록 테이블 프레임을 만들고 `main`에 appendChild하는 걸 빠뜨려 페이지에 고아 노드로 남았던 것 — 페이지에서 찾아 제자리에 붙여 해결.
+- **최종 결과**: 파운데이션 6종 + 컴포넌트 6종 14개 variant + 화면 17개(소비자 8 + Backoffice 9), 전부 스크린샷으로 실제 사이트와 대조 검증 완료. https://www.figma.com/design/KnJEcMeU05dCaVk3krDKKF
 
 **남은 작업 (TODO)**
-- 현재 알려진 TODO 없음 — Backoffice 8개 탭 리디자인, 홈 배너/이벤트/특별상품 연동까지 전부 완료.
-- Figma 디자인시스템: Backoffice 9개 탭 화면 조립이 남아있음(파운데이션/컴포넌트/소비자 화면 8개는 완료).
+- 현재 알려진 TODO 없음 — Backoffice 8개 탭 리디자인, 홈 배너/이벤트/특별상품 연동, Figma 디자인시스템(파운데이션+컴포넌트+화면 17개) 전부 완료.
