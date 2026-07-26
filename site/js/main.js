@@ -2739,6 +2739,9 @@ function renderBoDashboardStatusRank(summary) {
     { label: "완료", value: summary.completed, color: "var(--blue-dark)" },
     { label: "대기", value: summary.pending, color: "var(--warning)" },
     { label: "실패", value: summary.failed, color: "var(--error)" },
+    { label: "예약", value: summary.scheduled, color: "var(--info)" },
+    { label: "지연", value: summary.delayed, color: "#6D28D9" },
+    { label: "취소", value: summary.canceled, color: "var(--text-sub)" },
   ];
   renderRankedBars("bo-dash-rank-transfers", data, { totalId: "bo-dash-rank-transfers-total" });
 }
