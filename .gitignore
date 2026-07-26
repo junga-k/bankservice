@@ -17,3 +17,7 @@ UI/reference/
 # FSS 런타임 상태(기준 스냅샷·마지막 색인) — 소스가 아닌 생성 데이터
 site/data/fss_snapshot.json
 site/data/fss_ingest.json
+
+# 관리자가 배너 관리에서 업로드한 이미지 — seed-*.svg(데모 샘플)만 커밋 대상
+site/img/banners/*
+!site/img/banners/seed-*.svg

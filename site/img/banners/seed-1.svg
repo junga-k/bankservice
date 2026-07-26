@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="130" viewBox="0 0 1200 130">
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0FA968"/>
+      <stop offset="100%" stop-color="#0B8457"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="130" fill="url(#g1)"/>
+  <text x="48" y="58" font-family="'Apple SD Gothic Neo','Malgun Gothic',sans-serif" font-size="26" font-weight="700" fill="#ffffff">매치뱅크 오픈 기념</text>
+  <text x="48" y="86" font-family="'Apple SD Gothic Neo','Malgun Gothic',sans-serif" font-size="14" fill="rgba(255,255,255,0.9)">지금 가입하면 계좌 개설 바로 가능해요</text>
+</svg>

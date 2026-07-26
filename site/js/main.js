@@ -135,7 +135,7 @@ function navigate(name) {
     document.getElementById("chat-frame-wrap").style.display = logged ? "" : "none";
     if (logged) ensureChatLoaded();
   }
-  if (name === "products") { ensureBanksLoaded(); loadProductStats(); }
+  if (name === "products") { ensureBanksLoaded(); loadProductStats(); loadSpecialProducts(); }
   if (name === "account") {
     const logged = isLoggedIn();
     document.getElementById("account-guest").style.display = logged ? "none" : "";
@@ -194,10 +194,11 @@ document.addEventListener("click", (e) => {
   if (el.dataset.mypageTab) mypageGoTab(el.dataset.mypageTab);
 });
 
-/* ── 홈: 이벤트 배너 자동 전환 ───────────────────────────────────── */
+/* ── 홈: 이벤트 배너 자동 전환 + 백오피스 "배너 관리" 데이터 동적 렌더 ──── */
 const BANNER_INTERVAL = 4000;
 let bannerIndex = 0;
 let bannerTimer = null;
+let bannerData = [];
 
 function goBannerSlide(i) {
   const track = document.getElementById("banner-track");
@@ -210,25 +211,79 @@ function goBannerSlide(i) {
 
 function startBannerAuto() {
   stopBannerAuto();
+  if (document.querySelectorAll(".banner-dot").length < 2) return;
   bannerTimer = setInterval(() => goBannerSlide(bannerIndex + 1), BANNER_INTERVAL);
 }
 function stopBannerAuto() {
   if (bannerTimer) clearInterval(bannerTimer);
 }
 
+async function loadHomeBanners() {
+  try {
+    const res = await fetch("/api/banners");
+    const data = await res.json();
+    bannerData = data.banners || [];
+  } catch (err) {
+    console.error("배너 로드 실패:", err);
+    bannerData = [];
+  }
+  renderHomeBanners();
+}
+
+function renderHomeBanners() {
+  const track = document.getElementById("banner-track");
+  const dots = document.getElementById("banner-dots");
+  if (!track || !dots) return;
+  track.innerHTML = bannerData
+    .map(
+      (b) =>
+        `<div class="banner-slide" data-banner-id="${b.id}">` +
+        `<img src="${b.image_path}" alt="${escapeHtml(b.title)}" /></div>`
+    )
+    .join("");
+  dots.innerHTML = bannerData
+    .map(
+      (b, idx) =>
+        `<button class="banner-dot${idx === 0 ? " active" : ""}" type="button" data-slide="${idx}" aria-label="배너 ${idx + 1}"></button>`
+    )
+    .join("");
+  bannerIndex = 0;
+  goBannerSlide(0);
+  startBannerAuto();
+}
+
+function goToBannerLink(banner) {
+  if (banner.link_type === "notice") {
+    navigate("support");
+    supportGoTab("notices");
+  } else if (banner.link_type === "event") {
+    navigate("support");
+    supportGoTab("events");
+  } else if (banner.link_type === "special_product") {
+    navigate("products");
+  }
+}
+
 document.addEventListener("click", (e) => {
   const dot = e.target.closest(".banner-dot");
-  if (!dot) return;
-  goBannerSlide(Number(dot.dataset.slide));
-  startBannerAuto();
+  if (dot) {
+    goBannerSlide(Number(dot.dataset.slide));
+    startBannerAuto();
+    return;
+  }
+  const slide = e.target.closest(".banner-slide");
+  if (slide) {
+    const banner = bannerData.find((b) => String(b.id) === slide.dataset.bannerId);
+    if (banner) goToBannerLink(banner);
+  }
 });
 
 const bannerEl = document.querySelector(".event-banner");
 if (bannerEl) {
   bannerEl.addEventListener("mouseenter", stopBannerAuto);
   bannerEl.addEventListener("mouseleave", startBannerAuto);
-  startBannerAuto();
 }
+loadHomeBanners();
 
 /* ── 홈: 기능 소개 스크롤 등장 ───────────────────────────────────── */
 const showcaseRows = document.querySelectorAll(".showcase-row");
@@ -1079,6 +1134,39 @@ function renderProductList(products) {
       }</button>`
     : "";
   listEl.innerHTML = visible.map(renderProductRow).join("") + toggleBtn;
+}
+
+/* 특별상품(FSS 비연동, 백오피스 "금융상품관리 > 특별상품 관리"에서 등록) */
+async function loadSpecialProducts() {
+  const panel = document.getElementById("special-products-panel");
+  try {
+    const res = await fetch("/api/special-products?limit=20");
+    const data = await res.json();
+    renderSpecialProductList(data.special_products || []);
+  } catch (err) {
+    console.error("특별상품 로드 실패:", err);
+    if (panel) panel.style.display = "none";
+  }
+}
+
+function renderSpecialProductList(products) {
+  const panel = document.getElementById("special-products-panel");
+  const list = document.getElementById("special-product-list");
+  if (!panel || !list) return;
+  if (!products.length) {
+    panel.style.display = "none";
+    return;
+  }
+  panel.style.display = "";
+  list.innerHTML = products
+    .map((p) => {
+      const badge = p.badge ? `<span class="special-badge">${escapeHtml(p.badge)}</span>` : "";
+      const meta = [p.rate_text, p.description].filter(Boolean).map(escapeHtml).join(" · ");
+      return `<div class="faq-item"><div class="faq-q"><span>${badge}${bankBadge(p.bank_name)} ${escapeHtml(p.title)}</span><span class="chev">▾</span></div>` +
+        (meta ? `<div class="faq-a">${meta}</div>` : "") +
+        `</div>`;
+    })
+    .join("");
 }
 
 document.getElementById("product-search").addEventListener("input", (e) => {
@@ -2373,7 +2461,7 @@ document.addEventListener("click", async (e) => {
 });
 
 /* ── Backoffice (관리자 전용) ───────────────────────────────────────── */
-const BO_TABS = ["dashboard", "members", "transfers", "usage", "perf", "prompt", "products", "faq"];
+const BO_TABS = ["dashboard", "members", "transfers", "usage", "perf", "prompt", "products", "faq", "banners"];
 const boLoaded = {};   // 탭별 최초 로드 여부(지연 로드)
 let boUserOffset = 0;
 let boUserQuery = "";
@@ -2442,8 +2530,10 @@ function ensureBoTabLoaded(name) {
     loadBoProductPreview("예금");
     loadTopProductsGrid("bo-product-stat-products");
     loadBoDocuments();
+    loadBoSpecialProducts();
   }
-  if (name === "faq") { loadBoNotices(); loadBoFaqs(); loadBoInquiries(); }
+  if (name === "faq") { loadBoNotices(); loadBoFaqs(); loadBoEvents(); loadBoInquiries(); }
+  if (name === "banners") loadBoBanners();
 }
 
 document.addEventListener("click", (e) => {
@@ -3691,6 +3781,7 @@ document.addEventListener("click", (e) => {
   document.querySelectorAll(".bo-faq-tab").forEach((b) => b.classList.toggle("active", b === tab));
   document.getElementById("bo-faqtab-notices").style.display = name === "notices" ? "" : "none";
   document.getElementById("bo-faqtab-faq").style.display = name === "faq" ? "" : "none";
+  document.getElementById("bo-faqtab-events").style.display = name === "events" ? "" : "none";
   document.getElementById("bo-faqtab-inquiries").style.display = name === "inquiries" ? "" : "none";
 });
 
@@ -3966,6 +4057,7 @@ document.addEventListener("click", (e) => {
   document.getElementById("bo-producttab-preview").style.display = name === "preview" ? "" : "none";
   document.getElementById("bo-producttab-stats").style.display = name === "stats" ? "" : "none";
   document.getElementById("bo-producttab-documents").style.display = name === "documents" ? "" : "none";
+  document.getElementById("bo-producttab-special").style.display = name === "special" ? "" : "none";
 });
 
 /* ── Backoffice: 실시간 상품 미리보기 (고객 페이지와 동일한 /api/products 재사용,
@@ -4148,6 +4240,13 @@ const BO_DELETE_ENDPOINTS = {
   notice: { url: (id) => `/api/admin/notices/${id}`, reload: () => loadBoNotices(true), label: "공지사항" },
   faq: { url: (id) => `/api/admin/faqs/${id}`, reload: () => loadBoFaqs(true), label: "FAQ" },
   document: { url: (id) => `/api/admin/documents/${id}`, reload: () => loadBoDocuments(true), label: "서식자료" },
+  event: { url: (id) => `/api/admin/events/${id}`, reload: () => loadBoEvents(true), label: "이벤트" },
+  banner: { url: (id) => `/api/admin/banners/${id}`, reload: () => loadBoBanners(true), label: "배너" },
+  special_product: {
+    url: (id) => `/api/admin/special-products/${id}`,
+    reload: () => loadBoSpecialProducts(true),
+    label: "특별상품",
+  },
 };
 
 document.addEventListener("click", async (e) => {
@@ -4163,6 +4262,452 @@ document.addEventListener("click", async (e) => {
   } catch (err) {
     console.error("삭제 실패:", err);
     alert(err.message);
+  }
+});
+
+/* ── Backoffice: 특별상품 관리(FSS 비연동, 관리자 직접 등록) ──────────── */
+let boSpecialOffset = 0, boSpecialQuery = "";
+let boSpecialCache = {};
+let boSpecialEditId = null;
+
+async function loadBoSpecialProducts(reset = true) {
+  if (reset) boSpecialOffset = 0;
+  try {
+    const res = await apiFetch(
+      `/api/special-products?offset=${boSpecialOffset}&limit=${BO_PAGE_SIZE}&q=${encodeURIComponent(boSpecialQuery)}`
+    );
+    if (!res.ok) throw new Error("특별상품 목록 조회 실패");
+    const data = await res.json();
+    renderBoSpecialRows(data.special_products, reset);
+    document.getElementById("bo-special-more").style.display =
+      boSpecialOffset + data.special_products.length < data.total ? "" : "none";
+    boSpecialOffset += data.special_products.length;
+  } catch (err) {
+    console.error("특별상품 목록 로드 실패:", err);
+  }
+}
+
+function renderBoSpecialRows(products, reset) {
+  if (reset) boSpecialCache = {};
+  const rows = products
+    .map((p) => {
+      boSpecialCache[p.id] = p;
+      return `<tr data-id="${p.id}"><td>${escapeHtml(p.title)}</td><td>${escapeHtml(p.bank_name)}</td><td>${escapeHtml(p.rate_text)}</td>` +
+        `<td><div class="bo-row-actions">` +
+        `<button class="btn btn-ghost bo-edit-btn" type="button" data-kind="special_product" data-id="${p.id}">수정</button>` +
+        `<button class="btn btn-ghost bo-del-btn" type="button" data-kind="special_product" data-id="${p.id}">삭제</button>` +
+        `</div></td></tr>`;
+    })
+    .join("");
+  const tbody = document.getElementById("bo-special-rows");
+  tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
+}
+
+function boSpecialStartEdit(id) {
+  const p = boSpecialCache[id];
+  if (!p) return;
+  boSpecialEditId = id;
+  document.getElementById("bo-special-title").value = p.title;
+  document.getElementById("bo-special-bank").value = p.bank_name || "";
+  document.getElementById("bo-special-rate").value = p.rate_text || "";
+  document.getElementById("bo-special-badge").value = p.badge || "";
+  document.getElementById("bo-special-desc").value = p.description || "";
+  document.getElementById("bo-special-sort").value = p.sort_order || 0;
+  document.getElementById("bo-special-submit-btn").textContent = "수정 완료";
+  document.getElementById("bo-special-cancel-btn").style.display = "";
+  document.getElementById("bo-special-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelectorAll("#bo-special-rows tr.editing").forEach((tr) => tr.classList.remove("editing"));
+  document.querySelector(`#bo-special-rows tr[data-id="${id}"]`)?.classList.add("editing");
+}
+
+function boSpecialCancelEdit() {
+  boSpecialEditId = null;
+  document.getElementById("bo-special-form").reset();
+  document.getElementById("bo-special-submit-btn").textContent = "등록";
+  document.getElementById("bo-special-cancel-btn").style.display = "none";
+  document.querySelectorAll("#bo-special-rows tr.editing").forEach((tr) => tr.classList.remove("editing"));
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#bo-special-search-btn")) {
+    boSpecialQuery = document.getElementById("bo-special-search").value.trim();
+    loadBoSpecialProducts(true);
+  }
+  if (e.target.closest("#bo-special-more")) loadBoSpecialProducts(false);
+  const editBtn = e.target.closest('.bo-edit-btn[data-kind="special_product"]');
+  if (editBtn) boSpecialStartEdit(editBtn.dataset.id);
+  if (e.target.closest("#bo-special-cancel-btn")) boSpecialCancelEdit();
+});
+
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "bo-special-form") return;
+  e.preventDefault();
+  const statusEl = document.getElementById("bo-special-form-status");
+  statusEl.className = "tf-status";
+  statusEl.textContent = boSpecialEditId ? "수정 중…" : "등록 중…";
+  try {
+    const payload = {
+      title: document.getElementById("bo-special-title").value.trim(),
+      bank_name: document.getElementById("bo-special-bank").value.trim(),
+      rate_text: document.getElementById("bo-special-rate").value.trim(),
+      badge: document.getElementById("bo-special-badge").value.trim(),
+      description: document.getElementById("bo-special-desc").value.trim(),
+      sort_order: Number(document.getElementById("bo-special-sort").value) || 0,
+    };
+    const res = boSpecialEditId
+      ? await apiFetch(`/api/admin/special-products/${boSpecialEditId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+      : await apiFetch("/api/admin/special-products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+    if (!res.ok) throw new Error(boSpecialEditId ? "수정에 실패했습니다." : "등록에 실패했습니다.");
+    statusEl.textContent = "";
+    boSpecialCancelEdit();
+    loadBoSpecialProducts(true);
+  } catch (err) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = err.message;
+  }
+});
+
+/* ── Backoffice: 이벤트 관리(응모자 보기 + 추첨 실행) ─────────────────── */
+const dateInputToEpoch = (str) => new Date(str).getTime() / 1000;
+const epochToDateInput = (epoch) => new Date(epoch * 1000).toISOString().slice(0, 10);
+
+let boEventOffset = 0, boEventQuery = "";
+let boEventCache = {};
+let boEventEditId = null;
+
+async function loadBoEvents(reset = true) {
+  if (reset) boEventOffset = 0;
+  try {
+    const res = await apiFetch(
+      `/api/events?offset=${boEventOffset}&limit=${BO_PAGE_SIZE}&q=${encodeURIComponent(boEventQuery)}`
+    );
+    if (!res.ok) throw new Error("이벤트 목록 조회 실패");
+    const data = await res.json();
+    renderBoEventRows(data.events, reset);
+    document.getElementById("bo-event-more").style.display =
+      boEventOffset + data.events.length < data.total ? "" : "none";
+    boEventOffset += data.events.length;
+  } catch (err) {
+    console.error("이벤트 목록 로드 실패:", err);
+  }
+}
+
+function renderBoEventRows(events, reset) {
+  if (reset) boEventCache = {};
+  const rows = events
+    .map((ev) => {
+      boEventCache[ev.id] = ev;
+      const period = `${new Date(ev.start_at * 1000).toLocaleDateString("ko-KR")} ~ ${new Date(ev.end_at * 1000).toLocaleDateString("ko-KR")}`;
+      const drawCell = !ev.is_drawing
+        ? '<span class="tf-hint">-</span>'
+        : ev.drawn_at
+          ? '<span class="status-badge ok">추첨완료</span>'
+          : `<button class="btn btn-ghost" type="button" data-event-draw="${ev.id}">추첨 실행</button>`;
+      const entrantsBtn = ev.is_drawing
+        ? `<button class="btn btn-ghost" type="button" data-event-entrants="${ev.id}">응모자 보기</button>`
+        : "";
+      return `<tr data-id="${ev.id}"><td>${escapeHtml(ev.title)}</td><td>${period}</td><td>${drawCell}</td>` +
+        `<td><div class="bo-row-actions">` +
+        entrantsBtn +
+        `<button class="btn btn-ghost bo-edit-btn" type="button" data-kind="event" data-id="${ev.id}">수정</button>` +
+        `<button class="btn btn-ghost bo-del-btn" type="button" data-kind="event" data-id="${ev.id}">삭제</button>` +
+        `</div></td></tr>`;
+    })
+    .join("");
+  const tbody = document.getElementById("bo-event-rows");
+  tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
+}
+
+function boEventStartEdit(id) {
+  const ev = boEventCache[id];
+  if (!ev) return;
+  boEventEditId = id;
+  document.getElementById("bo-event-title").value = ev.title;
+  document.getElementById("bo-event-content").value = ev.content || "";
+  document.getElementById("bo-event-start").value = epochToDateInput(ev.start_at);
+  document.getElementById("bo-event-end").value = epochToDateInput(ev.end_at);
+  document.getElementById("bo-event-drawing").checked = !!ev.is_drawing;
+  document.getElementById("bo-event-winner-count").value = ev.winner_count || 0;
+  document.getElementById("bo-event-winner-count-field").style.display = ev.is_drawing ? "" : "none";
+  document.getElementById("bo-event-submit-btn").textContent = "수정 완료";
+  document.getElementById("bo-event-cancel-btn").style.display = "";
+  document.getElementById("bo-event-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelectorAll("#bo-event-rows tr.editing").forEach((tr) => tr.classList.remove("editing"));
+  document.querySelector(`#bo-event-rows tr[data-id="${id}"]`)?.classList.add("editing");
+}
+
+function boEventCancelEdit() {
+  boEventEditId = null;
+  document.getElementById("bo-event-form").reset();
+  document.getElementById("bo-event-winner-count-field").style.display = "none";
+  document.getElementById("bo-event-submit-btn").textContent = "등록";
+  document.getElementById("bo-event-cancel-btn").style.display = "none";
+  document.querySelectorAll("#bo-event-rows tr.editing").forEach((tr) => tr.classList.remove("editing"));
+}
+
+document.addEventListener("change", (e) => {
+  if (e.target.id === "bo-event-drawing") {
+    document.getElementById("bo-event-winner-count-field").style.display = e.target.checked ? "" : "none";
+  }
+});
+
+document.addEventListener("click", async (e) => {
+  if (e.target.closest("#bo-event-search-btn")) {
+    boEventQuery = document.getElementById("bo-event-search").value.trim();
+    loadBoEvents(true);
+  }
+  if (e.target.closest("#bo-event-more")) loadBoEvents(false);
+  const editBtn = e.target.closest('.bo-edit-btn[data-kind="event"]');
+  if (editBtn) boEventStartEdit(editBtn.dataset.id);
+  if (e.target.closest("#bo-event-cancel-btn")) boEventCancelEdit();
+
+  const entrantsBtn = e.target.closest("[data-event-entrants]");
+  if (entrantsBtn) {
+    const eventId = entrantsBtn.dataset.eventEntrants;
+    try {
+      const res = await apiFetch(`/api/admin/events/${eventId}/entries?limit=100`);
+      if (!res.ok) throw new Error("응모자 목록 조회 실패");
+      const data = await res.json();
+      const rows = data.entries
+        .map(
+          (en) =>
+            `<tr><td>${escapeHtml(en.name || en.username)}</td><td>${mpFmtDate(en.created_at)}</td>` +
+            `<td>${en.is_winner ? '<span class="status-badge ok">당첨</span>' : ""}</td></tr>`
+        )
+        .join("");
+      showModal(
+        `<h3>응모자 목록 (총 ${data.total}명)</h3>` +
+          `<table class="admin-table"><thead><tr><th>이름</th><th>응모일</th><th></th></tr></thead>` +
+          `<tbody>${rows || '<tr><td colspan="3" class="tf-hint">응모자가 없습니다.</td></tr>'}</tbody></table>`,
+        true
+      );
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  const drawBtn = e.target.closest("[data-event-draw]");
+  if (drawBtn) {
+    if (!confirm("추첨을 실행하시겠습니까? 이미 실행된 추첨은 다시 실행되지 않습니다.")) return;
+    try {
+      const res = await apiFetch(`/api/admin/events/${drawBtn.dataset.eventDraw}/draw`, { method: "POST" });
+      if (!res.ok) throw new Error("추첨 실행에 실패했습니다.");
+      const data = await res.json();
+      alert(`추첨 완료 — 당첨자 ${data.winners.length}명`);
+      loadBoEvents(true);
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+});
+
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "bo-event-form") return;
+  e.preventDefault();
+  const statusEl = document.getElementById("bo-event-form-status");
+  statusEl.className = "tf-status";
+  statusEl.textContent = boEventEditId ? "수정 중…" : "등록 중…";
+  try {
+    const payload = {
+      title: document.getElementById("bo-event-title").value.trim(),
+      content: document.getElementById("bo-event-content").value.trim(),
+      start_at: dateInputToEpoch(document.getElementById("bo-event-start").value),
+      end_at: dateInputToEpoch(document.getElementById("bo-event-end").value),
+      is_drawing: document.getElementById("bo-event-drawing").checked,
+      winner_count: Number(document.getElementById("bo-event-winner-count").value) || 0,
+    };
+    const res = boEventEditId
+      ? await apiFetch(`/api/admin/events/${boEventEditId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+      : await apiFetch("/api/admin/events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+    if (!res.ok) throw new Error(boEventEditId ? "수정에 실패했습니다." : "등록에 실패했습니다.");
+    statusEl.textContent = "";
+    boEventCancelEdit();
+    loadBoEvents(true);
+  } catch (err) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = err.message;
+  }
+});
+
+/* ── Backoffice: 배너 관리(공지·이벤트·특별상품 연결) ─────────────────── */
+const BO_BANNER_LINK_LABEL = { none: "없음", notice: "공지사항", event: "이벤트", special_product: "특별상품" };
+const BO_BANNER_LINK_ENDPOINTS = {
+  notice: { url: "/api/notices?limit=50", items: (d) => d.notices, label: (n) => n.title },
+  event: { url: "/api/events?limit=50", items: (d) => d.events, label: (n) => n.title },
+  special_product: { url: "/api/special-products?limit=50", items: (d) => d.special_products, label: (n) => n.title },
+};
+
+let boBannerOffset = 0, boBannerQuery = "";
+let boBannerCache = {};
+let boBannerEditId = null;
+
+async function loadBoBanners(reset = true) {
+  if (reset) boBannerOffset = 0;
+  try {
+    const res = await apiFetch(
+      `/api/admin/banners?offset=${boBannerOffset}&limit=${BO_PAGE_SIZE}&q=${encodeURIComponent(boBannerQuery)}`
+    );
+    if (!res.ok) throw new Error("배너 목록 조회 실패");
+    const data = await res.json();
+    renderBoBannerRows(data.banners, reset);
+    document.getElementById("bo-banner-more").style.display =
+      boBannerOffset + data.banners.length < data.total ? "" : "none";
+    boBannerOffset += data.banners.length;
+  } catch (err) {
+    console.error("배너 목록 로드 실패:", err);
+  }
+}
+
+function renderBoBannerRows(banners, reset) {
+  if (reset) boBannerCache = {};
+  const rows = banners
+    .map((b) => {
+      boBannerCache[b.id] = b;
+      const activeBadge = b.is_active
+        ? '<span class="status-badge ok">활성</span>'
+        : '<span class="status-badge down">비활성</span>';
+      const thumb = b.image_path
+        ? `<img src="${b.image_path}" alt="" style="width:64px; height:auto; border-radius:4px;" />`
+        : "";
+      return `<tr data-id="${b.id}"><td>${thumb}</td><td>${escapeHtml(b.title)}</td>` +
+        `<td>${BO_BANNER_LINK_LABEL[b.link_type] || b.link_type}</td><td>${b.sort_order}</td><td>${activeBadge}</td>` +
+        `<td><div class="bo-row-actions">` +
+        `<button class="btn btn-ghost bo-edit-btn" type="button" data-kind="banner" data-id="${b.id}">수정</button>` +
+        `<button class="btn btn-ghost bo-del-btn" type="button" data-kind="banner" data-id="${b.id}">삭제</button>` +
+        `</div></td></tr>`;
+    })
+    .join("");
+  const tbody = document.getElementById("bo-banner-rows");
+  tbody.innerHTML = reset ? rows : tbody.innerHTML + rows;
+}
+
+async function boBannerRefreshLinkOptions(linkType, selectedId) {
+  const field = document.getElementById("bo-banner-link-id-field");
+  const select = document.getElementById("bo-banner-link-id");
+  const endpoint = BO_BANNER_LINK_ENDPOINTS[linkType];
+  if (!endpoint) {
+    field.style.display = "none";
+    select.innerHTML = "";
+    return;
+  }
+  field.style.display = "";
+  select.innerHTML = '<option value="">불러오는 중…</option>';
+  try {
+    const res = await fetch(endpoint.url);
+    const data = await res.json();
+    const items = endpoint.items(data) || [];
+    select.innerHTML = items
+      .map((item) => `<option value="${item.id}">${escapeHtml(endpoint.label(item))}</option>`)
+      .join("") || '<option value="">등록된 항목이 없습니다</option>';
+    if (selectedId) select.value = String(selectedId);
+  } catch (err) {
+    select.innerHTML = '<option value="">목록 조회 실패</option>';
+  }
+}
+
+document.addEventListener("change", (e) => {
+  if (e.target.id === "bo-banner-link-type") {
+    boBannerRefreshLinkOptions(e.target.value);
+  }
+});
+
+function boBannerStartEdit(id) {
+  const b = boBannerCache[id];
+  if (!b) return;
+  boBannerEditId = id;
+  document.getElementById("bo-banner-title").value = b.title;
+  document.getElementById("bo-banner-subtitle").value = b.subtitle || "";
+  document.getElementById("bo-banner-image").value = "";
+  document.getElementById("bo-banner-image-name").textContent = b.image_path ? "기존 이미지 유지" : "선택된 파일 없음";
+  const preview = document.getElementById("bo-banner-image-preview");
+  if (b.image_path) {
+    preview.src = b.image_path;
+    preview.style.display = "";
+  } else {
+    preview.style.display = "none";
+  }
+  document.getElementById("bo-banner-sort").value = Math.min(5, Math.max(1, b.sort_order || 1));
+  document.getElementById("bo-banner-active").checked = !!b.is_active;
+  document.getElementById("bo-banner-link-type").value = b.link_type;
+  boBannerRefreshLinkOptions(b.link_type, b.link_id);
+  document.getElementById("bo-banner-submit-btn").textContent = "수정 완료";
+  document.getElementById("bo-banner-cancel-btn").style.display = "";
+  document.getElementById("bo-banner-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelectorAll("#bo-banner-rows tr.editing").forEach((tr) => tr.classList.remove("editing"));
+  document.querySelector(`#bo-banner-rows tr[data-id="${id}"]`)?.classList.add("editing");
+}
+
+function boBannerCancelEdit() {
+  boBannerEditId = null;
+  document.getElementById("bo-banner-form").reset();
+  document.getElementById("bo-banner-link-id-field").style.display = "none";
+  document.getElementById("bo-banner-image-preview").style.display = "none";
+  document.getElementById("bo-banner-image-name").textContent = "선택된 파일 없음";
+  document.getElementById("bo-banner-submit-btn").textContent = "등록";
+  document.getElementById("bo-banner-cancel-btn").style.display = "none";
+  document.querySelectorAll("#bo-banner-rows tr.editing").forEach((tr) => tr.classList.remove("editing"));
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#bo-banner-cancel-btn")) boBannerCancelEdit();
+  if (e.target.closest("#bo-banner-more")) loadBoBanners(false);
+  const editBtn = e.target.closest('.bo-edit-btn[data-kind="banner"]');
+  if (editBtn) boBannerStartEdit(editBtn.dataset.id);
+});
+
+document.getElementById("bo-banner-image").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById("bo-banner-image-name").textContent = file.name;
+  const preview = document.getElementById("bo-banner-image-preview");
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = "";
+});
+
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "bo-banner-form") return;
+  e.preventDefault();
+  const statusEl = document.getElementById("bo-banner-form-status");
+  statusEl.className = "tf-status";
+  statusEl.textContent = boBannerEditId ? "수정 중…" : "등록 중…";
+  try {
+    const linkIdRaw = document.getElementById("bo-banner-link-id").value;
+    const imageFile = document.getElementById("bo-banner-image").files[0];
+    if (!boBannerEditId && !imageFile) throw new Error("배너 이미지를 선택해주세요.");
+    const fd = new FormData();
+    fd.append("title", document.getElementById("bo-banner-title").value.trim());
+    fd.append("subtitle", document.getElementById("bo-banner-subtitle").value.trim());
+    fd.append("link_type", document.getElementById("bo-banner-link-type").value);
+    if (linkIdRaw) fd.append("link_id", linkIdRaw);
+    fd.append("sort_order", Number(document.getElementById("bo-banner-sort").value) || 0);
+    fd.append("is_active", document.getElementById("bo-banner-active").checked);
+    if (imageFile) fd.append("image", imageFile);
+    const res = boBannerEditId
+      ? await apiFetch(`/api/admin/banners/${boBannerEditId}`, { method: "PUT", body: fd })
+      : await apiFetch("/api/admin/banners", { method: "POST", body: fd });
+    if (!res.ok) throw new Error(boBannerEditId ? "수정에 실패했습니다." : "등록에 실패했습니다.");
+    statusEl.textContent = "";
+    boBannerCancelEdit();
+    loadBoBanners(true);
+  } catch (err) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = err.message;
   }
 });
 
@@ -4203,7 +4748,7 @@ async function loadBoInfraConfig() {
 }
 
 /* ── 고객센터: 공지사항 / FAQ / 문의하기 / 서식·약관·설명서 ─────────── */
-const SUPPORT_TABS = ["notices", "faq", "inquiry", "documents"];
+const SUPPORT_TABS = ["notices", "faq", "inquiry", "documents", "events"];
 const supportLoaded = {};
 let noticeOffset = 0, noticeQuery = "";
 let faqOffset = 0, faqQuery = "";
@@ -4226,6 +4771,7 @@ function supportGoTab(name) {
 
 function ensureSupportTabLoaded(name) {
   if (name === "inquiry") { updateInquiryView(); return; }   // 로그인 상태가 바뀔 수 있어 매번 갱신
+  if (name === "events") { loadEvents(true); return; }       // 응모 상태가 로그인에 따라 달라져 매번 갱신
   if (supportLoaded[name]) return;
   supportLoaded[name] = true;
   if (name === "notices") loadNotices();
@@ -4347,6 +4893,87 @@ document.addEventListener("click", (e) => {
     loadDocuments(true);
   }
   if (e.target.closest("#document-more")) loadDocuments(false);
+});
+
+/* 이벤트 (추첨형은 로그인 시 응모 가능) */
+let eventOffset = 0, eventQuery = "";
+
+async function loadEvents(reset = true) {
+  if (reset) eventOffset = 0;
+  try {
+    const res = await fetch(`/api/events?offset=${eventOffset}&limit=${SUPPORT_PAGE_SIZE}&q=${encodeURIComponent(eventQuery)}`);
+    const data = await res.json();
+    renderEventList(data.events, reset);
+    document.getElementById("event-more").style.display =
+      eventOffset + data.events.length < data.total ? "" : "none";
+    eventOffset += data.events.length;
+    updateEventEntryStates(data.events);
+  } catch (err) {
+    console.error("이벤트 로드 실패:", err);
+  }
+}
+
+function renderEventList(events, reset) {
+  const rows = events
+    .map((ev) => {
+      const period = `${fmtDate(ev.start_at)} ~ ${fmtDate(ev.end_at)}`;
+      const drawBadge = ev.is_drawing ? '<span class="status-badge ok">추첨 이벤트</span> ' : "";
+      let actionHtml = "";
+      if (ev.is_drawing) {
+        if (ev.drawn_at) {
+          // 당첨자 발표는 이 글에 덧붙이지 않고 "[당첨자 발표] ..." 별도 게시글로 분리되어 있다(추첨 실행 시 자동 생성).
+          actionHtml = '<p class="tf-hint">추첨이 종료되었습니다. 목록에서 "[당첨자 발표]" 게시글을 확인해주세요.</p>';
+        } else {
+          actionHtml = `<div class="event-entry" data-event-id="${ev.id}">` +
+            (isLoggedIn()
+              ? `<button class="btn btn-primary" type="button" data-event-enter="${ev.id}">응모하기</button>`
+              : `<p class="tf-hint">응모하려면 로그인이 필요합니다. <button class="btn btn-ghost" type="button" data-nav="auth">로그인</button></p>`) +
+            `</div>`;
+        }
+      }
+      return `<div class="faq-item"><div class="faq-q"><span>${drawBadge}${escapeHtml(ev.title)}</span><span class="chev">▾</span></div>` +
+        `<div class="faq-a"><div class="tf-hint">${period}</div>${escapeHtml(ev.content)}${actionHtml}</div></div>`;
+    })
+    .join("");
+  const box = document.getElementById("event-list");
+  if (reset) box.innerHTML = events.length ? rows : '<p class="support-empty">등록된 이벤트가 없습니다.</p>';
+  else box.innerHTML += rows;
+}
+
+async function updateEventEntryStates(events) {
+  if (!isLoggedIn()) return;
+  const pending = events.filter((ev) => ev.is_drawing && !ev.drawn_at);
+  await Promise.all(
+    pending.map(async (ev) => {
+      try {
+        const res = await apiFetch(`/api/events/${ev.id}/my-status`);
+        if (!res.ok) return;
+        const status = await res.json();
+        if (!status.entered) return;
+        const box = document.querySelector(`.event-entry[data-event-id="${ev.id}"]`);
+        if (box) box.innerHTML = '<span class="status-badge ok">이미 응모함</span>';
+      } catch {
+        /* 상태 조회 실패 시 기본 "응모하기" 버튼 유지 */
+      }
+    })
+  );
+}
+
+document.addEventListener("click", async (e) => {
+  if (e.target.closest("#event-more")) loadEvents(false);
+  const enterBtn = e.target.closest("[data-event-enter]");
+  if (!enterBtn) return;
+  enterBtn.disabled = true;
+  try {
+    const res = await apiFetch(`/api/events/${enterBtn.dataset.eventEnter}/enter`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "응모에 실패했습니다.");
+    const box = enterBtn.closest(".event-entry");
+    if (box) box.innerHTML = '<span class="status-badge ok">이미 응모함</span>';
+  } catch (err) {
+    alert(err.message);
+    enterBtn.disabled = false;
+  }
 });
 
 /* 문의하기 (로그인 필수) */

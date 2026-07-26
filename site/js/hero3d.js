@@ -38,31 +38,30 @@ async function initHero3D(el) {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
-  camera.position.set(0, 0, 9);
+  /* 좌우 분할 레이아웃에서 구체 전용 영역(전체 히어로보다 좁음)에 맞춰
+     카메라를 더 가까이 당겨 구체가 이전보다 크고 또렷하게 보이도록 함 */
+  camera.position.set(0, 0, 7);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(width, height);
   el.appendChild(renderer.domElement);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-  const key = new THREE.DirectionalLight(0xffffff, 0.7);
-  key.position.set(2, 3, 5);
-  scene.add(key);
-
   const group = new THREE.Group();
   scene.add(group);
 
   /* 로고의 겹치는 두 원(매칭) — 블러로 경계를 흐려 텍스트 뒤 앰비언트로 */
-  const geometry = new THREE.SphereGeometry(1.5, 48, 48);
-  /* 밝지만 채도 높은 비비드 민트그린 — 파스텔로 죽지 않으면서도 텍스트 가독성 유지 */
+  const geometry = new THREE.SphereGeometry(1.7, 48, 48);
+  /* 진한 그린 히어로 배경 위에서 빛나는 흰 구체 — MeshStandardMaterial(조명 반응형)은
+     조명 각도에 따라 회녹색으로 탁하게 보여서, 조명 영향을 받지 않는 MeshBasicMaterial로
+     순수한 흰색을 그대로 렌더링한다 */
   const sphereA = new THREE.Mesh(
     geometry,
-    new THREE.MeshStandardMaterial({ color: 0x2ed9a0, transparent: true, opacity: 0.4, roughness: 0.5 })
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.62 })
   );
   const sphereB = new THREE.Mesh(
     geometry,
-    new THREE.MeshStandardMaterial({ color: 0x5ee6b8, transparent: true, opacity: 0.45, roughness: 0.5 })
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.68 })
   );
   sphereA.position.z = 0.3;
   sphereB.position.z = -0.3;
@@ -86,12 +85,13 @@ async function initHero3D(el) {
     raf = requestAnimationFrame(animate);
     const t = clock.getElapsedTime();
 
-    /* 0(완전히 겹쳐 "매치") ↔ 2.6(멀리 떨어짐)을 느리게 왕복 */
-    const spread = 2.6 * ((Math.sin(t * 0.22) + 1) / 2);
+    /* 0(완전히 겹쳐 "매치") ↔ 1.5(떨어짐)를 왕복 — 구체 전용 영역(예전보다 좁은 프레임)에
+       맞춰 진폭을 줄여 화면 밖으로 벗어나지 않게 함 */
+    const spread = 1.5 * ((Math.sin(t * 0.5) + 1) / 2);
     sphereA.position.x = -spread;
     sphereB.position.x = spread;
-    sphereA.position.y = Math.sin(t * 0.35) * 0.3;
-    sphereB.position.y = Math.sin(t * 0.35 + Math.PI) * 0.3;
+    sphereA.position.y = Math.sin(t * 0.6) * 0.35;
+    sphereB.position.y = Math.sin(t * 0.6 + Math.PI) * 0.35;
 
     group.rotation.y = pointerTarget.x * 0.12;
     group.rotation.x = -pointerTarget.y * 0.08;

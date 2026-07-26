@@ -12,9 +12,10 @@ import json
 import re
 import sqlite3
 import time
+import uuid
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -1241,6 +1242,224 @@ def admin_get_inquiries(offset: int = 0, limit: int = 20, q: str = "", user: dic
         "inquiries": db.list_all_inquiries(offset, limit, q),
         "total": db.count_all_inquiries(q),
     }
+
+
+# ── 홈 배너 (공개) ───────────────────────────────────────────────────
+@app.get("/api/banners")
+def get_banners():
+    return {"banners": db.list_active_banners()}
+
+
+BANNER_IMAGE_DIR = SITE_DIR / "img" / "banners"
+BANNER_IMAGE_EXTS = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif",
+                     "image/webp": ".webp", "image/svg+xml": ".svg"}
+BANNER_IMAGE_MAX_BYTES = 5 * 1024 * 1024  # 5MB
+
+
+def _validate_banner_link(link_type: str) -> None:
+    if link_type not in ("none", "notice", "event", "special_product"):
+        raise HTTPException(400, "지원하지 않는 연결 대상입니다.")
+
+
+def _save_banner_image(image: UploadFile) -> str:
+    """배너 이미지를 site/img/banners/에 저장하고 공개 경로를 반환한다.
+
+    클라이언트가 보낸 원본 파일명은 절대 그대로 쓰지 않고(경로 조작 방지),
+    content-type 기준으로 생성한 임의 파일명만 사용한다.
+    """
+    ext = BANNER_IMAGE_EXTS.get(image.content_type)
+    if ext is None:
+        raise HTTPException(400, "이미지 파일(jpg/png/gif/webp/svg)만 업로드할 수 있습니다.")
+    data = image.file.read()
+    if len(data) > BANNER_IMAGE_MAX_BYTES:
+        raise HTTPException(400, "이미지 파일은 5MB 이하만 업로드할 수 있습니다.")
+    BANNER_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}{ext}"
+    (BANNER_IMAGE_DIR / filename).write_bytes(data)
+    return f"/img/banners/{filename}"
+
+
+@app.get("/api/admin/banners")
+def admin_get_banners(offset: int = 0, limit: int = 20, q: str = "", user: dict = Depends(auth.require_admin)):
+    return {"banners": db.list_banners(offset, limit, q), "total": db.count_banners(q)}
+
+
+@app.post("/api/admin/banners")
+def admin_create_banner(
+    title: str = Form(...), subtitle: str = Form(""), link_type: str = Form("none"),
+    link_id: int | None = Form(None), sort_order: int = Form(0), is_active: bool = Form(True),
+    image: UploadFile = File(...), user: dict = Depends(auth.require_admin),
+):
+    _validate_banner_link(link_type)
+    image_path = _save_banner_image(image)
+    banner_id = db.create_banner(title, subtitle, image_path, link_type, link_id, sort_order, int(is_active))
+    return {"id": banner_id}
+
+
+@app.put("/api/admin/banners/{banner_id}")
+def admin_update_banner(
+    banner_id: int, title: str = Form(...), subtitle: str = Form(""), link_type: str = Form("none"),
+    link_id: int | None = Form(None), sort_order: int = Form(0), is_active: bool = Form(True),
+    image: UploadFile | None = File(None), user: dict = Depends(auth.require_admin),
+):
+    _validate_banner_link(link_type)
+    existing = db.get_banner(banner_id)
+    if existing is None:
+        raise HTTPException(404, "배너를 찾을 수 없습니다.")
+    image_path = _save_banner_image(image) if image is not None and image.filename else existing["image_path"]
+    db.update_banner(banner_id, title, subtitle, image_path, link_type, link_id, sort_order, int(is_active))
+    return {"ok": True}
+
+
+@app.delete("/api/admin/banners/{banner_id}")
+def admin_delete_banner(banner_id: int, user: dict = Depends(auth.require_admin)):
+    db.delete_banner(banner_id)
+    return {"ok": True}
+
+
+# ── 상품안내: 특별상품 (공개 조회 + 관리자 CRUD) ─────────────────────────
+@app.get("/api/special-products")
+def get_special_products(offset: int = 0, limit: int = 20, q: str = ""):
+    return {
+        "special_products": db.list_special_products(offset, limit, q),
+        "total": db.count_special_products(q),
+    }
+
+
+class SpecialProductReq(BaseModel):
+    title: str
+    bank_name: str = ""
+    rate_text: str = ""
+    description: str = ""
+    badge: str = ""
+    sort_order: int = 0
+
+
+@app.post("/api/admin/special-products")
+def admin_create_special_product(req: SpecialProductReq, user: dict = Depends(auth.require_admin)):
+    product_id = db.create_special_product(req.title, req.bank_name, req.rate_text,
+                                            req.description, req.badge, req.sort_order)
+    return {"id": product_id}
+
+
+@app.put("/api/admin/special-products/{product_id}")
+def admin_update_special_product(product_id: int, req: SpecialProductReq,
+                                  user: dict = Depends(auth.require_admin)):
+    db.update_special_product(product_id, req.title, req.bank_name, req.rate_text,
+                               req.description, req.badge, req.sort_order)
+    return {"ok": True}
+
+
+@app.delete("/api/admin/special-products/{product_id}")
+def admin_delete_special_product(product_id: int, user: dict = Depends(auth.require_admin)):
+    db.delete_special_product(product_id)
+    return {"ok": True}
+
+
+# ── 고객센터: 이벤트 (공개 조회 + 응모 + 관리자 CRUD/추첨) ────────────────
+def _mask_name(name: str) -> str:
+    """당첨자 발표는 전체 공개 게시물이라 실명을 그대로 노출하지 않고 가운데를 가린다."""
+    name = name or "익명"
+    if len(name) <= 2:
+        return name[0] + "*"
+    return name[0] + "*" * (len(name) - 2) + name[-1]
+
+
+@app.get("/api/events")
+def get_events(offset: int = 0, limit: int = 20, q: str = ""):
+    return {"events": db.list_events(offset, limit, q), "total": db.count_events(q)}
+
+
+@app.get("/api/events/{event_id}")
+def get_event_detail(event_id: int):
+    event = db.get_event(event_id)
+    if event is None:
+        raise HTTPException(404, "이벤트를 찾을 수 없습니다.")
+    return event
+
+
+@app.get("/api/events/{event_id}/my-status")
+def get_event_my_status(event_id: int, user: dict = Depends(auth.get_current_user)):
+    entry = db.get_event_entry(event_id, user["id"])
+    return {"entered": entry is not None, "is_winner": bool(entry and entry["is_winner"])}
+
+
+@app.post("/api/events/{event_id}/enter")
+def enter_event(event_id: int, user: dict = Depends(auth.get_current_user)):
+    event = db.get_event(event_id)
+    if event is None:
+        raise HTTPException(404, "이벤트를 찾을 수 없습니다.")
+    if event["end_at"] < time.time():
+        raise HTTPException(400, "응모 기간이 종료된 이벤트입니다.")
+    try:
+        db.create_event_entry(event_id, user["id"])
+    except sqlite3.IntegrityError:
+        raise HTTPException(400, "이미 응모하셨습니다.")
+    return {"ok": True}
+
+
+class EventReq(BaseModel):
+    title: str
+    content: str = ""
+    start_at: float
+    end_at: float
+    is_drawing: bool = False
+    winner_count: int = 0
+
+
+@app.get("/api/admin/events/{event_id}/entries")
+def admin_get_event_entries(event_id: int, offset: int = 0, limit: int = 50,
+                             user: dict = Depends(auth.require_admin)):
+    return {
+        "entries": db.list_event_entries(event_id, offset, limit),
+        "total": db.count_event_entries(event_id),
+    }
+
+
+@app.post("/api/admin/events/{event_id}/draw")
+def admin_draw_event(event_id: int, user: dict = Depends(auth.require_admin)):
+    event = db.get_event(event_id)
+    if event is None:
+        raise HTTPException(404, "이벤트를 찾을 수 없습니다.")
+    if not event["is_drawing"]:
+        raise HTTPException(400, "추첨형 이벤트가 아닙니다.")
+    already_drawn = bool(event["drawn_at"])
+    winners = db.draw_event_winners(event_id, event["winner_count"])
+    if not already_drawn:
+        # 이벤트 원문 게시글과 당첨자 발표는 실제 이벤트 운영처럼 별도 게시글로 분리한다
+        # (동일 글 안에 응모 안내와 당첨 결과가 섞이면 나중에 온 방문자가 헷갈리기 쉬움).
+        names = [_mask_name(w["name"] or w["username"]) for w in winners]
+        content = (
+            f"'{event['title']}' 이벤트 추첨 결과를 발표합니다.\n\n당첨자: {', '.join(names)}"
+            if names else
+            f"'{event['title']}' 이벤트는 응모자가 없어 당첨자를 선정하지 못했습니다."
+        )
+        now = time.time()
+        db.create_event(
+            title=f"[당첨자 발표] {event['title']}", content=content,
+            start_at=now, end_at=event["end_at"], is_drawing=0, winner_count=0,
+        )
+    return {"winners": winners}
+
+
+@app.post("/api/admin/events")
+def admin_create_event(req: EventReq, user: dict = Depends(auth.require_admin)):
+    event_id = db.create_event(req.title, req.content, req.start_at, req.end_at,
+                                int(req.is_drawing), req.winner_count)
+    return {"id": event_id}
+
+
+@app.put("/api/admin/events/{event_id}")
+def admin_update_event(event_id: int, req: EventReq, user: dict = Depends(auth.require_admin)):
+    db.update_event(event_id, req.title, req.content, req.start_at, req.end_at,
+                     int(req.is_drawing), req.winner_count)
+    return {"ok": True}
+
+
+@app.delete("/api/admin/events/{event_id}")
+def admin_delete_event(event_id: int, user: dict = Depends(auth.require_admin)):
+    db.delete_event(event_id)
+    return {"ok": True}
 
 
 # ── 정적 사이트 서빙 (마지막에 마운트: /api 라우트가 우선) ───────────

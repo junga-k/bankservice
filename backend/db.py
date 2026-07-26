@@ -12,6 +12,13 @@
   inquiries(id, user_id, title, content, created_at)         # 고객센터: 문의하기
   chatbot_config_history(id, provider, default_model, default_style,
                           system_prompt, web_search, changed_by, created_at)  # AI은행원 설정 저장 이력
+  special_products(id, title, bank_name, rate_text, description, badge,
+                    sort_order, created_at)                # 상품안내: 관리자 등록 특별상품(FSS 비연동)
+  events(id, title, content, start_at, end_at, is_drawing,
+         winner_count, drawn_at, created_at)                # 고객센터: 이벤트(추첨 선택)
+  event_entries(id, event_id, user_id, is_winner, created_at)  # 이벤트 응모 내역
+  banners(id, title, subtitle, theme, link_type, link_id,
+          sort_order, is_active, created_at)                # 홈 배너 슬라이드
 
 금액은 원(KRW) 정수로 저장한다(소수 없음).
 공개 함수만 backend/app.py·transfer_consumer.py 에서 사용한다.
@@ -19,6 +26,7 @@
 from __future__ import annotations
 
 import json
+import random
 import re
 import sqlite3
 import time
@@ -154,6 +162,46 @@ def init_db() -> None:
                 answer          TEXT NOT NULL,
                 created_at      REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS special_products (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                title       TEXT NOT NULL,
+                bank_name   TEXT NOT NULL DEFAULT '',
+                rate_text   TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                badge       TEXT NOT NULL DEFAULT '',
+                sort_order  INTEGER NOT NULL DEFAULT 0,
+                created_at  REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS events (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                title        TEXT NOT NULL,
+                content      TEXT NOT NULL DEFAULT '',
+                start_at     REAL NOT NULL,
+                end_at       REAL NOT NULL,
+                is_drawing   INTEGER NOT NULL DEFAULT 0,
+                winner_count INTEGER NOT NULL DEFAULT 0,
+                drawn_at     REAL,
+                created_at   REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS event_entries (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id   INTEGER NOT NULL,
+                user_id    INTEGER NOT NULL,
+                is_winner  INTEGER NOT NULL DEFAULT 0,
+                created_at REAL NOT NULL,
+                UNIQUE(event_id, user_id)
+            );
+            CREATE TABLE IF NOT EXISTS banners (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                title      TEXT NOT NULL,
+                subtitle   TEXT NOT NULL DEFAULT '',
+                theme      TEXT NOT NULL DEFAULT 'green',
+                link_type  TEXT NOT NULL DEFAULT 'none',   -- 'none'|'notice'|'event'|'special_product'
+                link_id    INTEGER,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                is_active  INTEGER NOT NULL DEFAULT 1,
+                created_at REAL NOT NULL
+            );
             """
         )
         # 기존 DB 마이그레이션: users에 name/role, transfers에 sender_memo,
@@ -173,6 +221,7 @@ def init_db() -> None:
             ("is_active", "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1"),
             ("agree_marketing", "ALTER TABLE users ADD COLUMN agree_marketing INTEGER NOT NULL DEFAULT 0"),
             ("agree_openbanking", "ALTER TABLE users ADD COLUMN agree_openbanking INTEGER NOT NULL DEFAULT 1"),
+            ("image_path", "ALTER TABLE banners ADD COLUMN image_path TEXT NOT NULL DEFAULT ''"),
         ):
             try:
                 conn.execute(ddl)
@@ -1277,3 +1326,287 @@ def chat_feedback_reason_counts() -> list[dict]:
         [{"name": k, "count": v} for k, v in counts.items()],
         key=lambda x: -x["count"],
     )
+
+
+# ── 상품안내: 특별상품(관리자 등록, FSS 비연동) ──────────────────────────
+def create_special_product(title: str, bank_name: str = "", rate_text: str = "",
+                            description: str = "", badge: str = "",
+                            sort_order: int = 0) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO special_products(title, bank_name, rate_text, description, badge, "
+            "sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (title, bank_name, rate_text, description, badge, sort_order, time.time()),
+        )
+        return cur.lastrowid
+
+
+def update_special_product(product_id: int, title: str, bank_name: str = "", rate_text: str = "",
+                            description: str = "", badge: str = "", sort_order: int = 0) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE special_products SET title = ?, bank_name = ?, rate_text = ?, "
+            "description = ?, badge = ?, sort_order = ? WHERE id = ?",
+            (title, bank_name, rate_text, description, badge, sort_order, product_id),
+        )
+
+
+def delete_special_product(product_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM special_products WHERE id = ?", (product_id,))
+
+
+def list_special_products(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
+    with get_conn() as conn:
+        if q:
+            like = f"%{q}%"
+            rows = conn.execute(
+                "SELECT id, title, bank_name, rate_text, description, badge, sort_order, created_at "
+                "FROM special_products WHERE title LIKE ? OR description LIKE ? "
+                "ORDER BY sort_order, id LIMIT ? OFFSET ?",
+                (like, like, limit, offset),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, title, bank_name, rate_text, description, badge, sort_order, created_at "
+                "FROM special_products ORDER BY sort_order, id LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_special_products(q: str = "") -> int:
+    with get_conn() as conn:
+        if q:
+            like = f"%{q}%"
+            return conn.execute(
+                "SELECT COUNT(*) FROM special_products WHERE title LIKE ? OR description LIKE ?",
+                (like, like),
+            ).fetchone()[0]
+        return conn.execute("SELECT COUNT(*) FROM special_products").fetchone()[0]
+
+
+# ── 고객센터: 이벤트(추첨 선택) ──────────────────────────────────────
+def create_event(title: str, content: str, start_at: float, end_at: float,
+                  is_drawing: int = 0, winner_count: int = 0) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO events(title, content, start_at, end_at, is_drawing, winner_count, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (title, content, start_at, end_at, is_drawing, winner_count, time.time()),
+        )
+        return cur.lastrowid
+
+
+def update_event(event_id: int, title: str, content: str, start_at: float, end_at: float,
+                  is_drawing: int = 0, winner_count: int = 0) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE events SET title = ?, content = ?, start_at = ?, end_at = ?, "
+            "is_drawing = ?, winner_count = ? WHERE id = ?",
+            (title, content, start_at, end_at, is_drawing, winner_count, event_id),
+        )
+
+
+def delete_event(event_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
+        conn.execute("DELETE FROM event_entries WHERE event_id = ?", (event_id,))
+
+
+def list_events(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
+    with get_conn() as conn:
+        if q:
+            like = f"%{q}%"
+            rows = conn.execute(
+                "SELECT id, title, content, start_at, end_at, is_drawing, winner_count, drawn_at, created_at "
+                "FROM events WHERE title LIKE ? OR content LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                (like, like, limit, offset),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, title, content, start_at, end_at, is_drawing, winner_count, drawn_at, created_at "
+                "FROM events ORDER BY id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_events(q: str = "") -> int:
+    with get_conn() as conn:
+        if q:
+            like = f"%{q}%"
+            return conn.execute(
+                "SELECT COUNT(*) FROM events WHERE title LIKE ? OR content LIKE ?", (like, like),
+            ).fetchone()[0]
+        return conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+
+
+def get_event(event_id: int) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, title, content, start_at, end_at, is_drawing, winner_count, drawn_at, created_at "
+            "FROM events WHERE id = ?",
+            (event_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def create_event_entry(event_id: int, user_id: int) -> int:
+    """이벤트 응모. 이미 응모한 경우 sqlite3.IntegrityError."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO event_entries(event_id, user_id, created_at) VALUES (?, ?, ?)",
+            (event_id, user_id, time.time()),
+        )
+        return cur.lastrowid
+
+
+def get_event_entry(event_id: int, user_id: int) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, is_winner, created_at FROM event_entries WHERE event_id = ? AND user_id = ?",
+            (event_id, user_id),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def list_event_entries(event_id: int, offset: int = 0, limit: int = 50) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT e.id, e.user_id, e.is_winner, e.created_at, u.username, u.name "
+            "FROM event_entries e JOIN users u ON u.id = e.user_id "
+            "WHERE e.event_id = ? ORDER BY e.id DESC LIMIT ? OFFSET ?",
+            (event_id, limit, offset),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_event_entries(event_id: int) -> int:
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM event_entries WHERE event_id = ?", (event_id,)
+        ).fetchone()[0]
+
+
+def list_event_winners(event_id: int) -> list[dict]:
+    """추첨 완료된 이벤트의 당첨자 명단(고객센터 공개 발표용 — username/name만, 마스킹은 app.py에서)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT u.username, u.name FROM event_entries e JOIN users u ON u.id = e.user_id "
+            "WHERE e.event_id = ? AND e.is_winner = 1 ORDER BY e.id",
+            (event_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def draw_event_winners(event_id: int, winner_count: int) -> list[dict]:
+    """추첨을 실행한다. 이미 추첨됐으면 재추첨하지 않고 기존 당첨자 목록을 그대로 반환한다."""
+    with get_conn() as conn:
+        event = conn.execute("SELECT drawn_at FROM events WHERE id = ?", (event_id,)).fetchone()
+        if event is None:
+            return []
+        if event["drawn_at"]:
+            rows = conn.execute(
+                "SELECT e.id, e.user_id, e.is_winner, e.created_at, u.username, u.name "
+                "FROM event_entries e JOIN users u ON u.id = e.user_id "
+                "WHERE e.event_id = ? AND e.is_winner = 1 ORDER BY e.id",
+                (event_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+        entries = conn.execute(
+            "SELECT id FROM event_entries WHERE event_id = ?", (event_id,)
+        ).fetchall()
+        winner_ids = [r["id"] for r in random.sample(entries, min(winner_count, len(entries)))]
+        if winner_ids:
+            placeholders = ",".join("?" * len(winner_ids))
+            conn.execute(
+                f"UPDATE event_entries SET is_winner = 1 WHERE id IN ({placeholders})", winner_ids,
+            )
+        conn.execute("UPDATE events SET drawn_at = ? WHERE id = ?", (time.time(), event_id))
+
+        rows = conn.execute(
+            "SELECT e.id, e.user_id, e.is_winner, e.created_at, u.username, u.name "
+            "FROM event_entries e JOIN users u ON u.id = e.user_id "
+            "WHERE e.event_id = ? AND e.is_winner = 1 ORDER BY e.id",
+            (event_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── 홈 배너 ──────────────────────────────────────────────────────────
+def create_banner(title: str, subtitle: str = "", image_path: str = "", link_type: str = "none",
+                   link_id: int | None = None, sort_order: int = 0, is_active: int = 1) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO banners(title, subtitle, image_path, link_type, link_id, sort_order, is_active, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (title, subtitle, image_path, link_type, link_id, sort_order, is_active, time.time()),
+        )
+        return cur.lastrowid
+
+
+def update_banner(banner_id: int, title: str, subtitle: str = "", image_path: str = "",
+                   link_type: str = "none", link_id: int | None = None,
+                   sort_order: int = 0, is_active: int = 1) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE banners SET title = ?, subtitle = ?, image_path = ?, link_type = ?, link_id = ?, "
+            "sort_order = ?, is_active = ? WHERE id = ?",
+            (title, subtitle, image_path, link_type, link_id, sort_order, is_active, banner_id),
+        )
+
+
+def delete_banner(banner_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM banners WHERE id = ?", (banner_id,))
+
+
+def get_banner(banner_id: int) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, title, subtitle, image_path, link_type, link_id, sort_order, is_active, created_at "
+            "FROM banners WHERE id = ?",
+            (banner_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def list_banners(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
+    """Backoffice용 전체 목록(활성/비활성 무관)."""
+    with get_conn() as conn:
+        if q:
+            like = f"%{q}%"
+            rows = conn.execute(
+                "SELECT id, title, subtitle, image_path, link_type, link_id, sort_order, is_active, created_at "
+                "FROM banners WHERE title LIKE ? OR subtitle LIKE ? ORDER BY sort_order, id LIMIT ? OFFSET ?",
+                (like, like, limit, offset),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, title, subtitle, image_path, link_type, link_id, sort_order, is_active, created_at "
+                "FROM banners ORDER BY sort_order, id LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_banners(q: str = "") -> int:
+    with get_conn() as conn:
+        if q:
+            like = f"%{q}%"
+            return conn.execute(
+                "SELECT COUNT(*) FROM banners WHERE title LIKE ? OR subtitle LIKE ?", (like, like),
+            ).fetchone()[0]
+        return conn.execute("SELECT COUNT(*) FROM banners").fetchone()[0]
+
+
+def list_active_banners() -> list[dict]:
+    """홈 화면 공개용: 활성 배너만 노출순으로."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, title, subtitle, image_path, link_type, link_id FROM banners "
+            "WHERE is_active = 1 ORDER BY sort_order, id"
+        ).fetchall()
+    return [dict(r) for r in rows]

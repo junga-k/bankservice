@@ -42,27 +42,31 @@
     <!-- ── 홈 ──────────────────────────────────────────────────── -->
     <section id="home" class="section active">
       <div class="hero">
-        <div class="hero-3d" id="hero-3d" aria-hidden="true"></div>
-        <div class="hero-inner">
-          <h1>은행 금융상품을 <span class="accent">한눈에</span>,<br />AI에게 물어보세요</h1>
-          <p>예금·적금부터 은행 업무까지. 질문하면 AI가 찾아 안내합니다.</p>
-          <button class="btn btn-primary" data-nav="chat">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-            AI은행원에게 물어보기
-          </button>
+        <div class="hero-split">
+          <div class="hero-visual">
+            <div class="hero-3d" id="hero-3d" aria-hidden="true"></div>
+          </div>
+          <div class="hero-inner">
+            <h1>은행 금융상품을 <span class="accent">한눈에</span>,<br />AI에게 물어보세요</h1>
+            <p>예금·적금부터 은행 업무까지. 질문하면 AI가 찾아 안내합니다.</p>
+            <button class="btn btn-primary" data-nav="chat">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+              AI은행원에게 물어보기
+            </button>
 
-          <div class="hero-trust">
-            <div class="hero-trust-item">
-              <strong>16개 은행</strong>
-              <span>상품 한눈에 비교</span>
-            </div>
-            <div class="hero-trust-item">
-              <strong>5종 금융상품</strong>
-              <span>예금·적금·대출 전체</span>
-            </div>
-            <div class="hero-trust-item">
-              <strong>금융감독원 공식 데이터</strong>
-              <span>실시간 연동</span>
+            <div class="hero-trust">
+              <div class="hero-trust-item">
+                <strong>16개 은행</strong>
+                <span>상품 한눈에 비교</span>
+              </div>
+              <div class="hero-trust-item">
+                <strong>5종 금융상품</strong>
+                <span>예금·적금·대출 전체</span>
+              </div>
+              <div class="hero-trust-item">
+                <strong>금융감독원 공식 데이터</strong>
+                <span>실시간 연동</span>
+              </div>
             </div>
           </div>
         </div>
@@ -89,27 +93,10 @@
           </button>
         </div>
 
-        <!-- 이벤트 배너 -->
+        <!-- 이벤트 배너 (백오피스 "배너 관리"에서 등록한 배너를 JS가 렌더 — loadHomeBanners()) -->
         <div class="event-banner">
-          <div class="banner-track" id="banner-track">
-            <div class="banner-slide" style="background:linear-gradient(135deg,#0FA968,#0B8457)">
-              <span class="banner-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v4M12 17v4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M3 12h4M17 12h4M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></svg></span>
-              <div><b>매치뱅크 오픈 기념</b><p>지금 가입하면 계좌 개설 바로 가능해요</p></div>
-            </div>
-            <div class="banner-slide" style="background:linear-gradient(135deg,#4C8DFF,#2F5FD6)">
-              <span class="banner-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6l-4 4H4a1 1 0 0 0-1 1z"/><path d="M15 8a4 4 0 0 1 0 8"/><path d="M18 5a8 8 0 0 1 0 14"/></svg></span>
-              <div><b>AI은행원 업데이트</b><p>더 정확해진 금융상품 비교를 경험해보세요</p></div>
-            </div>
-            <div class="banner-slide" style="background:linear-gradient(135deg,#FF8A3D,#F9AB00)">
-              <span class="banner-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 9.8c0-1.1 1.1-1.8 2.5-1.8s2.5.7 2.5 1.6c0 2.2-5 1.1-5 3.4 0 .9 1.1 1.6 2.5 1.6s2.5-.7 2.5-1.8"/></svg></span>
-              <div><b>청년미래적금</b><p>지금 가입 가능한 적금 상품을 확인해보세요</p></div>
-            </div>
-          </div>
-          <div class="banner-dots" id="banner-dots">
-            <button class="banner-dot active" type="button" data-slide="0" aria-label="배너 1"></button>
-            <button class="banner-dot" type="button" data-slide="1" aria-label="배너 2"></button>
-            <button class="banner-dot" type="button" data-slide="2" aria-label="배너 3"></button>
-          </div>
+          <div class="banner-track" id="banner-track"><!-- JS 렌더 --></div>
+          <div class="banner-dots" id="banner-dots"><!-- JS 렌더 --></div>
         </div>
 
         <!-- 기능 소개: 내 계좌 → 상품안내 → AI은행원 순서대로 -->
@@ -121,22 +108,55 @@
                 <div class="mock-frame-bar"><span></span><span></span><span></span></div>
                 <div class="mock-scroll">
                   <div class="mock-screen">
-                    <div class="mock-acct-card"><span class="mock-bank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l8-6 8 6v11M9 21v-6h6v6"/></svg>신한은행</span><span class="mock-balance">1,473,000원</span></div>
-                    <div class="mock-acct-card"><span class="mock-bank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l8-6 8 6v11M9 21v-6h6v6"/></svg>카카오뱅크</span><span class="mock-balance">850,000원</span></div>
-                    <div class="mock-tx-row"><span>정기예금 이자</span><span class="mock-tx-in">+2,000,000원</span></div>
-                    <div class="mock-tx-row"><span>카드대금</span><span class="mock-tx-out">-130,000원</span></div>
+                    <div class="mock-asset-summary">
+                      <div class="mock-asset-label">총자산</div>
+                      <div class="mock-asset-amount">2,323,000원</div>
+                      <div class="mock-asset-sub">2개 계좌 연결됨</div>
+                    </div>
+                    <div class="mock-acct-grid">
+                      <div class="mock-acct-tile">
+                        <div class="mock-acct-tile-head">
+                          <span class="mock-acct-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l8-6 8 6v11M9 21v-6h6v6"/></svg></span>
+                          <div>
+                            <div class="mock-acct-bank">신한은행</div>
+                            <div class="mock-acct-no">110-123-456789</div>
+                          </div>
+                        </div>
+                        <div class="mock-acct-balance">1,473,000원</div>
+                        <div class="mock-acct-tile-actions"><span>거래내역</span><span>이체</span></div>
+                      </div>
+                      <div class="mock-acct-tile">
+                        <div class="mock-acct-tile-head">
+                          <span class="mock-acct-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l8-6 8 6v11M9 21v-6h6v6"/></svg></span>
+                          <div>
+                            <div class="mock-acct-bank">카카오뱅크</div>
+                            <div class="mock-acct-no">3333-01-1234567</div>
+                          </div>
+                        </div>
+                        <div class="mock-acct-balance">850,000원</div>
+                        <div class="mock-acct-tile-actions"><span>거래내역</span><span>이체</span></div>
+                      </div>
+                    </div>
                   </div>
                   <div class="mock-screen">
-                    <div class="mock-field-label">출금 계좌</div>
-                    <div class="mock-field">신한은행 110-123-456789</div>
-                    <div class="mock-field-label">받는 분 계좌</div>
-                    <div class="mock-field">우리은행 1002-333-444555</div>
-                    <div class="mock-field-label">이체 금액</div>
-                    <div class="mock-field mock-amount">50,000원</div>
+                    <div class="mock-tf-steps">
+                      <span class="mock-tf-step done">1</span>
+                      <span class="mock-tf-step-sep">›</span>
+                      <span class="mock-tf-step done">2</span>
+                      <span class="mock-tf-step-sep">›</span>
+                      <span class="mock-tf-step active">3</span>
+                    </div>
+                    <div class="mock-rc-check">✓</div>
+                    <div class="mock-rc-title">이체가 완료되었습니다</div>
+                    <div class="mock-rc-amount">50,000원</div>
+                    <div class="mock-rc-list">
+                      <div class="mock-rc-row"><span>받는 분</span><b>홍길동 (우리은행)</b></div>
+                      <div class="mock-rc-row"><span>수수료</span><b>면제</b></div>
+                    </div>
                   </div>
                 </div>
               </div>
-              <p class="mock-hint">← 스와이프해서 이체 화면도 보기 →</p>
+              <p class="mock-hint">← 스와이프해서 이체 진행 화면도 보기 →</p>
             </div>
             <div class="showcase-text">
               <span class="showcase-eyebrow">내 계좌</span>
@@ -151,9 +171,22 @@
               <div class="mock-frame">
                 <div class="mock-frame-bar"><span></span><span></span><span></span></div>
                 <div class="mock-products">
-                  <div class="mock-product-chip"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l8-6 8 6v11M9 21v-6h6v6"/></svg>KB국민은행</span><b>정기예금 3.2%</b></div>
-                  <div class="mock-product-chip"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l8-6 8 6v11M9 21v-6h6v6"/></svg>카카오뱅크</span><b>자유적금 3.5%</b></div>
-                  <div class="mock-product-chip"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l8-6 8 6v11M9 21v-6h6v6"/></svg>토스뱅크</span><b>파킹통장 2.8%</b></div>
+                  <div class="mock-pl-toppick">
+                    <span class="mock-pl-top-badge">TOP 추천</span>
+                    <div class="mock-pl-toppick-body">
+                      <div class="mock-pl-toppick-bank">카카오뱅크</div>
+                      <div class="mock-pl-toppick-name">자유적금</div>
+                    </div>
+                    <div class="mock-pl-toppick-rate"><span>최고금리</span><b>연 3.5%</b></div>
+                  </div>
+                  <div class="mock-pl-row">
+                    <div class="mock-pl-top"><span class="mock-pl-bank">KB국민은행</span><span class="mock-pl-tag">가입제한 없음</span></div>
+                    <div class="mock-pl-main"><span class="mock-pl-name">정기예금</span><span class="mock-pl-rate">연 <b>3.2%</b></span></div>
+                  </div>
+                  <div class="mock-pl-row">
+                    <div class="mock-pl-top"><span class="mock-pl-bank">토스뱅크</span></div>
+                    <div class="mock-pl-main"><span class="mock-pl-name">파킹통장</span><span class="mock-pl-rate">연 <b>2.8%</b></span></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -205,6 +238,14 @@
           <div class="panel">
             <h3>카테고리별 인기 상품 TOP 5</h3>
             <div id="stat-products"><!-- JS 렌더 --></div>
+          </div>
+        </div>
+
+        <!-- 특별상품: FSS 실시간 데이터와 별개, 관리자가 직접 등록한 상품(백오피스 "금융상품관리 > 특별상품 관리") -->
+        <div id="special-products-panel" style="display:none">
+          <h3 style="margin-bottom:20px;">특별상품</h3>
+          <div class="panel">
+            <div id="special-product-list"><!-- JS 렌더 --></div>
           </div>
         </div>
 
@@ -932,6 +973,7 @@
             <button type="button" class="bo-tab" data-bo-tab="prompt">프롬프트 관리</button>
             <button type="button" class="bo-tab" data-bo-tab="products">금융상품관리</button>
             <button type="button" class="bo-tab" data-bo-tab="faq">FAQ·공지사항 관리</button>
+            <button type="button" class="bo-tab" data-bo-tab="banners">배너 관리</button>
           </nav>
         </aside>
 
@@ -1229,6 +1271,7 @@
             <button type="button" class="bo-product-tab active" data-bo-product-tab="preview">상품 미리보기</button>
             <button type="button" class="bo-product-tab" data-bo-product-tab="stats">인기 상품 통계</button>
             <button type="button" class="bo-product-tab" data-bo-product-tab="documents">서식·약관·설명서</button>
+            <button type="button" class="bo-product-tab" data-bo-product-tab="special">특별상품 관리</button>
           </div>
 
           <div class="panel" id="bo-producttab-preview">
@@ -1287,6 +1330,37 @@
             </table>
             <button class="btn btn-ghost bo-btn-right" type="button" id="bo-doc-more">더 보기</button>
           </div>
+
+          <div class="panel" id="bo-producttab-special" style="display:none">
+            <h3>특별상품 관리</h3>
+            <p class="section-desc">FSS 실시간 데이터와 별개로 관리자가 직접 등록하는 특별상품입니다(홈 배너 연결 가능).</p>
+            <form id="bo-special-form" class="bo-inline-form">
+              <div class="tf-row">
+                <div class="tf-field"><label for="bo-special-title">제목</label><input id="bo-special-title" type="text" required /></div>
+                <div class="tf-field"><label for="bo-special-bank">은행명</label><input id="bo-special-bank" type="text" /></div>
+              </div>
+              <div class="tf-row">
+                <div class="tf-field"><label for="bo-special-rate">금리 문구</label><input id="bo-special-rate" type="text" placeholder="예: 연 5.5%" /></div>
+                <div class="tf-field"><label for="bo-special-badge">배지</label><input id="bo-special-badge" type="text" placeholder="예: 한정특가" /></div>
+              </div>
+              <div class="tf-field"><label for="bo-special-desc">설명</label><textarea id="bo-special-desc" rows="2"></textarea></div>
+              <div class="tf-field"><label for="bo-special-sort">노출순서</label><input id="bo-special-sort" type="number" value="0" /></div>
+              <div class="tf-form-footer">
+                <button class="btn btn-ghost" type="button" id="bo-special-cancel-btn" style="display:none">취소</button>
+                <button class="btn btn-primary" type="submit" id="bo-special-submit-btn">등록</button>
+                <span class="tf-status" id="bo-special-form-status"></span>
+              </div>
+            </form>
+            <div class="bo-toolbar bo-search-inline">
+              <input type="text" id="bo-special-search" placeholder="제목 검색" />
+              <button class="btn btn-ghost" type="button" id="bo-special-search-btn">검색</button>
+            </div>
+            <table class="admin-table">
+              <thead><tr><th>제목</th><th>은행명</th><th>금리</th><th></th></tr></thead>
+              <tbody id="bo-special-rows"><!-- JS 렌더 --></tbody>
+            </table>
+            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-special-more">더 보기</button>
+          </div>
         </div>
 
         <!-- FAQ·공지사항 관리 -->
@@ -1295,6 +1369,7 @@
             <button type="button" class="bo-faq-tab active" data-bo-faq-tab="notices">공지사항</button>
             <button type="button" class="bo-faq-tab" data-bo-faq-tab="faq">FAQ</button>
             <button type="button" class="bo-faq-tab" data-bo-faq-tab="inquiries">문의내역</button>
+            <button type="button" class="bo-faq-tab" data-bo-faq-tab="events">이벤트</button>
           </div>
 
           <div class="panel" id="bo-faqtab-notices">
@@ -1341,6 +1416,39 @@
             <button class="btn btn-ghost bo-btn-right" type="button" id="bo-faq-more">더 보기</button>
           </div>
 
+          <div class="panel" id="bo-faqtab-events" style="display:none">
+            <h3>이벤트 관리</h3>
+            <form id="bo-event-form" class="bo-inline-form">
+              <div class="tf-field"><label for="bo-event-title">제목</label><input id="bo-event-title" type="text" required /></div>
+              <div class="tf-field"><label for="bo-event-content">내용</label><textarea id="bo-event-content" rows="3"></textarea></div>
+              <div class="tf-row">
+                <div class="tf-field"><label for="bo-event-start">시작일</label><input id="bo-event-start" type="date" required /></div>
+                <div class="tf-field"><label for="bo-event-end">종료일</label><input id="bo-event-end" type="date" required /></div>
+              </div>
+              <div class="tf-row">
+                <div class="tf-field"><label><input id="bo-event-drawing" type="checkbox" /> 추첨 이벤트</label></div>
+                <div class="tf-field" id="bo-event-winner-count-field" style="display:none">
+                  <label for="bo-event-winner-count">당첨 인원</label>
+                  <input id="bo-event-winner-count" type="number" min="0" value="0" />
+                </div>
+              </div>
+              <div class="tf-form-footer">
+                <button class="btn btn-ghost" type="button" id="bo-event-cancel-btn" style="display:none">취소</button>
+                <button class="btn btn-primary" type="submit" id="bo-event-submit-btn">등록</button>
+                <span class="tf-status" id="bo-event-form-status"></span>
+              </div>
+            </form>
+            <div class="bo-toolbar bo-search-inline">
+              <input type="text" id="bo-event-search" placeholder="제목/내용 검색" />
+              <button class="btn btn-ghost" type="button" id="bo-event-search-btn">검색</button>
+            </div>
+            <table class="admin-table">
+              <thead><tr><th>제목</th><th>기간</th><th>추첨</th><th></th></tr></thead>
+              <tbody id="bo-event-rows"><!-- JS 렌더 --></tbody>
+            </table>
+            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-event-more">더 보기</button>
+          </div>
+
           <div class="panel" id="bo-faqtab-inquiries" style="display:none">
             <h3>문의내역</h3>
             <p class="section-desc">고객이 남긴 문의를 조회합니다(읽기 전용).</p>
@@ -1354,6 +1462,66 @@
             </table>
             <button class="btn btn-ghost bo-btn-right" type="button" id="bo-inquiry-more">더 보기</button>
           </div>
+        </div>
+
+        <!-- 배너 관리 -->
+        <div class="bo-panel" id="bo-panel-banners" style="display:none">
+          <h3>배너 관리</h3>
+          <p class="section-desc">홈 화면 배너 슬라이드를 관리하고, 공지·이벤트·특별상품 중 하나에 연결합니다.</p>
+          <form id="bo-banner-form" class="bo-inline-form">
+            <div class="tf-row">
+              <div class="tf-field"><label for="bo-banner-title">제목</label><input id="bo-banner-title" type="text" required /></div>
+              <div class="tf-field"><label for="bo-banner-subtitle">부제</label><input id="bo-banner-subtitle" type="text" /></div>
+            </div>
+            <div class="tf-row">
+              <div class="tf-field">
+                <label for="bo-banner-image">배너 이미지</label>
+                <div class="tf-file-upload">
+                  <span class="tf-file-upload-name" id="bo-banner-image-name">선택된 파일 없음</span>
+                  <label class="btn btn-ghost tf-file-upload-btn" for="bo-banner-image">파일 선택</label>
+                </div>
+                <input id="bo-banner-image" type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" hidden />
+                <p class="tf-hint">권장 크기 1200×130px, 5MB 이하. 문구가 포함된 완성 이미지를 그대로 업로드하세요.</p>
+                <img id="bo-banner-image-preview" alt="" style="display:none; margin-top:8px; max-width:240px; border-radius:8px; border:1px solid var(--border);" />
+              </div>
+              <div class="tf-field">
+                <label for="bo-banner-sort">노출순서</label>
+                <select id="bo-banner-sort">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                </select>
+              </div>
+            </div>
+            <div class="tf-row">
+              <div class="tf-field">
+                <label for="bo-banner-link-type">연결 대상</label>
+                <select id="bo-banner-link-type">
+                  <option value="none">없음</option>
+                  <option value="notice">공지사항</option>
+                  <option value="event">이벤트</option>
+                  <option value="special_product">특별상품</option>
+                </select>
+              </div>
+              <div class="tf-field" id="bo-banner-link-id-field" style="display:none">
+                <label for="bo-banner-link-id">연결 항목</label>
+                <select id="bo-banner-link-id"></select>
+              </div>
+            </div>
+            <div class="tf-field"><label><input id="bo-banner-active" type="checkbox" checked /> 활성</label></div>
+            <div class="tf-form-footer">
+              <button class="btn btn-ghost" type="button" id="bo-banner-cancel-btn" style="display:none">취소</button>
+              <button class="btn btn-primary" type="submit" id="bo-banner-submit-btn">등록</button>
+              <span class="tf-status" id="bo-banner-form-status"></span>
+            </div>
+          </form>
+          <table class="admin-table">
+            <thead><tr><th>이미지</th><th>제목</th><th>연결대상</th><th>순서</th><th>활성</th><th></th></tr></thead>
+            <tbody id="bo-banner-rows"><!-- JS 렌더 --></tbody>
+          </table>
+          <button class="btn btn-ghost bo-btn-right" type="button" id="bo-banner-more">더 보기</button>
         </div>
 
         </div><!-- /.bo-content -->
@@ -1372,6 +1540,7 @@
             <button type="button" class="support-tab" data-support-tab="faq">FAQ</button>
             <button type="button" class="support-tab" data-support-tab="inquiry">문의하기</button>
             <button type="button" class="support-tab" data-support-tab="documents">서식·약관·설명서</button>
+            <button type="button" class="support-tab" data-support-tab="events">이벤트</button>
           </div>
           <div class="support-search-slot">
             <div class="bo-toolbar support-search" data-support-search="notices">
@@ -1399,6 +1568,12 @@
         <div class="support-panel" id="support-panel-faq" style="display:none">
           <div class="panel"><div id="faq-list"><!-- JS 렌더 --></div></div>
           <button class="btn btn-ghost" type="button" id="faq-more">더 보기</button>
+        </div>
+
+        <!-- 이벤트 -->
+        <div class="support-panel" id="support-panel-events" style="display:none">
+          <div class="panel"><div id="event-list"><!-- JS 렌더 --></div></div>
+          <button class="btn btn-ghost" type="button" id="event-more">더 보기</button>
         </div>
 
         <!-- 문의하기 -->
@@ -1461,6 +1636,39 @@
     </section>
 
   </main>
+
+  <!-- ── 사이트 푸터 ─────────────────────────────────────────────── -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a class="brand" data-nav="home">
+          <img class="logo-mark" src="img/logo-mark.svg" width="28" height="28" alt="" aria-hidden="true">
+          매치뱅크
+        </a>
+        <p class="footer-tagline">은행 금융상품을 한눈에, AI에게 물어보세요.</p>
+        <p class="footer-disclaimer">※ 이 사이트는 포트폴리오 목적으로 제작된 데모 프로젝트입니다. 실제 금융거래는 이루어지지 않습니다.</p>
+      </div>
+
+      <div class="footer-links">
+        <div class="footer-col">
+          <span class="footer-col-title">바로가기</span>
+          <a data-nav="account">내 계좌</a>
+          <a data-nav="products">상품안내</a>
+          <a data-nav="chat">AI은행원</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-title">고객센터</span>
+          <a data-nav="support">공지사항·FAQ</a>
+          <a data-nav="support">문의하기</a>
+          <a data-nav="support">서식·약관·설명서</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 매치뱅크(MatchBank). All rights reserved.</span>
+      <span>데이터 출처: 금융감독원 금융상품 통합 비교공시</span>
+    </div>
+  </footer>
 
   <!-- ── 범용 모달 ───────────────────────────────────────────── -->
   <div class="modal-overlay" id="modal-overlay" style="display:none">

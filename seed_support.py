@@ -1,9 +1,12 @@
-"""고객센터 데모 데이터 시드: 공지사항 / FAQ / 서식·약관·설명서.
+"""고객센터 데모 데이터 시드: 공지사항 / FAQ / 서식·약관·설명서 / 이벤트 / 특별상품 / 배너.
 
 FAQ는 기존 index.html에 하드코딩돼 있던 4개를 그대로 옮긴 것이다.
-이미 시드돼 있으면 건너뛴다(멱등). 실행: .venv/bin/python seed_support.py
+테이블별로 독립적으로 멱등 체크한다(하나가 이미 시드돼 있어도 나머지 테이블은 채운다).
+실행: .venv/bin/python seed_support.py
 """
 from __future__ import annotations
+
+import time
 
 from backend import db
 
@@ -43,20 +46,107 @@ DOCUMENTS = [
 ]
 
 
-def main() -> None:
-    db.init_db()
+def seed_support_content() -> None:
     if db.count_faqs() > 0:
         print("이미 시드됨 (faqs 존재) — 건너뜀")
         return
-
     for title, content in NOTICES:
         db.create_notice(title, content)
     for question, answer in FAQS:
         db.create_faq(question, answer)
     for title, category, description in DOCUMENTS:
         db.create_document(title, category, description)
-
     print(f"시드 완료: 공지사항 {len(NOTICES)}개, FAQ {len(FAQS)}개, 서식·약관·설명서 {len(DOCUMENTS)}개")
+
+
+def seed_special_products() -> int | None:
+    """특판 특별상품 1건을 시드하고 id를 반환(이미 있으면 기존 id 조회).
+
+    매치뱅크는 실제 은행이 아니라 FSS API 기반 비교 사이트이므로, 특별상품도 가상 상품이 아니라
+    실제 FSS 예금 데이터 중 상품명에 "특판"이 들어간 부산은행 "더(The) 특판 정기예금"을 그대로 옮겨왔다
+    (2026.07.20 공시 기준 최고금리 3.55%, 12·24개월). FSS API에는 "특판/이벤트성 상품" 전용 필드가
+    없어 상품명 키워드로 찾아낸 것 — 실시간 연동은 아니라 금리 갱신 시 수동 반영 필요.
+    (이전에는 청년 전용 상품(농협은행 NH1934월복리적금)을 썼으나, 청년미래적금류 정부정책 상품은
+    FSS가 아니라 서민금융진흥원이 관리해 FSS 데이터에 없다는 걸 확인 후 청년 한정이 아닌
+    일반 특판상품으로 교체함.)
+    """
+    existing = db.list_special_products(limit=50)
+    match = next((p for p in existing if p["title"] == "더(The) 특판 정기예금"), None)
+    if match:
+        return match["id"]
+    if db.count_special_products() > 0:
+        return None  # 다른 특별상품은 있는데 이 상품만 없는 특이 상태 — 배너 연결은 건너뜀
+    product_id = db.create_special_product(
+        title="더(The) 특판 정기예금", bank_name="부산은행",
+        rate_text="연 최고 3.55%(12·24개월 기준)",
+        description="신규 고객 우대 등 조건 충족 시 최대 1.35%p 우대금리가 적용되는 특판 정기예금",
+        badge="특판", sort_order=0,
+    )
+    print("시드 완료: 특별상품 1개")
+    return product_id
+
+
+def seed_events() -> int | None:
+    """오픈 기념 추첨 이벤트 1건 + 정보성 이벤트 1건을 시드하고 추첨 이벤트 id를 반환."""
+    if db.count_events() > 0:
+        existing = db.list_events(limit=50)
+        match = next((e for e in existing if e["title"] == "매치뱅크 오픈 기념 이벤트"), None)
+        return match["id"] if match else None
+    now = time.time()
+    draw_event_id = db.create_event(
+        title="매치뱅크 오픈 기념 이벤트",
+        content="매치뱅크 오픈을 기념해 신규 가입 고객 중 추첨을 통해 10명께 축하 상품을 드립니다.",
+        start_at=now, end_at=now + 30 * 86400,
+        is_drawing=1, winner_count=10,
+    )
+    db.create_event(
+        title="AI은행원 업데이트 후기 이벤트",
+        content="AI은행원 업데이트 이용 후기를 남겨주신 모든 분께 감사 인사를 전합니다.",
+        start_at=now, end_at=now + 60 * 86400,
+        is_drawing=0, winner_count=0,
+    )
+    print("시드 완료: 이벤트 2개")
+    return draw_event_id
+
+
+def seed_banners(event_id: int | None, special_product_id: int | None) -> None:
+    if db.count_banners() > 0:
+        print("이미 시드됨 (banners 존재) — 건너뜀")
+        return
+    notices = db.list_notices(limit=50)
+    update_notice = next((n for n in notices if n["title"] == "[공지] AI은행원 서비스 업데이트 안내"), None)
+
+    # 실제 디자인 파일이 없어 기존 3가지 톤을 살린 샘플 SVG(1080x360, site/img/banners/seed-N.svg)를 사용.
+    # 관리자가 실제 업로드하는 배너는 같은 폴더에 저장되지만 git에는 커밋하지 않는다(.gitignore 참고).
+    db.create_banner(
+        title="매치뱅크 오픈 기념", subtitle="지금 가입하면 계좌 개설 바로 가능해요",
+        image_path="/img/banners/seed-1.svg",
+        link_type="event" if event_id else "none", link_id=event_id,
+        sort_order=1, is_active=1,
+    )
+    db.create_banner(
+        title="AI은행원 업데이트", subtitle="더 정확해진 금융상품 비교를 경험해보세요",
+        image_path="/img/banners/seed-2.svg",
+        link_type="notice" if update_notice else "none",
+        link_id=update_notice["id"] if update_notice else None,
+        sort_order=2, is_active=1,
+    )
+    db.create_banner(
+        title="부산은행 특판예금", subtitle="지금 가입 가능한 특판 상품을 확인해보세요",
+        image_path="/img/banners/seed-3.svg",
+        link_type="special_product" if special_product_id else "none",
+        link_id=special_product_id,
+        sort_order=3, is_active=1,
+    )
+    print("시드 완료: 배너 3개")
+
+
+def main() -> None:
+    db.init_db()
+    seed_support_content()
+    special_product_id = seed_special_products()
+    event_id = seed_events()
+    seed_banners(event_id, special_product_id)
 
 
 if __name__ == "__main__":

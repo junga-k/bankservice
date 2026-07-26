@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="130" viewBox="0 0 1200 130">
+  <defs>
+    <linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF8A3D"/>
+      <stop offset="100%" stop-color="#F9AB00"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="130" fill="url(#g3)"/>
+  <text x="48" y="58" font-family="'Apple SD Gothic Neo','Malgun Gothic',sans-serif" font-size="26" font-weight="700" fill="#ffffff">부산은행 특판예금</text>
+  <text x="48" y="86" font-family="'Apple SD Gothic Neo','Malgun Gothic',sans-serif" font-size="14" fill="rgba(255,255,255,0.9)">지금 가입 가능한 특판 상품을 확인해보세요</text>
+</svg>

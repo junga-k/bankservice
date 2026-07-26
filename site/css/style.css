@@ -118,15 +118,17 @@ h1, h2, h3, h4, h5, h6 { margin: 0; font-weight: 700; text-wrap: balance; }
   font-size: var(--text-xl);
   color: var(--blue);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .brand .logo-mark { flex-shrink: 0; }
 
 .nav {
   position: relative;
   display: flex;
-  gap: 4px;
+  gap: clamp(0px, 0.6vw, 4px);
   margin-left: 8px;
   flex: 1;
+  min-width: 0;
 }
 .nav-indicator {
   position: absolute;
@@ -140,11 +142,13 @@ h1, h2, h3, h4, h5, h6 { margin: 0; font-weight: 700; text-wrap: balance; }
   pointer-events: none;
 }
 .nav a {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) clamp(6px, 1vw, var(--space-3));
   border-radius: var(--radius-sm);
-  font-size: var(--text-md);
+  /* 화면이 좁아질수록 글자 크기도 함께 줄어들어 줄바꿈 없이 한 줄을 유지 */
+  font-size: clamp(13px, 1.5vw, var(--text-md));
   font-weight: 500;
   color: var(--text-sub);
+  white-space: nowrap;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
@@ -174,12 +178,14 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 
 /* ── 홈: 히어로 ──────────────────────────────────────────────────── */
+/* 진한 그린 히어로 — 시작점은 로고 그린(--blue)과 동일해 브랜드와 바로 연결되고,
+   끝점은 --blue-dark로 어두워져 흰 텍스트 대비를 유지한다 */
 .hero {
   position: relative;
   min-height: 50vh;
   display: flex;
   align-items: center;
-  background: linear-gradient(135deg, var(--blue-soft) 0%, var(--bg-soft) 100%);
+  background: linear-gradient(135deg, var(--blue) 0%, var(--blue-dark) 100%);
   border-bottom: 1px solid var(--border);
   overflow: hidden;
 }
@@ -191,7 +197,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   width: 480px;
   height: 480px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(15, 169, 104, 0.16) 0%, rgba(15, 169, 104, 0) 70%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 70%);
   pointer-events: none;
 }
 .hero::after {
@@ -202,21 +208,35 @@ main { min-height: calc(100vh - var(--header-h)); }
   width: 360px;
   height: 360px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(15, 169, 104, 0.09) 0%, rgba(15, 169, 104, 0) 70%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 70%);
   pointer-events: none;
 }
-.hero-inner {
+/* 좌우 분할: 왼쪽은 구체 전용 비주얼 영역, 오른쪽은 좌측 정렬 텍스트 */
+.hero-split {
   position: relative;
   z-index: 1;
+  display: grid;
+  grid-template-columns: 42% 58%;
+  align-items: center;
   max-width: var(--maxw);
   width: 100%;
   margin: 0 auto;
   padding: var(--space-6) var(--space-5);
-  text-align: center;
+}
+.hero-visual {
+  position: relative;
+  height: 100%;
+  min-height: 280px;
+}
+.hero-inner {
+  position: relative;
+  z-index: 1;
+  padding: 0 0 0 var(--space-5);
+  text-align: left;
 }
 
-/* 히어로 3D 장식 (hero3d.js가 캔버스를 주입) — 데스크톱 전용, 로드 전/실패 시엔
-   비어있는 채로 남고 .hero::before의 은은한 블롭이 대신 배경을 채운다 */
+/* 히어로 3D 장식 (hero3d.js가 캔버스를 주입, .hero-visual 안에서만 표시) — 데스크톱 전용,
+   로드 전/실패 시엔 비어있는 채로 남고 .hero::before의 은은한 블롭이 대신 배경을 채운다 */
 .hero-3d {
   position: absolute;
   inset: 0;
@@ -228,10 +248,17 @@ main { min-height: calc(100vh - var(--header-h)); }
   display: block;
   width: 100% !important;
   height: 100% !important;
-  filter: blur(32px);
+  filter: blur(26px);
+  /* 블러가 캔버스 경계에서 그대로 잘리면 옅은 사각형 테두리처럼 보여서,
+     가장자리로 갈수록 완전히 투명해지도록 마스킹해 경계를 없앤다 */
+  -webkit-mask-image: radial-gradient(ellipse closest-side, #000 45%, transparent 100%);
+  mask-image: radial-gradient(ellipse closest-side, #000 45%, transparent 100%);
 }
 @media (max-width: 899px) {
   .hero-3d { display: none; }
+  .hero-split { grid-template-columns: 1fr; }
+  .hero-visual { display: none; }
+  .hero-inner { text-align: center; padding: 0; }
 }
 .hero h1 {
   font-size: 44px;
@@ -239,11 +266,12 @@ main { min-height: calc(100vh - var(--header-h)); }
   font-weight: 800;
   letter-spacing: -0.5px;
   margin: 0 0 var(--space-4);
+  color: #fff;
 }
-.hero h1 .accent { color: var(--blue); }
+.hero h1 .accent { color: #8CF5C4; }
 .hero p {
   font-size: var(--text-lg);
-  color: var(--text-sub);
+  color: rgba(255, 255, 255, 0.85);
   margin: 0 0 var(--space-6);
 }
 .hero .btn svg { width: 18px; height: 18px; flex-shrink: 0; }
@@ -265,14 +293,17 @@ main { min-height: calc(100vh - var(--header-h)); }
   .hero-inner > * { opacity: 1; animation: none; }
 }
 
-/* 히어로: 신뢰 지표 */
+/* 히어로: 신뢰 지표 (좌우 분할 레이아웃이라 왼쪽 정렬 — 899px 이하에서만 중앙 정렬로 되돌림) */
 .hero-trust {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--space-6);
   margin-top: var(--space-7);
   padding-top: var(--space-5);
-  border-top: 1px solid var(--border);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+@media (max-width: 899px) {
+  .hero-trust { justify-content: center; }
 }
 .hero-trust-item {
   display: flex;
@@ -280,8 +311,8 @@ main { min-height: calc(100vh - var(--header-h)); }
   align-items: center;
   gap: 2px;
 }
-.hero-trust-item strong { font-size: var(--text-md); color: var(--text); }
-.hero-trust-item span { font-size: var(--text-xs); color: var(--text-sub); }
+.hero-trust-item strong { font-size: var(--text-md); color: #fff; }
+.hero-trust-item span { font-size: var(--text-xs); color: rgba(255, 255, 255, 0.75); }
 @media (max-width: 680px) {
   .hero-trust { gap: var(--space-4); flex-wrap: wrap; }
 }
@@ -306,6 +337,12 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 .btn-primary:hover { background: var(--blue-dark); }
 .btn-primary:active { transform: scale(0.98); }
+/* 히어로가 진한 그린 배경이라 초록 버튼은 묻힘 — 흰 배경 + 진한 초록 글씨로 반전 */
+.hero .btn-primary {
+  background: #fff;
+  color: var(--blue-dark);
+}
+.hero .btn-primary:hover { background: var(--blue-soft); }
 .btn-ghost {
   background: #fff;
   color: var(--blue);
@@ -372,35 +409,22 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 
 /* ── 홈: 이벤트 배너 ─────────────────────────────────────────────── */
+/* 스타일은 네이버 등 실제 사이트 콘텐츠 배너(타임보드류) 참고: radius 8px + 테두리 느낌 링 섀도우 + 옅은 드롭섀도우 */
 .event-banner {
   position: relative;
   overflow: hidden;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, 0.04);
   margin-bottom: var(--space-5);
 }
 .banner-track { display: flex; transition: transform var(--dur-slow) var(--ease); }
+/* 배너는 관리자가 업로드한 완성 이미지를 그대로 보여준다(권장 1200×130px — 네이버 타임보드 실측 규격) — 텍스트 오버레이 없음 */
 .banner-slide {
   flex: 0 0 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  color: #fff;
+  aspect-ratio: 1200 / 130;
+  cursor: pointer;
 }
-.banner-icon {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.18);
-}
-.banner-icon svg { width: 17px; height: 17px; }
-.banner-slide b { font-size: var(--text-md); }
-.banner-slide p { margin: 3px 0 0; font-size: var(--text-xs); opacity: 0.92; }
+.banner-slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .banner-dots {
   position: absolute;
   bottom: 14px;
@@ -502,58 +526,135 @@ main { min-height: calc(100vh - var(--header-h)); }
   -webkit-overflow-scrolling: touch;
 }
 .mock-screen { flex: 0 0 100%; scroll-snap-align: start; padding: 22px; }
-.mock-acct-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-2);
-  font-size: var(--text-sm);
-}
-.mock-acct-card .mock-balance { font-weight: 700; color: var(--blue); }
-.mock-bank { display: flex; align-items: center; gap: 6px; color: var(--text-sub); }
-.mock-bank svg { width: 14px; height: 14px; color: var(--blue-dark); flex-shrink: 0; }
-.mock-tx-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 4px;
-  font-size: 13px;
-  color: var(--text-sub);
-  border-bottom: 1px solid var(--border);
-}
-.mock-tx-in { color: var(--blue-dark); font-weight: 600; }
-.mock-tx-out { color: var(--text); font-weight: 600; }
-.mock-field-label { font-size: 12px; color: var(--text-sub); margin: 12px 0 4px; }
-.mock-field-label:first-child { margin-top: 0; }
-.mock-field {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-3);
-  font-size: var(--text-sm);
-}
-.mock-field.mock-amount { font-weight: 700; text-align: right; color: var(--blue); }
 
-/* 상품안내 목업 */
-.mock-products { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-2); }
-.mock-product-chip {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+/* 내 계좌 목업 — 실제 #account 화면(총자산 요약 배너 + 2열 카드 그리드, 계좌 잔액은
+   파란색이 아니라 진한 회색, 하단에 거래내역/이체 버튼, 마지막은 점선 "계좌 추가" 고스트 타일)을 그대로 재현 */
+.mock-asset-summary {
+  background: var(--blue-soft);
+  border: 1px solid var(--blue-line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.mock-asset-label { font-size: 11px; font-weight: 600; color: var(--blue-dark); }
+.mock-asset-amount { margin-top: 2px; font-size: 20px; font-weight: 800; color: var(--blue-dark); letter-spacing: -0.3px; }
+.mock-asset-sub { margin-top: 2px; font-size: 11px; color: var(--text-sub); }
+.mock-acct-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.mock-acct-tile {
   background: #fff;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--text-sm);
-  transition: border-color var(--dur-fast) var(--ease);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
-.mock-product-chip:hover { border-color: var(--blue-line); }
-.mock-product-chip b { color: var(--blue); }
-.mock-product-chip span { display: flex; align-items: center; gap: 6px; color: var(--text-sub); }
-.mock-product-chip span svg { width: 14px; height: 14px; color: var(--blue-dark); flex-shrink: 0; }
+.mock-acct-tile-head { display: flex; align-items: center; gap: 8px; }
+.mock-acct-logo {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--blue-soft);
+  border-radius: var(--radius-sm);
+  color: var(--blue-dark);
+}
+.mock-acct-logo svg { width: 14px; height: 14px; }
+.mock-acct-bank { font-size: 12px; font-weight: 700; color: var(--text); }
+.mock-acct-no { font-size: 10px; color: var(--text-sub); }
+.mock-acct-balance { font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
+.mock-acct-tile-actions {
+  display: flex;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+  margin-top: auto;
+}
+.mock-acct-tile-actions span {
+  flex: 1;
+  text-align: center;
+  padding: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-sub);
+}
+/* 이체 완료 목업 — 실제 이체 위저드 STEP 표시(.transfer-steps)와 완료 영수증(.tf-receipt/.rc-*)을 축소 재현 */
+.mock-tf-steps { display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: var(--space-4); }
+.mock-tf-step {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  color: var(--text-sub);
+  font-size: 10px;
+  font-weight: 700;
+}
+.mock-tf-step.done { background: var(--blue-soft); border-color: var(--blue-line); color: var(--blue-dark); }
+.mock-tf-step.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+.mock-tf-step-sep { color: var(--border); font-size: 11px; }
+.mock-rc-check {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--blue);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 20px;
+  box-shadow: var(--shadow-brand);
+}
+.mock-rc-title { text-align: center; font-size: 13px; font-weight: 700; color: var(--text); }
+.mock-rc-amount { text-align: center; font-size: 22px; font-weight: 800; color: var(--blue-dark); margin: 6px 0 var(--space-4); font-variant-numeric: tabular-nums; }
+.mock-rc-list { background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3) var(--space-4); }
+.mock-rc-row { display: flex; justify-content: space-between; font-size: 11.5px; padding: 4px 0; }
+.mock-rc-row span { color: var(--text-sub); }
+.mock-rc-row b { color: var(--text); font-weight: 700; }
+
+/* 상품안내 목업 — 실제 #products의 TOP 추천 그라디언트 카드 + 플랫 구분선 리스트(product-list-row)를 재현 */
+.mock-products { padding: var(--space-5); display: flex; flex-direction: column; gap: 0; }
+.mock-pl-toppick {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: linear-gradient(135deg, var(--blue) 0%, var(--blue-dark) 100%);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--shadow-brand);
+  margin-bottom: var(--space-3);
+}
+.mock-pl-top-badge {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.mock-pl-toppick-body { flex: 1; min-width: 0; }
+.mock-pl-toppick-bank { font-size: 11px; color: rgba(255, 255, 255, 0.85); }
+.mock-pl-toppick-name { font-size: 14px; font-weight: 700; color: #fff; }
+.mock-pl-toppick-rate { text-align: right; flex-shrink: 0; }
+.mock-pl-toppick-rate span { display: block; font-size: 10px; color: rgba(255, 255, 255, 0.85); }
+.mock-pl-toppick-rate b { font-size: 16px; font-weight: 800; color: #fff; }
+.mock-pl-row { padding: var(--space-3) 2px; border-bottom: 1px solid var(--border); }
+.mock-pl-row:last-child { border-bottom: none; }
+.mock-pl-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.mock-pl-bank { font-size: 11.5px; color: var(--text-sub); }
+.mock-pl-tag { font-size: 10px; font-weight: 700; color: var(--blue); background: var(--blue-soft); border-radius: 8px; padding: 1px 7px; }
+.mock-pl-main { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.mock-pl-name { font-size: 14.5px; font-weight: 700; color: var(--text); }
+.mock-pl-rate { font-size: 11px; color: var(--text-sub); }
+.mock-pl-rate b { font-size: 17px; font-weight: 800; color: var(--blue-dark); }
 
 /* AI은행원 목업 */
 .mock-chat { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-2); }
@@ -1737,6 +1838,17 @@ main { min-height: calc(100vh - var(--header-h)); }
   font-size: var(--text-xs);
   font-weight: 700;
 }
+/* 특별상품 프로모션 배지 — 문서 배지(연한 그린)와 겹치지 않도록 따뜻한 톤으로 눈에 띄게, 상품명 앞에 배치 */
+.special-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px var(--space-2);
+  background: linear-gradient(135deg, #FF6B4A, #E11D48);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
 
 /* ── 범용 모달 ───────────────────────────────────────────────────── */
 .modal-overlay {
@@ -2099,6 +2211,38 @@ main { min-height: calc(100vh - var(--header-h)); }
 .tf-field input:focus,
 .tf-field select:focus,
 .tf-field textarea:focus { outline: none; border-color: var(--blue); }
+
+/* 배너 관리 등: 네이티브 input[type=file]은 브라우저마다 스타일이 제각각이라
+   숨겨두고 label을 버튼처럼 써서 나머지 폼과 톤을 맞춘다.
+   파일명 표시 필드와 "파일 선택" 버튼은 서로 다른 상자로 분리 — 버튼은 필드 오른쪽 바깥에 위치. */
+.tf-file-upload {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.tf-file-upload-name {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--text-sub);
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tf-file-upload-btn {
+  flex-shrink: 0;
+  height: 46px;
+  padding: 0 var(--space-4);
+  display: inline-flex;
+  align-items: center;
+}
 /* 선택지가 하나뿐인 필드(현재 제공자)는 드롭다운 대신 고정 텍스트로 표시 */
 .tf-static-value {
   height: 46px;
@@ -2327,7 +2471,6 @@ main { min-height: calc(100vh - var(--header-h)); }
 @media (max-width: 680px) {
   .site-header { gap: 10px; padding: 0 14px; overflow-x: auto; }
   .hero h1 { font-size: 30px; }
-  .nav a { padding: 8px 10px; font-size: 14px; }
   .nav-auth-group { margin-left: 0; }
 }
 
@@ -2514,3 +2657,45 @@ main { min-height: calc(100vh - var(--header-h)); }
 .mp-sec-type { font-weight: 700; font-size: var(--text-sm); }
 .mp-sec-detail { font-size: var(--text-xs); color: var(--text-sub); }
 .mp-sec-time { flex-shrink: 0; color: var(--text-sub); font-size: var(--text-xs); }
+
+/* ── 사이트 푸터 ──────────────────────────────────────────────────── */
+.site-footer {
+  background: var(--bg-soft);
+  border-top: 1px solid var(--border);
+  padding: var(--space-8) var(--space-5) 0;
+}
+.footer-inner {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-7);
+}
+.footer-brand { max-width: 360px; }
+.footer-brand .brand { font-size: var(--text-lg); margin-bottom: var(--space-3); }
+.footer-tagline { font-size: var(--text-sm); color: var(--text-sub); margin: 0 0 var(--space-3); }
+.footer-disclaimer { font-size: 12px; color: var(--text-sub); opacity: 0.85; line-height: 1.6; margin: 0; }
+.footer-links { display: flex; gap: var(--space-8); }
+.footer-col { display: flex; flex-direction: column; gap: var(--space-3); min-width: 120px; }
+.footer-col-title { font-size: var(--text-xs); font-weight: 700; color: var(--text); letter-spacing: 0.02em; }
+.footer-col a { font-size: var(--text-sm); color: var(--text-sub); cursor: pointer; transition: color var(--dur-fast) var(--ease); }
+.footer-col a:hover { color: var(--blue); }
+.footer-bottom {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-sub);
+}
+@media (max-width: 680px) {
+  .footer-inner { flex-direction: column; gap: var(--space-6); }
+  .footer-links { gap: var(--space-6); }
+  .footer-bottom { flex-direction: column; gap: 4px; }
+}
