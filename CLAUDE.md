@@ -435,5 +435,17 @@ Kafka·Elasticsearch·Phoenix 3개를 매번 따로 띄우는 대신 `./start_in
 - "이체모니터링 탭엔 예약·지연·취소가 있는데 대시보드 이체 상태 분포엔 완료/대기/실패 3개뿐이다"는 지적 — `renderBoDashboardStatusRank`가 `transfer_summary()`가 이미 내려주는 `scheduled`/`delayed`/`canceled` 필드를 애초에 안 쓰고 있었음. 이체모니터링 탭이 이미 쓰는 색상 토큰(예약=`--info`, 지연=`#6D28D9`, 취소=`--text-sub`)을 그대로 재사용해 3개 행 추가 — `renderRankedBars`는 원래도 0건 항목을 숨기지 않고 그대로 그리는 구조라 별도 처리 없이 요청한 "0%라도 표시" 요건을 그대로 만족.
 - **부수 발견**: 이 수정으로 총 합계가 22건→37건으로 바뀜 — "취소" 15건이 기존엔 이 패널 집계에서 통째로 빠져 있던 것도 함께 드러남(실제 버그였음, 이번 수정으로 같이 해결).
 
+**Figma 디자인시스템 구축 (v1: 파운데이션 + 컴포넌트 + 소비자 화면 8개)** — 대상: Figma(코드 변경 없음, 별도 Figma 파일)
+- 리디자인이 끝난 `site/` 코드베이스를 소스로 삼아, 나중에 디자이너가 직접 수정 가능한 Figma 디자인시스템 파일 구축 시작. Figma MCP의 `figma-generate-library`/`figma-generate-design`/`figma-use` 스킬의 Phase 0(발견)~Phase 4(화면조립) 표준 워크플로우를 그대로 따름 — "한 번에 다 하지 말라"는 스킬 원칙에 따라 컴포넌트/화면 단위로 매번 스크린샷 검증 후 진행.
+- **파일**: 새 Figma Design 파일 "매치뱅크 디자인시스템" 생성(팀: 김정아's team) — https://www.figma.com/design/KnJEcMeU05dCaVk3krDKKF . 기존 2026-07-23 기획서 미러링용 Figma Slides 파일과는 별개(Slides는 변수/컴포넌트 라이브러리를 못 담음).
+- **중요: 코드→Figma 단방향** — 이 작업은 코드를 읽어 Figma에 옮겨 그리는 것이라, Figma에서 나중에 뭘 고쳐도 웹사이트에 자동 반영되지 않음(CLAUDE.md의 기존 "코드/문서가 원본, Figma는 결과물" 원칙과 동일). Figma 변경을 웹에 반영하려면 그 파일을 보고 코드를 다시 고쳐야 함.
+- **토큰/파운데이션**: 변수 컬렉션 5개(Primitives/Color/Spacing/Radius/Motion, 총 49개 변수, 전부 scope+`var(--css변수명)` code syntax 부여), Effect 스타일 4개(Shadow), Text 스타일 8개(Display~Caption). 라이트 전용 프로젝트라 Color 컬렉션은 "Light" 모드 하나만. Foundations 문서 페이지 6개(Logo/Color/Typography/Spacing & Radius/Shadow & Motion/Breakpoints & Grid) — 브레이크포인트가 코드에 680/720/899/900/960px로 산발적인 것을 3단계(Mobile/Tablet/Desktop)로 정리해 문서에 제안으로 남김(코드 변경은 안 함).
+- **로고 페이지**: 실제 `logo-mark.svg`를 Figma 벡터로 직접 임포트(재작도 아님) — 크기 스케일, 흰/그린 배경 대비, 사용 규칙 문서화. 마스터 노드에 PNG(@1x/2x/3x)·JPG·SVG export 설정을 미리 걸어둬서 Figma에서 바로 내보내기 가능.
+- **컴포넌트 6종 14개 variant**: Button(Primary/Ghost×Default/Hover/Disabled), Input & Form(Text Input 4상태+Checkbox+Select), Card & Chip(rest→hover 공식 재현), Nav Link, Badge & Status(Status/Trend), Data Viz(Stat Card/Ranked Bar) — 전부 변수 바인딩.
+- **소비자 화면 8개**: Home/AI은행원/내계좌/상품안내/고객센터/마이페이지/로그인·회원가입/footer — 전부 위 컴포넌트 인스턴스로 조립, 화면마다 실제 사이트 스크린샷과 대조 검증.
+- **버그 패턴 발견(반복 3회)**: Figma auto-layout 프레임은 기본으로 흰 배경이 채워지는데, 색깔 있는 배경(히어로 그린 그라디언트, TOP추천 카드) 위에 얹는 텍스트 컨테이너에서 이 기본 흰 배경을 안 지우면 내용이 통째로 가려짐 — 매번 발견 즉시 `fills=[]`로 수정. 그 외 "FILL 사이징은 appendChild 이후에 설정" 순서 오류, "컴포넌트셋 안 variant는 로컬 좌표로 배치"(페이지 좌표와 이중 적용하면 부모 프레임 밖으로 밀려나 안 보임), "스크립트 실패 시 그 스크립트 안의 이전 작업까지 통째로 롤백"(atomic) 등도 발견 즉시 수정.
+- **다음 단계(범위 밖으로 명시적으로 미룸)**: Backoffice 9개 탭은 이번 v1에 포함 안 함. 재개 시 상태 원장(`/tmp/dsb-state-matchbank-001.json`)을 읽어서 이어감 — 세션이 끊겨도 "매치뱅크 디자인시스템 이어서 진행해줘"로 재개 가능.
+
 **남은 작업 (TODO)**
 - 현재 알려진 TODO 없음 — Backoffice 8개 탭 리디자인, 홈 배너/이벤트/특별상품 연동까지 전부 완료.
+- Figma 디자인시스템: Backoffice 9개 탭 화면 조립이 남아있음(파운데이션/컴포넌트/소비자 화면 8개는 완료).
