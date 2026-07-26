@@ -528,7 +528,7 @@ st.markdown("""<style>
     width: fit-content !important;
     padding: 7px 14px !important;
     border-radius: 18px !important;
-    border: 1px solid #E3E6EA !important;
+    border: 1px solid var(--border) !important;
     background: #FFFFFF !important;
     color: var(--text) !important;
     font-weight: 500 !important;

@@ -5064,7 +5064,12 @@ function escapeHtml(s) {
     hide();
     window.setTimeout(() => {
       if (window.scrollY > 40) return;   // 이미 스크롤된 채로 진입했으면 노출 안 함
-      const overflow = document.documentElement.scrollHeight - window.innerHeight;
+      // 사이트 전체 footer가 아니라 "현재 화면 콘텐츠"에 더 볼 게 있는지만 기준으로 삼는다 —
+      // document.scrollHeight로 재면 footer 높이만으로도 모든 화면에서 항상 노출돼
+      // 고정 위치 힌트가 화면 하단부 실제 콘텐츠 위에 겹쳐 보이는 문제가 있었음.
+      const activeSection = document.querySelector("main > .section.active");
+      if (!activeSection) return;
+      const overflow = activeSection.getBoundingClientRect().bottom - window.innerHeight;
       if (overflow > 160) hint.classList.add("show");
     }, 200);
   };
