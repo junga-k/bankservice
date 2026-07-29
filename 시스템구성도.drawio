@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net">
-  <diagram name="시스템 구성도" id="clean-arch-1">
-    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1120" math="0" shadow="0">
+  <diagram name="시스템 구성도 (로그인 상태)" id="clean-arch-1">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1080" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -9,114 +9,203 @@
         <mxCell id="bCH" value="① 채널 · 프런트엔드" style="rounded=1;html=1;fillColor=#F1FBF5;strokeColor=#0B8457;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontSize=13;fontStyle=1;fontColor=#0B5C3E;connectable=0;" vertex="1" parent="1">
           <mxGeometry x="40" y="110" width="1320" height="120" as="geometry" />
         </mxCell>
-        <mxCell id="bAG" value="② 은행 에이전트 · Streamlit :8501" style="rounded=1;html=1;fillColor=#F8F4FD;strokeColor=#7A5FBF;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontSize=13;fontStyle=1;fontColor=#4A2E86;connectable=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="260" width="1320" height="330" as="geometry" />
+        <mxCell id="bAG" value="② AI 은행업무 에이전트 (로그인하면 자동으로 이 에이전트가 응답)" style="rounded=1;html=1;fillColor=#F8F4FD;strokeColor=#7A5FBF;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontSize=13;fontStyle=1;fontColor=#4A2E86;connectable=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="260" width="1320" height="290" as="geometry" />
         </mxCell>
-        <mxCell id="bBE" value="③ FastAPI 백엔드 :8000" style="rounded=1;html=1;fillColor=#EEF4FF;strokeColor=#2F5FD6;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontSize=13;fontStyle=1;fontColor=#1B3F91;connectable=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="630" width="1320" height="100" as="geometry" />
+        <mxCell id="bBE" value="③ 백엔드 서버" style="rounded=1;html=1;fillColor=#EEF4FF;strokeColor=#2F5FD6;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontSize=13;fontStyle=1;fontColor=#1B3F91;connectable=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="580" width="1320" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="bDATA" value="④ 데이터 · 인프라" style="rounded=1;html=1;fillColor=#F5F7F9;strokeColor=#5F6368;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontSize=13;fontStyle=1;fontColor=#33373B;connectable=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="770" width="1320" height="150" as="geometry" />
+        <mxCell id="bDATA" value="④ 데이터 저장소" style="rounded=1;html=1;fillColor=#F5F7F9;strokeColor=#5F6368;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontSize=13;fontStyle=1;fontColor=#33373B;connectable=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="710" width="1320" height="200" as="geometry" />
         </mxCell>
         <mxCell id="bEXT" value="⑤ 외부 서비스" style="rounded=1;html=1;fillColor=#FEF8EF;strokeColor=#E8871E;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontSize=13;fontStyle=1;fontColor=#8A4E12;connectable=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="960" width="1320" height="120" as="geometry" />
+          <mxGeometry x="40" y="940" width="1320" height="120" as="geometry" />
         </mxCell>
 
-        <!-- ── 노드 ── -->
-        <mxCell id="nUser" value="👤 사용자" style="rounded=1;arcSize=50;html=1;whiteSpace=wrap;fillColor=#ECECFF;strokeColor=#9370DB;fontSize=13;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="650" y="40" width="120" height="48" as="geometry" />
+        <!-- ── ① 채널 노드 ── -->
+        <mxCell id="nUser" value="👤 사용자 (로그인 완료)" style="rounded=1;arcSize=50;html=1;whiteSpace=wrap;fillColor=#ECECFF;strokeColor=#9370DB;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="620" y="40" width="180" height="48" as="geometry" />
         </mxCell>
 
-        <mxCell id="nChat" value="AI 챗봇 (iframe)" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#E3F6EC;strokeColor=#0B8457;fontSize=13;" vertex="1" parent="1">
-          <mxGeometry x="360" y="150" width="210" height="60" as="geometry" />
+        <mxCell id="nChat" value="AI 챗봇" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#E3F6EC;strokeColor=#0B8457;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="390" y="155" width="180" height="55" as="geometry" />
         </mxCell>
-        <mxCell id="nSite" value="웹사이트 SPA&#xa;홈·계좌·상품·고객센터·관리자" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#E3F6EC;strokeColor=#0B8457;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="900" y="150" width="300" height="60" as="geometry" />
-        </mxCell>
-
-        <mxCell id="nOrch" value="🧠 오케스트레이터&#xa;OpenAI 도구호출 · 라우팅" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#EDE4FB;strokeColor=#6D45B8;fontSize=12;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="520" y="300" width="280" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="nA1" value="💰 계좌 비서&#xa;잔액·거래내역" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#FBF7FF;strokeColor=#9B7FD4;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="90" y="410" width="230" height="66" as="geometry" />
-        </mxCell>
-        <mxCell id="nA2" value="💸 이체 도우미&#xa;예금주확인·이체제안" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#FBF7FF;strokeColor=#9B7FD4;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="370" y="410" width="230" height="66" as="geometry" />
-        </mxCell>
-        <mxCell id="nA3" value="📈 상품 어드바이저&#xa;예금·적금·대출 비교" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#FBF7FF;strokeColor=#9B7FD4;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="720" y="410" width="230" height="66" as="geometry" />
-        </mxCell>
-        <mxCell id="nA4" value="💬 고객지원&#xa;FAQ·공지·문의" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#FBF7FF;strokeColor=#9B7FD4;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="1010" y="410" width="230" height="66" as="geometry" />
-        </mxCell>
-        <mxCell id="nRAG" value="RAG 검색&#xa;(rag.py)" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#F3EEFB;strokeColor=#7A5FBF;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="740" y="510" width="150" height="54" as="geometry" />
-        </mxCell>
-        <mxCell id="nCache" value="시맨틱 캐시&#xa;(cache.py)" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#F3EEFB;strokeColor=#7A5FBF;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="90" y="510" width="190" height="54" as="geometry" />
+        <mxCell id="nSite" value="웹사이트&#xa;(계좌 · 상품 · 고객센터)" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#E3F6EC;strokeColor=#0B8457;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="880" y="155" width="220" height="55" as="geometry" />
         </mxCell>
 
-        <mxCell id="nAPI" value="REST API + 인증(JWT)&#xa;계좌·이체·상품·공지·FAQ·관리자" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#E4EEFF;strokeColor=#2F5FD6;fontSize=12;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="520" y="650" width="280" height="64" as="geometry" />
+        <!-- ── ② 에이전트 노드 ── -->
+        <mxCell id="nAgent" value="🧠 AI 은행업무 에이전트&#xa;하나의 AI가 모든 요청을 직접 처리 (별도 라우터 없음)" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#EDE4FB;strokeColor=#6D45B8;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="440" y="300" width="520" height="60" as="geometry" />
         </mxCell>
 
-        <mxCell id="nRC" value="Redis · ChromaDB&#xa;(캐시 저장소)" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=10;html=1;whiteSpace=wrap;fillColor=#F4F6F8;strokeColor=#5F6368;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="90" y="805" width="170" height="80" as="geometry" />
+        <mxCell id="nG1" value="💰 계좌조회&#xa;잔액 · 거래내역 확인" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#FBF7FF;strokeColor=#9B7FD4;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="90" y="400" width="280" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="nPhoenix" value="Phoenix&#xa;OTEL 추적 :6006" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#F4F6F8;strokeColor=#5F6368;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="300" y="818" width="160" height="54" as="geometry" />
+        <mxCell id="nG2" value="💸 이체&#xa;예금주 확인 → 제안 → 사용자 승인 후 실행" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#FBF7FF;strokeColor=#9B7FD4;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="390" y="400" width="280" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="nES" value="Elasticsearch&#xa;rag_documents" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=10;html=1;whiteSpace=wrap;fillColor=#F4F6F8;strokeColor=#5F6368;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="510" y="805" width="130" height="80" as="geometry" />
+        <mxCell id="nG3" value="📈 상품안내&#xa;예금 · 적금 · 대출 비교" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#FBF7FF;strokeColor=#9B7FD4;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="690" y="400" width="280" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="nKafka" value="Kafka" style="shape=hexagon;perimeter=hexagonPerimeter2;html=1;whiteSpace=wrap;fixedSize=1;fillColor=#F4F6F8;strokeColor=#5F6368;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="710" y="820" width="100" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="nWorker" value="이체 워커&#xa;transfer_consumer" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#F4F6F8;strokeColor=#5F6368;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="870" y="818" width="150" height="54" as="geometry" />
-        </mxCell>
-        <mxCell id="nDB" value="SQLite&#xa;bank.db" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=10;html=1;whiteSpace=wrap;fillColor=#F4F6F8;strokeColor=#5F6368;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="1090" y="805" width="90" height="80" as="geometry" />
+        <mxCell id="nG4" value="💬 고객지원&#xa;FAQ · 공지 · 문의 답변" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#FBF7FF;strokeColor=#9B7FD4;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="990" y="400" width="280" height="70" as="geometry" />
         </mxCell>
 
-        <mxCell id="nOpenAI" value="OpenAI&#xa;LLM · 임베딩" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#FEF3E2;strokeColor=#E8871E;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="120" y="995" width="180" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="nFSS" value="금융감독원 FSS&#xa;상품 공시 API" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#FEF3E2;strokeColor=#E8871E;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="560" y="995" width="190" height="60" as="geometry" />
+        <mxCell id="nNote2" value="※ 4가지 기능은 실제로 나뉘어 있지 않고, AI 하나가 필요할 때마다 자유롭게 골라 씀" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontStyle=2;fontColor=#6D45B8;" vertex="1" parent="1">
+          <mxGeometry x="340" y="483" width="680" height="24" as="geometry" />
         </mxCell>
 
-        <!-- ── 엣지 (직각선) ── -->
+        <!-- ── ③ 백엔드 노드 ── -->
+        <mxCell id="nAPI" value="백엔드 API&#xa;계좌 · 이체 · 상품 · 고객센터 데이터 처리" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#E4EEFF;strokeColor=#2F5FD6;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="520" y="605" width="320" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ── ④ 데이터 저장소 노드 (실제 사용 시스템 표기) ── -->
+        <mxCell id="nRC" value="Redis · ChromaDB&#xa;(시맨틱캐시 저장소)&#xa;⚠ 로그인 시 미사용" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=10;html=1;whiteSpace=wrap;dashed=1;fillColor=#F4F6F8;strokeColor=#9AA0A6;fontColor=#7B8288;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="80" y="755" width="210" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="nES" value="Elasticsearch&#xa;(RAG 문서검색)&#xa;⚠ 로그인 시 미사용" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=10;html=1;whiteSpace=wrap;dashed=1;fillColor=#F4F6F8;strokeColor=#9AA0A6;fontColor=#7B8288;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="310" y="755" width="190" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="nPhoenix" value="Phoenix&#xa;(추적 · 모니터링)" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#F4F6F8;strokeColor=#5F6368;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="530" y="775" width="150" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="nKafka" value="Kafka&#xa;(이체 이벤트 큐)" style="shape=hexagon;perimeter=hexagonPerimeter2;html=1;whiteSpace=wrap;fixedSize=1;fillColor=#F4F6F8;strokeColor=#5F6368;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="700" y="775" width="150" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="nWorker" value="이체 워커&#xa;(비동기로 순차 처리)" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#F4F6F8;strokeColor=#5F6368;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="870" y="775" width="170" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="nDB" value="데이터베이스 (SQLite)&#xa;계좌 · 거래내역 · 상품" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=10;html=1;whiteSpace=wrap;fillColor=#F4F6F8;strokeColor=#5F6368;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="755" width="180" height="95" as="geometry" />
+        </mxCell>
+
+        <!-- ── ⑤ 외부 서비스 노드 ── -->
+        <mxCell id="nOpenAI" value="OpenAI&#xa;AI 두뇌 역할 (LLM)" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#FEF3E2;strokeColor=#E8871E;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="180" y="975" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="nFSS" value="금융감독원 FSS&#xa;실시간 상품 정보 제공" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#FEF3E2;strokeColor=#E8871E;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="620" y="975" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ── 엣지 ── -->
         <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="nUser" target="nChat"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="nUser" target="nSite"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="nSite" target="nAPI"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="nChat" target="nOrch"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3b" value="로그인 정보 자동 전달" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#0B8457;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nSite" target="nChat"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" value="질문 전달" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nChat" target="nAgent"><mxGeometry relative="1" as="geometry" /></mxCell>
 
-        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#8A6FC0;" edge="1" parent="1" source="nOrch" target="nA1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#8A6FC0;" edge="1" parent="1" source="nOrch" target="nA2"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#8A6FC0;" edge="1" parent="1" source="nOrch" target="nA3"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#8A6FC0;" edge="1" parent="1" source="nOrch" target="nA4"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#8A6FC0;" edge="1" parent="1" source="nOrch" target="nCache"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#8A6FC0;" edge="1" parent="1" source="nA3" target="nRAG"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;dashed=1;strokeColor=#8A6FC0;" edge="1" parent="1" source="nAgent" target="nG1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;dashed=1;strokeColor=#8A6FC0;" edge="1" parent="1" source="nAgent" target="nG2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;dashed=1;strokeColor=#8A6FC0;" edge="1" parent="1" source="nAgent" target="nG3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;dashed=1;strokeColor=#8A6FC0;" edge="1" parent="1" source="nAgent" target="nG4"><mxGeometry relative="1" as="geometry" /></mxCell>
 
-        <mxCell id="e11" value="계좌·거래내역" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nA1" target="nAPI"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e12" value="예금주조회·이체" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nA2" target="nAPI"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e13" value="FAQ·공지·문의" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nA4" target="nAPI"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="nG1" target="nAPI"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12" value="이체 실행" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nG2" target="nAPI"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="nG3" target="nAPI"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="nG4" target="nAPI"><mxGeometry relative="1" as="geometry" /></mxCell>
 
-        <mxCell id="e10" value="추론" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#E8871E;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nOrch" target="nOpenAI"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="nRAG" target="nES"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e16" value="임베딩" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#E8871E;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nRAG" target="nOpenAI"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="nCache" target="nRC"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" value="AI 판단 요청" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#E8871E;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nAgent" target="nOpenAI"><mxGeometry relative="1" as="geometry" /></mxCell>
 
         <mxCell id="e18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="nAPI" target="nDB"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e19" value="이체 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nAPI" target="nKafka"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e19" value="이체 이벤트 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nAPI" target="nKafka"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="nKafka" target="nWorker"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="nWorker" target="nDB"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e22" value="상품 조회" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nAPI" target="nFSS"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e23" value="색인" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nFSS" target="nES"><mxGeometry relative="1" as="geometry" /></mxCell>
-
+        <mxCell id="e22" value="실시간 조회" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nAPI" target="nFSS"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e24" value="추적" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#B0538A;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nAPI" target="nPhoenix"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e25" value="추적" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#B0538A;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="nOrch" target="nPhoenix"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="사용자 흐름 (로그인 상태)" id="user-flow-1">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ── 스윙레인 배경 ── -->
+        <mxCell id="lU" value="사용자" style="rounded=1;html=1;fillColor=#ECECFF;strokeColor=#9370DB;verticalAlign=top;align=center;fontSize=13;fontStyle=1;fontColor=#4A2E86;connectable=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="220" height="810" as="geometry" />
+        </mxCell>
+        <mxCell id="lC" value="챗봇" style="rounded=1;html=1;fillColor=#F1FBF5;strokeColor=#0B8457;verticalAlign=top;align=center;fontSize=13;fontStyle=1;fontColor=#0B5C3E;connectable=0;" vertex="1" parent="1">
+          <mxGeometry x="280" y="40" width="280" height="810" as="geometry" />
+        </mxCell>
+        <mxCell id="lA" value="AI 에이전트" style="rounded=1;html=1;fillColor=#F8F4FD;strokeColor=#7A5FBF;verticalAlign=top;align=center;fontSize=13;fontStyle=1;fontColor=#4A2E86;connectable=0;" vertex="1" parent="1">
+          <mxGeometry x="580" y="40" width="280" height="810" as="geometry" />
+        </mxCell>
+        <mxCell id="lB" value="백엔드" style="rounded=1;html=1;fillColor=#EEF4FF;strokeColor=#2F5FD6;verticalAlign=top;align=center;fontSize=13;fontStyle=1;fontColor=#1B3F91;connectable=0;" vertex="1" parent="1">
+          <mxGeometry x="880" y="40" width="280" height="810" as="geometry" />
+        </mxCell>
+
+        <!-- ── 1. 로그인 ── -->
+        <mxCell id="S1" value="① 로그인" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#ECECFF;strokeColor=#9370DB;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="100" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="S2" value="AI 에이전트 모드 자동 활성화" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#E3F6EC;strokeColor=#0B8457;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="300" y="100" width="240" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ── 2. 일반 조회 (핵심 경로) ── -->
+        <mxCell id="S3" value="② 질문 · 요청 입력&#xa;(예: 계좌조회 · 상품비교 · 이체 등 무엇이든)" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#ECECFF;strokeColor=#9370DB;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="220" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="S4" value="AI가 필요한 기능을 스스로 선택&#xa;(계좌조회 · 상품안내 · 고객지원 · 이체)" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#EDE4FB;strokeColor=#6D45B8;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="600" y="220" width="240" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="S5" value="필요한 데이터 조회 · 처리" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#E4EEFF;strokeColor=#2F5FD6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="900" y="220" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="S6" value="답변 생성 · 표시" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#E3F6EC;strokeColor=#0B8457;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="300" y="330" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="S7" value="답변 확인&#xa;(계좌조회 등은 여기서 완료)" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#ECECFF;strokeColor=#9370DB;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="330" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ── 3. 이체일 때만 이어지는 분기 ── -->
+        <mxCell id="bannerT" value="💸 요청이 '이체'라면 아래로 계속 (승인 절차 추가)" style="rounded=0;html=1;fillColor=#FFF9E8;strokeColor=#E8871E;fontSize=12;fontStyle=1;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="420" width="1120" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="S8" value="이체 제안 생성&#xa;(예금주 확인 후, 실행은 아직 안 함)" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#EDE4FB;strokeColor=#6D45B8;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="600" y="470" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="S9" value="확인카드 표시&#xa;금액 · 받는 분 확인 + 비밀번호 입력 요청" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#E3F6EC;strokeColor=#0B8457;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="300" y="470" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="S10" value="승인 or 취소?" style="rhombus;html=1;whiteSpace=wrap;fillColor=#FFF3D6;strokeColor=#B8860B;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="90" y="580" width="160" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="S11" value="취소 — 이체 진행 안 함 (종료)" style="rounded=1;html=1;whiteSpace=wrap;dashed=1;fillColor=#F4F6F8;strokeColor=#9AA0A6;fontColor=#5F6368;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="300" y="690" width="240" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="S12" value="이체 실행 요청&#xa;즉시 또는 예약 · 안전하게 순차 처리" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#E4EEFF;strokeColor=#2F5FD6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="900" y="690" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="S13" value="완료 · 예약 안내 표시" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#E3F6EC;strokeColor=#0B8457;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="300" y="780" width="240" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="S14" value="결과 확인" style="rounded=1;html=1;whiteSpace=wrap;fillColor=#ECECFF;strokeColor=#9370DB;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="780" width="180" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ── 엣지 ── -->
+        <mxCell id="e1" value="로그인 정보 전달" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="S1" target="S2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#0B8457;" edge="1" parent="1" source="S2" target="S3"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e3" value="질문 전달" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="S3" target="S4"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" value="처리 요청" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="S4" target="S5"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" value="결과 전달" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="S5" target="S6"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="S6" target="S7"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e7" value="이체 제안" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6D45B8;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="S4" target="S8"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="S8" target="S9"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9" value="사용자 확인 대기" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="S9" target="S10"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" value="취소" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#9AA0A6;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="S10" target="S11"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" value="승인" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#0B8457;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="S10" target="S12"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12" value="처리 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="S12" target="S13"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#607080;" edge="1" parent="1" source="S13" target="S14"><mxGeometry relative="1" as="geometry" /></mxCell>
 
       </root>
     </mxGraphModel>

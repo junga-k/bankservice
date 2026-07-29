@@ -21,3 +21,9 @@ site/data/fss_ingest.json
 # 관리자가 배너 관리에서 업로드한 이미지 — seed-*.svg(데모 샘플)만 커밋 대상
 site/img/banners/*
 !site/img/banners/seed-*.svg
+
+# Playwright MCP 자동 생성 임시 덤프(페이지 스냅샷/콘솔 로그)
+.playwright-mcp/
+
+# 시스템구성도.drawio에서 내보낸 파생 파일 — 원본(.drawio)만 버전관리, 필요 시 재내보내기
+시스템구성도.pptx
