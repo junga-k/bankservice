@@ -1320,8 +1320,8 @@ main { min-height: calc(100vh - var(--header-h)); }
 
 /* 대시보드: KPI 증감 배지 + 차트 3열 그리드 */
 .trend-badge { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 10px; margin-left: 6px; }
-.trend-badge.up { background: #E6F4EA; color: #1E7E34; }
-.trend-badge.down { background: #FCE8E6; color: #C5221F; }
+.trend-badge.up { background: var(--success-soft); color: var(--blue-dark); }
+.trend-badge.down { background: var(--error-soft); color: var(--error); }
 .trend-badge.flat { background: var(--bg-soft); color: var(--text-sub); }
 /* 요약 카드: 긴 금액(총 예치금·이체 완료금액)이 줄바꿈되어 카드 높이·정렬이
    틀어지지 않도록, 값 글자크기를 통일하고 한 줄로 고정한다. */
