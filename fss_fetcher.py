@@ -261,9 +261,21 @@ def fetch_category(
     return result
 
 
+_BANK_NAME_ALIASES = {
+    # FSS API의 법정 등록명과 site/js/main.js BANK_BRAND의 통용 브랜드명이 달라
+    # 배지·URL 매핑이 깨지는 은행들을 통용명으로 정규화한다.
+    # (아이엠뱅크는 여기 넣지 않는다 — _BANK_PRODUCT_URLS에 "아이엠뱅크" 키만 있고
+    #  "대구은행" 키는 없어서, 여기서 리네임하면 URL 매핑이 깨진다.
+    #  대신 site/js/main.js의 BANK_BRAND에 "아이엠뱅크" 키를 별도로 추가해 처리한다.)
+    "한국스탠다드차타드은행": "SC제일은행",
+    "중소기업은행": "IBK기업은행",
+}
+
+
 def _clean_bank_name(name: str) -> str:
-    """'주식회사 케이뱅크' 같은 법인격 접두어를 제거해 배지·URL 매핑과 맞춘다."""
-    return name.replace("주식회사", "").strip()
+    """'주식회사 케이뱅크' 같은 법인격 접두어를 제거하고, 법정 등록명을 통용 브랜드명으로 정규화해 배지·URL 매핑과 맞춘다."""
+    name = name.replace("주식회사", "").strip()
+    return _BANK_NAME_ALIASES.get(name, name)
 
 
 _JOIN_DENY_LABELS = {"1": "가입제한 없음", "2": "서민전용", "3": "일부제한"}

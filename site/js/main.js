@@ -349,6 +349,7 @@ const BANK_BRAND = {
   "SC제일은행":  { label: "SC",  color: "#12A0D7", logo: "sc.png" },
   "부산은행":    { label: "부산", color: "#004EA2", logo: "busan.png" },
   "대구은행":    { label: "대구", color: "#EE7D1F", logo: "daegu.png" },
+  "아이엠뱅크":  { label: "대구", color: "#EE7D1F", logo: "daegu.png" }, // 대구은행이 iM뱅크(아이엠뱅크)로 리브랜딩 — FSS API는 새 법정명을 반환
   "경남은행":    { label: "경남", color: "#009944", logo: "gyeongnam.png" },
   "광주은행":    { label: "광주", color: "#F58220", logo: "gwangju.png" },
   "전북은행":    { label: "전북", color: "#EE3524", logo: "jeonbuk.png" },
