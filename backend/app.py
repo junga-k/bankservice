@@ -41,6 +41,14 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def _db_request_scope(request, call_next):
+    # 요청 하나 동안 db 연결을 하나만 열어 재사용한다(Turso는 연결 하나 여는 데만
+    # ~550~600ms — 요청당 db.py 호출이 여러 번이면 그만큼 배로 늘어나던 것을 방지).
+    with db.request_scope():
+        return await call_next(request)
+
+
 @app.on_event("startup")
 def _startup() -> None:
     db.init_db()
