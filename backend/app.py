@@ -933,24 +933,34 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
         return {"transfer_id": transfer_id, "status": sched_status, "fee": fee,
                 "scheduled_at": sched_at}
 
-    # 즉시 이체: Kafka로 이체 이벤트 발행
-    try:
-        producer = _get_producer()
-        producer.send(kafka_io.TOPIC_TRANSFER, {
-            "transfer_id": transfer_id,
-            "from_account": req.from_account,
-            "to_account": req.to_account,
-            "amount": req.amount,
-        })
-        producer.flush(timeout=5)
-    except Exception as e:
-        db.fail_transfer(transfer_id, f"이벤트 발행 실패(Kafka 미기동?): {e}")
-        raise HTTPException(
-            status_code=503,
-            detail="이체 처리 시스템(Kafka)에 연결할 수 없습니다. 잠시 후 다시 시도하세요.",
-        )
+    # 즉시 이체: Kafka로 이체 이벤트 발행(성공하면 워커가 비동기 처리).
+    # Kafka가 아예 없거나(KAFKA_DISABLED) 발행이 실패하면 이 요청 안에서
+    # process_transfer()를 직접 동기 실행한다 — Kafka 가용성이 이체 성공 여부를
+    # 막아선 안 되기 때문. process_transfer()는 status != 'pending'이면 그냥
+    # 리턴하는 자체 멱등성 가드가 있어서, 나중에 Kafka가 살아나 같은 메시지를
+    # 처리해도 이중 차감되지 않는다. (fail_transfer()를 여기서 호출하면 안 됨 —
+    # 그러면 상태가 'failed'로 바뀌어 아래 process_transfer()가 멱등성 가드에
+    # 걸려 실제 처리를 건너뛰게 된다.)
+    kafka_ok = False
+    if not kafka_io.KAFKA_DISABLED:
+        try:
+            producer = _get_producer()
+            producer.send(kafka_io.TOPIC_TRANSFER, {
+                "transfer_id": transfer_id,
+                "from_account": req.from_account,
+                "to_account": req.to_account,
+                "amount": req.amount,
+            })
+            producer.flush(timeout=5)
+            kafka_ok = True
+        except Exception:
+            kafka_ok = False
 
-    return {"transfer_id": transfer_id, "status": "pending", "fee": fee}
+    if kafka_ok:
+        return {"transfer_id": transfer_id, "status": "pending", "fee": fee}
+
+    status = db.process_transfer(transfer_id)
+    return {"transfer_id": transfer_id, "status": status, "fee": fee}
 
 
 @app.post("/api/transfers/{transfer_id}/cancel")
