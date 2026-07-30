@@ -592,3 +592,30 @@
 - **사용자 결정(2026-07-30)**: 웹(`site/index.html`)은 원본 그대로 유지(수정 안 함) — Figma에서만 은행명을 가상 이름("가나은행")으로 교체해 실제 데이터와의 혼동 방지. 이 프로젝트에서 **웹과 Figma가 의도적으로 다른 유일한 케이스**.
 - 수정: `ab-panel`(`49:50`) 안 텍스트 2곳 — A(`49:55`) "카카오뱅크 정기예금이 연 3.5%로 가장 높아요." → "가나은행 정기예금이 연 3.5%로 가장 높아요.", B(`49:60`) "정기예금 중에는 카카오뱅크(3.5%)가 최고금리입니다." → "정기예금 중에는 가나은행(3.5%)이 최고금리입니다."(조사 주격조사 이/가 교정 포함). `get_screenshot`으로 확인 완료.
 - **향후 재감사 오탐 방지 조치 2중 등록**: (1) 두 텍스트 노드에 `setSharedPluginData('dsb','intentionalException', ...)`로 사유를 직접 태깅 — 노드를 코드로 순회하는 재스캔 스크립트가 즉시 읽을 수 있음. (2) 상태 원장(`/tmp/dsb-state-matchbank-001.json`)의 `knownIssues`에 `bo-promptmgmt-ab-example-intentional-mismatch` 키로 동일 내용 기록 — 다음 세션이 시작할 때 먼저 읽는 파일이라 사람이 봐도 바로 인지 가능. 두 곳 다 "다음 전체 화면 재감사에서 이 두 노드(49:55/49:60)를 웹과 불일치로 잘못 플래그하지 말 것"이라고 명시.
+
+**BO_UsageStats/BO_Products "카테고리별 인기 상품 TOP 5" 패널 콘텐츠 추가 착수 — 위 RankedBar 작업과는 별개 항목임을 명시**
+
+사용자 요청으로, 착수 전에 이 작업과 오늘 이미 완료한 "카테고리별 관심도"/"조회 vs 검색 비중" RankedBar 작업을 세션 로그에서 명확히 구분해둔다. 둘은 같은 BO_UsageStats 화면에 있지만 서로 다른 패널이며 근거 배경도 다르다.
+
+- **RankedBar 두 패널(카테고리별 관심도 6슬롯, 조회/검색 비중 2슬롯)**: 위 섹션들에서 완료. `db.stats_usage_by_category()`/`stats_usage_summary()` 기반, `renderRankedBars()`로 렌더링되는 막대+퍼센트 컴포넌트. 감사후속 5건 중 2번(2026-07-29)·4번(2026-07-30)에 해당.
+- **"카테고리별 인기 상품 TOP 5" 패널(이번 항목)**: 완전히 다른 데이터 소스(`db.stats_top_products()` → `/api/stats/top-products`, `usage_events`의 category+product GROUP BY)와 다른 컴포넌트(`Topcat Item`, 순위+상품명 리스트, 막대 없음)를 쓴다. `loadTopProductsGrid()` 함수 하나가 Products(`#stat-products`)/BO_UsageStats(`#bo-stat-products`)/BO_Products(`#bo-product-stat-products`) 3곳에서 공유되는데, Products엔 `### 2026-07-28 (계속 2)` 세션에서 이미 25개 인스턴스(카테고리 5×순위 5)로 반영 완료됐고, 나머지 두 곳(BO_UsageStats/BO_Products)은 패널 자체가 Figma에 아예 없는 상태로 그때 스코프 밖 TODO 5번으로 남겨졌던 것 — `backlog.md`의 "감사후속 5건" 마지막 항목이자 오늘(2026-07-30) 착수하는 항목.
+- **API 인증 확인**: `/api/stats/top-products`(`backend/app.py:978`)는 `db.stats_top_products()`(`backend/db.py:549`)를 그대로 반환하며 인증 의존성이 전혀 없는 완전 공개 엔드포인트 — 로그인 여부·admin 여부와 무관하게 항상 동일한 응답.
+- **값 재사용 방침**: 이번엔 API를 다시 호출하지 않고, Products 화면에 이미 반영된 25개 `Topcat Item` 인스턴스 값을 Figma에서 그대로 읽어와 BO_UsageStats/BO_Products에 복사한다(같은 날 재조회 시 미세한 드리프트로 세 화면 간 불일치가 새로 생기는 것을 방지하기 위한 사용자 결정).
+- **컨테이너 폭 사전 확인**: Products는 `.container`(`--maxw: 1080px`, 내부 콘텐츠 폭 ≈1032px), Backoffice는 `.container.container-wide`(1440px) 안에 `.bo-sidebar`(184px 고정)+`.bo-layout` gap(28px)을 제외한 `.bo-content`가 실질 폭 ≈1180px — 두 폭이 다름을 확인. 다만 실제 라이브 사이트에서 `.stat-products-columns`는 `grid-template-columns: repeat(5, minmax(0,1fr))`(`site/css/style.css:1043`)로 완전히 유동적이라 폭 차이로 줄바꿈/잘림이 나는 구조가 아님. Figma에서도 Products 패널 프레임을 그대로 고정폭 복사하지 않고, BO_UsageStats/BO_Products 안에서는 같은 화면의 기존 형제 패널("카테고리별 관심도"/"조회 vs 검색 비중")과 동일한 `.bo-content` 폭(≈1180px)에 맞춰 새로 배치하기로 함.
+
+**컨테이너 폭 실측 재확인 + Figma 빌드 진행 — kpi-row/panels-row 32px 인셋 불일치 발견**
+
+착수 전 사용자가 "1180px이 실측인지 계산값인지, 형제 패널로 교차확인해달라"고 요청 — Playwright로 `admin` 로그인 후 `localhost:8000` 라이브 접속, `getBoundingClientRect()`로 직접 측정.
+- `.bo-content`, `.metric-grid`, `.panel`(카테고리별 관심도/조회vs검색비중) 전부 `width: 1180px`, `margin: 0`, `left: 236`(동일 좌표)로 정확히 일치 — 1180px은 계산값이 아니라 세 소스(bo-content/형제 panel/Figma main 프레임)에서 독립적으로 확인된 실측값.
+- 그런데 Figma `main`(`47:35`, `50:35`) 안의 `kpi-row`(`47:36`)/`panels-row`(`47:49`)가 **x=32, width=1140**로 좌우 32px 인셋돼 있는데, 실측한 `.metric-grid`/`.panel`은 `margin:0`이라 인셋이 전혀 없음(1180px 전체) — 불일치 확인. 원인은 개별 로우의 임의 선택이 아니라 **`main` 프레임 자체가 auto-layout(VERTICAL)이고 `paddingLeft/Right: 32`를 갖고 있어서 모든 자식에 균일하게 적용된 것**(뒤에 실제로 새 패널을 만들 때 `x=0`을 대입해도 무시되고 32로 강제된 것으로 재확인됨 — Figma auto-layout 부모의 자식 `x` 무시 버그, 알려진 패턴).
+- **사용자 결정**: 새 TOP5 패널은 실측(진짜 CSS) 기준인 x=0/1180px로 배치. 32px 인셋 자체는 이번 스코프 밖 별개 부정확함으로 판단해 `backlog.md`에 새 항목으로만 기록(다른 Backoffice 화면 전수 확인 후 일괄 수정 예정), 지금은 고치지 않음 — 그 결과 새 패널이 기존 형제 패널과 좌우 정렬이 안 맞는 게 **의도된 임시 상태**.
+
+**Figma 반영 (BO_UsageStats)**: `category-panel`(`47:68`)의 스타일(흰 배경, `cornerRadius:20`, `color/border/default` 바인딩 스트로크, 패딩 24)을 그대로 복사해 새 패널 생성, `Topcat Item` 메인 컴포넌트(`128:2`)를 `createInstance()`로 25개(5카테고리×5순위) 생성 — 인스턴스와 `p-name` 텍스트가 이미 `layoutSizingHorizontal:FILL`로 만들어져 있어(마스터 확인됨) 컬럼 폭을 바꿔도 리사이즈 무시 버그 없이 정상 반영됨. `appendChild` 직후 `x=0` 대입이 무시되는 걸 확인해 `layoutPositioning='ABSOLUTE'`로 auto-layout 흐름에서 빼낸 뒤 x=0/y=484로 재배치(`mainFrame`이 `primaryAxisSizingMode:FIXED`라 부모가 찌그러지는 부작용은 없었음). 데이터는 Products 화면의 기존 25개 인스턴스 값을 그대로 복사(API 재호출 없음, 사용자 결정).
+
+**Figma 반영 (BO_Products)**: "인기 상품 통계" 탭 콘텐츠 자체가 Figma에 아예 없어서(기본 숨김 탭), 실제 HTML 구조(`bo-producttab-stats`: `.panel`(FSS 상품 조회 통계 + desc) 안에 중첩 `.panel`(카테고리별 인기 상품 + TOP5 그리드))를 그대로 재현 — 중첩이라 패딩이 두 겹이 되면서 그리드 컬럼 폭이 BO_UsageStats보다 자연히 좁아짐(FILL 사이징이라 별도 계산 없이 자동 반영). 배치 후 `product-table` 아래 새 콘텐츠가 프레임 높이(864px)를 77px 초과해 각 카테고리 5번째 항목이 잘리는 걸 스크린샷으로 발견 → `main`/`body`/`sidebar`/최상위 프레임 높이를 864→973px로 재조정해 해결.
+
+**Products 원본 TOP5 패널의 그리드 gap 버그 발견·수정**: 위 작업 중 `rank-cols`(`64:19`)의 `itemSpacing`이 24px(실제 CSS `.stat-products-columns{gap:16px}`는 16px)인 걸 발견 — 컬럼 5개(각 190px 고정폭)의 실측 합계가 1046px인데 프레임 선언 폭은 992px라 **54px 오버플로우**하고 있었음. 사용자 확인 후 즉시 수정: `itemSpacing:16` + 5개 컬럼 전부 `layoutSizingHorizontal:FILL`로 전환(컬럼폭 자동 185.6px씩 균등분배) → 마지막 컬럼 우측 끝이 992.00003px로 정확히 일치(부동소수점 오차 수준). 수정 전/후 스크린샷으로 확인 완료.
+
+**최종 상태**: BO_UsageStats/BO_Products 패널 콘텐츠 누락(감사후속 5건의 마지막 항목) 완료. 남은 건 `backlog.md`에 새로 기록된 "32px 인셋 불일치"(다음 세션 이후 별도 처리) 하나뿐.
+
+**footer "바로가기" 메뉴 순서 수정**: `site/index.html`의 footer "바로가기" 링크가 내 계좌→상품안내→AI은행원 순으로 상단 헤더 메뉴(홈→AI은행원→내 계좌→상품안내→고객센터) 순서와 어긋나 있던 걸 AI은행원→내 계좌→상품안내로 맞춤. SPA라 footer가 `.section` 밖에 한 벌만 있어(화면별 중복 없음) 이 수정 하나로 전체 화면에 적용됨.
