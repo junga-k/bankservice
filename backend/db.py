@@ -25,7 +25,9 @@
 """
 from __future__ import annotations
 
+import contextvars
 import json
+import os
 import random
 import re
 import sqlite3
@@ -37,8 +39,102 @@ DB_PATH = Path(__file__).resolve().parent.parent / "bank.db"
 
 DEMO_USER_ID = 1  # 로그인 전 기본 사용자 (Phase 3에서 실제 로그인 사용자로 대체)
 
+# 로컬 개발: 항상 sqlite3(오프라인). Vercel 배포: TURSO_DATABASE_URL이 설정된 경우만 libsql 사용.
+_TURSO_URL = os.environ.get("TURSO_DATABASE_URL")
+_TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
 
-def get_conn() -> sqlite3.Connection:
+
+class _LibsqlRow:
+    """libsql은 row_factory가 미구현이라, sqlite3.Row와 동일하게 동작하는 얇은 래퍼로
+    row["col"] / row[0] / dict(row) 접근을 흉내낸다."""
+
+    __slots__ = ("_columns", "_values")
+
+    def __init__(self, columns: list[str], values: tuple) -> None:
+        self._columns = columns
+        self._values = values
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return self._values[self._columns.index(key)]
+        return self._values[key]
+
+    def keys(self):
+        return list(self._columns)
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __len__(self):
+        return len(self._values)
+
+    def __repr__(self):
+        return f"<Row {dict(zip(self._columns, self._values))}>"
+
+
+class _LibsqlCursor:
+    """libsql 커서 결과를 _LibsqlRow로 감싸 sqlite3.Row 호환 인터페이스를 제공한다."""
+
+    def __init__(self, cursor) -> None:
+        self._cursor = cursor
+
+    def _wrap(self, row):
+        if row is None:
+            return None
+        columns = [d[0] for d in self._cursor.description]
+        return _LibsqlRow(columns, row)
+
+    def fetchone(self):
+        return self._wrap(self._cursor.fetchone())
+
+    def fetchall(self):
+        return [self._wrap(r) for r in self._cursor.fetchall()]
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+
+class _LibsqlConnection:
+    """libsql 커넥션을 감싸 execute() 결과를 Row 호환으로 바꾸고,
+    sqlite3.Connection과 동일한 `with conn:` 트랜잭션 프로토콜을 제공한다."""
+
+    def __init__(self, conn) -> None:
+        self._conn = conn
+
+    def execute(self, *args, **kwargs) -> _LibsqlCursor:
+        return _LibsqlCursor(self._conn.execute(*args, **kwargs))
+
+    def __enter__(self):
+        self._conn.__enter__()
+        return self
+
+    def __exit__(self, *exc_info):
+        return self._conn.__exit__(*exc_info)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+# Turso(원격 네트워크 연결)는 연결 하나 여는 데만 ~550~600ms가 걸린다(쿼리 자체는 ~75ms).
+# db.py의 거의 모든 함수가 자체적으로 `with get_conn() as conn:`을 열기 때문에,
+# 아무 대책이 없으면 요청 하나가 db 호출을 여러 번 할 때마다 그만큼 연결이 중첩으로 늘어난다.
+# 그래서 HTTP 요청 하나 동안은 같은 연결을 재사용하도록 contextvar에 담아두고,
+# 요청 컨텍스트가 없는 호출(이체 워커, 스크립트, 백그라운드 폴러 스레드 등)은
+# 지금까지처럼 매번 새로 연다 — db.py의 85개 함수 본문은 전혀 건드릴 필요 없음
+# (sqlite3.Connection/`_LibsqlConnection` 둘 다 `with conn:`을 여러 번 반복 진입해도
+#  매번 그 블록만 commit/rollback할 뿐 연결 자체를 닫지 않아 안전하게 재사용 가능).
+_request_conn: contextvars.ContextVar = contextvars.ContextVar("request_conn", default=None)
+
+
+def _open_conn():
+    if _TURSO_URL:
+        import libsql
+
+        kwargs = {"auth_token": _TURSO_AUTH_TOKEN} if _TURSO_AUTH_TOKEN else {}
+        conn = libsql.connect(_TURSO_URL, **kwargs)
+        conn.execute("PRAGMA foreign_keys=ON")
+        return _LibsqlConnection(conn)
+
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -46,11 +142,73 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
+def get_conn():
+    reused = _request_conn.get()
+    return reused if reused is not None else _open_conn()
+
+
+class request_scope:
+    """HTTP 요청 하나의 수명 동안 db 연결을 하나로 공유한다(app.py 미들웨어 전용).
+    이 스코프 밖(워커·스크립트·백그라운드 스레드)의 get_conn()은 영향받지 않는다."""
+
+    def __enter__(self):
+        self._conn = _open_conn()
+        self._token = _request_conn.set(self._conn)
+        return self._conn
+
+    def __exit__(self, *exc_info):
+        _request_conn.reset(self._token)
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+
+
 def init_db() -> None:
     """테이블이 없으면 생성한다."""
-    with get_conn() as conn:
-        conn.executescript(
-            """
+    # init_db()는 요청 스코프 밖(앱 시작·시드 스크립트)에서만 호출되므로
+    # 이 함수가 연 연결은 이 함수가 직접 닫을 책임이 있다
+    # (with get_conn()의 __exit__은 트랜잭션 commit/rollback만 하고 연결은 안 닫음 — 의도된 동작,
+    #  요청 스코프 안에서 같은 연결을 여러 with 블록이 재사용해야 하기 때문).
+    conn = get_conn()
+    try:
+        with conn:
+            # executescript()는 libsql에 미구현이라 문(statement) 단위로 나눠 실행한다
+            # (sqlite3에도 동일하게 동작해 엔진별 분기가 필요 없다).
+            for _stmt in _SCHEMA_SQL.split(";"):
+                _stmt = _stmt.strip()
+                if _stmt:
+                    conn.execute(_stmt)
+            # 기존 DB 마이그레이션: users에 name/role, transfers에 sender_memo,
+            # transactions에 balance_after 컬럼 없으면 추가
+            for col, ddl in (
+                ("name", "ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT ''"),
+                ("role", "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"),
+                ("phone", "ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''"),
+                ("email", "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''"),
+                ("sender_memo", "ALTER TABLE transfers ADD COLUMN sender_memo TEXT"),
+                ("balance_after", "ALTER TABLE transactions ADD COLUMN balance_after INTEGER"),
+                ("nickname", "ALTER TABLE accounts ADD COLUMN nickname TEXT NOT NULL DEFAULT ''"),
+                ("is_primary", "ALTER TABLE accounts ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0"),
+                ("scheduled_at", "ALTER TABLE transfers ADD COLUMN scheduled_at REAL"),
+                ("transfer_password_hash",
+                 "ALTER TABLE users ADD COLUMN transfer_password_hash TEXT NOT NULL DEFAULT ''"),
+                ("is_active", "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1"),
+                ("agree_marketing", "ALTER TABLE users ADD COLUMN agree_marketing INTEGER NOT NULL DEFAULT 0"),
+                ("agree_openbanking", "ALTER TABLE users ADD COLUMN agree_openbanking INTEGER NOT NULL DEFAULT 1"),
+                ("image_path", "ALTER TABLE banners ADD COLUMN image_path TEXT NOT NULL DEFAULT ''"),
+            ):
+                try:
+                    conn.execute(ddl)
+                except Exception:
+                    pass  # 이미 존재
+
+            _backfill_balance_after(conn)
+    finally:
+        conn.close()
+
+
+_SCHEMA_SQL = """
             CREATE TABLE IF NOT EXISTS users (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 username      TEXT UNIQUE NOT NULL,
@@ -203,32 +361,6 @@ def init_db() -> None:
                 created_at REAL NOT NULL
             );
             """
-        )
-        # 기존 DB 마이그레이션: users에 name/role, transfers에 sender_memo,
-        # transactions에 balance_after 컬럼 없으면 추가
-        for col, ddl in (
-            ("name", "ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT ''"),
-            ("role", "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"),
-            ("phone", "ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''"),
-            ("email", "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''"),
-            ("sender_memo", "ALTER TABLE transfers ADD COLUMN sender_memo TEXT"),
-            ("balance_after", "ALTER TABLE transactions ADD COLUMN balance_after INTEGER"),
-            ("nickname", "ALTER TABLE accounts ADD COLUMN nickname TEXT NOT NULL DEFAULT ''"),
-            ("is_primary", "ALTER TABLE accounts ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0"),
-            ("scheduled_at", "ALTER TABLE transfers ADD COLUMN scheduled_at REAL"),
-            ("transfer_password_hash",
-             "ALTER TABLE users ADD COLUMN transfer_password_hash TEXT NOT NULL DEFAULT ''"),
-            ("is_active", "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1"),
-            ("agree_marketing", "ALTER TABLE users ADD COLUMN agree_marketing INTEGER NOT NULL DEFAULT 0"),
-            ("agree_openbanking", "ALTER TABLE users ADD COLUMN agree_openbanking INTEGER NOT NULL DEFAULT 1"),
-            ("image_path", "ALTER TABLE banners ADD COLUMN image_path TEXT NOT NULL DEFAULT ''"),
-        ):
-            try:
-                conn.execute(ddl)
-            except Exception:
-                pass  # 이미 존재
-
-        _backfill_balance_after(conn)
 
 
 def _backfill_balance_after(conn: sqlite3.Connection) -> None:
@@ -415,9 +547,15 @@ def process_transfer(transfer_id: int) -> str:
     transfers.status 갱신을 하나의 트랜잭션으로 수행한다.
     반환: 최종 상태 'completed' | 'failed'
     """
+    # 이 함수가 연 연결인지, 바깥 스코프(예: 예약이체 폴러의 request_scope)에서 빌려온
+    # 공유 연결인지에 따라 종료 시 닫을지가 갈린다 — 빌려온 연결을 여기서 닫아버리면
+    # 같은 스코프 안의 다음 작업이 "닫힌 연결"을 만나 깨진다.
+    owns_conn = _request_conn.get() is None
     conn = get_conn()
     try:
-        conn.isolation_level = None  # 수동 트랜잭션
+        if isinstance(conn, sqlite3.Connection):
+            conn.isolation_level = None  # 수동 트랜잭션(libsql은 read-only 속성이라 대입 시 AttributeError,
+            # 대신 기본 isolation_level이 이미 DEFERRED라 아래 BEGIN IMMEDIATE와 자연히 호환됨)
         conn.execute("BEGIN IMMEDIATE")
 
         tr = conn.execute(
@@ -509,7 +647,8 @@ def process_transfer(transfer_id: int) -> str:
             pass
         raise
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 # ── 이용 통계 (Phase 2) ──────────────────────────────────────────────

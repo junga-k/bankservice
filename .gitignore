@@ -27,3 +27,5 @@ site/img/banners/*
 
 # 시스템구성도.drawio에서 내보낸 파생 파일 — 원본(.drawio)만 버전관리, 필요 시 재내보내기
 시스템구성도.pptx
+.vercel
+.env*

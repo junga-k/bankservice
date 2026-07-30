@@ -209,7 +209,8 @@ def signup(req: SignupReq):
             user_id, account_no, bank_name, name, balance=0,
             nickname=req.nickname.strip(), is_primary=1 if req.is_primary else 0,
         )
-    except sqlite3.IntegrityError:
+    except (sqlite3.IntegrityError, ValueError):
+        # libsql은 UNIQUE 제약 위반 시 sqlite3.IntegrityError 대신 ValueError를 던진다
         raise HTTPException(status_code=400, detail="이미 등록된 계좌번호입니다.")
 
     user = db.get_user_by_username(username)
@@ -809,7 +810,8 @@ def add_account(req: AccountCreateReq, user: dict = Depends(auth.get_current_use
             user["id"], account_no, bank_name, acct["name"], balance=0,
             nickname=req.nickname.strip(), is_primary=1 if req.is_primary else 0,
         )
-    except sqlite3.IntegrityError:
+    except (sqlite3.IntegrityError, ValueError):
+        # libsql은 UNIQUE 제약 위반 시 sqlite3.IntegrityError 대신 ValueError를 던진다
         raise HTTPException(status_code=400, detail="이미 등록된 계좌번호입니다.")
     return {"id": acc_id}
 
@@ -1393,7 +1395,8 @@ def enter_event(event_id: int, user: dict = Depends(auth.get_current_user)):
         raise HTTPException(400, "응모 기간이 종료된 이벤트입니다.")
     try:
         db.create_event_entry(event_id, user["id"])
-    except sqlite3.IntegrityError:
+    except (sqlite3.IntegrityError, ValueError):
+        # libsql은 UNIQUE 제약 위반 시 sqlite3.IntegrityError 대신 ValueError를 던진다
         raise HTTPException(400, "이미 응모하셨습니다.")
     return {"ok": True}
 
