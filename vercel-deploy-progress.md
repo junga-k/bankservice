@@ -1,5 +1,21 @@
 # Vercel 배포 진행 기록
 
+## 최종 요약 (2026-07-31)
+
+**상태: 배포 완료, 프로덕션 정상 동작 확인.** 프로덕션 URL: `https://bankservice-six.vercel.app` (Vercel 프로젝트 `junga-k/bankservice`).
+
+이번 배포 트랙에서 한 일(아래 각 단계 상세 기록 참고):
+1. **Turso(libSQL) 마이그레이션** — Vercel 서버리스 읽기전용 파일시스템 때문에 SQLite 배포가 크래시하던 문제 해결. 로컬은 sqlite3 그대로, 배포 환경(`TURSO_DATABASE_URL` 설정 시)만 libsql로 분기. `row_factory`/`executescript()` 미구현 등 libsql 특이사항을 래퍼로 흡수, db.py의 기존 85개 함수는 대부분 무수정.
+2. **요청-스코프 연결 재사용** — Turso 연결 하나 여는 데 ~550~600ms가 걸리는데 요청마다 여러 번 새로 열던 구조를 `contextvars` 기반 스코프로 재사용하도록 수정. `/api/transfer` 5713ms→1772ms(로컬 실측, 약 3배).
+3. **커넥션 누수 2건 수정** — `init_db()`/예약이체 폴러/Kafka 컨슈머가 `with get_conn()`만 쓰고 "연결 닫을 책임"을 아무도 안 지던 문제(래퍼 결함 아님, 개별 호출부 책임 누락). 실측으로 원인 규명 후 수정, 폴러 3분 관찰·컨슈머 22회 반복 처리로 누수 없음 검증.
+4. **Kafka 미가용 시 이체 차단 문제 진단·수정** — Kafka 발행 실패가 부가기능이 아니라 이체 자체를 막는 core path였음을 확인. Kafka 없거나 실패 시 `process_transfer()`를 동기 폴백으로 직접 실행(멱등성 가드로 이중 차감 방지). `KAFKA_DISABLED=true`로 Vercel에서 부트스트랩 재시도 자체를 생략.
+5. **JOIN 최적화** — `process_transfer()` 내부 읽기 쿼리 3개(이체정보/출금계좌/입금계좌)를 `LEFT JOIN` 하나로 병합, 왕복 11회→9회. 프로덕션 웜 상태 ~10.2초→~9.0초.
+
+**남은 backlog** (`backlog.md` "별도 인프라 결정 필요" 그룹, 우선순위 없음):
+- Kafka 브로커+컨슈머 상시 호스팅할 곳 마련(Railway 무료 폐지·Render는 15분 sleep·Fly.io 유료 최소 ~$2/월 — 조사 완료, 오늘 범위 밖)
+- `process_transfer()` 쓰기 쿼리(UPDATE/INSERT) 배치·병합(스키마 변경 필요)
+- 리전 지연 완화(Turso DB 리전 ↔ Vercel 함수 리전 조정 — 쿼리 1회당 300~650ms의 근본 원인)
+
 ## 현재 문제
 SQLite가 Vercel 서버리스 읽기전용 파일시스템과 안 맞아서 배포(`bf6003a`)가 크래시남.
 (`sqlite3.OperationalError: unable to open database file` — `backend/db.py:42`)
@@ -123,7 +139,7 @@ Turso(libSQL)로 마이그레이션하기로 함.
 7. ~~커밋 분리 + main 병합 + Vercel 환경변수 설정 + 실배포~~ 완료
 8. ~~Kafka 미가용 시 이체 차단 문제 진단·수정~~ 완료 — 동기 폴백 + `KAFKA_DISABLED`
 9. ~~process_transfer() 읽기쿼리 JOIN 병합~~ 완료 — 웜 상태 ~10.2s → ~9.0s
-10. (후속, `backlog.md` 참고) Kafka 브로커+컨슈머 상시 호스팅, process_transfer() 쓰기쿼리 배치
+10. (후속, `backlog.md` "별도 인프라 결정 필요" 그룹 참고) Kafka 브로커+컨슈머 상시 호스팅, process_transfer() 쓰기쿼리 배치, 리전 지연 완화
 
 ## 참고
 - Turso CLI는 로컬에 설치돼 있으나 로그인 필요 (`turso auth login`, 브라우저 인증 필요) — 완료, DB `matchbank` 생성됨(`libsql://matchbank-junga-k.aws-ap-northeast-1.turso.io`).
