@@ -756,14 +756,33 @@ def delete_notice(notice_id: int) -> None:
         conn.execute("DELETE FROM notices WHERE id = ?", (notice_id,))
 
 
+def _search_clause(columns: list[str], q: str) -> tuple[str, list[str]]:
+    """공지/FAQ/서식 검색용 WHERE 절 + 파라미터를 만든다.
+
+    단순 `LIKE '%q%'`는 검색어와 저장된 문구의 공백 위치가 다르면(예: 검색어
+    "이용요금" vs 저장된 "이용 요금이 있나요?") 매칭에 실패한다(LLM이 사용자
+    문장에서 키워드를 뽑을 때 조사·공백을 붙이거나 떼는 경우가 흔해 실제로
+    자주 발생). 양쪽 다 공백을 제거하고 비교하고, 검색어가 여러 단어면
+    단어별로 OR 매칭해 표현 차이에 덜 흔들리게 한다."""
+    keywords = [w for w in q.split() if w] or [q]
+    conditions = []
+    params: list[str] = []
+    for kw in keywords:
+        norm = kw.replace(" ", "")
+        col_conds = " OR ".join(f"REPLACE({col}, ' ', '') LIKE ?" for col in columns)
+        conditions.append(f"({col_conds})")
+        params.extend([f"%{norm}%"] * len(columns))
+    return " OR ".join(conditions), params
+
+
 def list_notices(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
     with get_conn() as conn:
         if q:
-            like = f"%{q}%"
+            where, params = _search_clause(["title", "content"], q)
             rows = conn.execute(
-                "SELECT id, title, content, created_at FROM notices "
-                "WHERE title LIKE ? OR content LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
-                (like, like, limit, offset),
+                f"SELECT id, title, content, created_at FROM notices "
+                f"WHERE {where} ORDER BY id DESC LIMIT ? OFFSET ?",
+                (*params, limit, offset),
             ).fetchall()
         else:
             rows = conn.execute(
@@ -777,9 +796,9 @@ def list_notices(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
 def count_notices(q: str = "") -> int:
     with get_conn() as conn:
         if q:
-            like = f"%{q}%"
+            where, params = _search_clause(["title", "content"], q)
             return conn.execute(
-                "SELECT COUNT(*) FROM notices WHERE title LIKE ? OR content LIKE ?", (like, like),
+                f"SELECT COUNT(*) FROM notices WHERE {where}", params,
             ).fetchone()[0]
         return conn.execute("SELECT COUNT(*) FROM notices").fetchone()[0]
 
@@ -809,11 +828,11 @@ def delete_faq(faq_id: int) -> None:
 def list_faqs(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
     with get_conn() as conn:
         if q:
-            like = f"%{q}%"
+            where, params = _search_clause(["question", "answer"], q)
             rows = conn.execute(
-                "SELECT id, question, answer, created_at FROM faqs "
-                "WHERE question LIKE ? OR answer LIKE ? ORDER BY id LIMIT ? OFFSET ?",
-                (like, like, limit, offset),
+                f"SELECT id, question, answer, created_at FROM faqs "
+                f"WHERE {where} ORDER BY id LIMIT ? OFFSET ?",
+                (*params, limit, offset),
             ).fetchall()
         else:
             rows = conn.execute(
@@ -826,9 +845,9 @@ def list_faqs(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
 def count_faqs(q: str = "") -> int:
     with get_conn() as conn:
         if q:
-            like = f"%{q}%"
+            where, params = _search_clause(["question", "answer"], q)
             return conn.execute(
-                "SELECT COUNT(*) FROM faqs WHERE question LIKE ? OR answer LIKE ?", (like, like),
+                f"SELECT COUNT(*) FROM faqs WHERE {where}", params,
             ).fetchone()[0]
         return conn.execute("SELECT COUNT(*) FROM faqs").fetchone()[0]
 
@@ -859,11 +878,11 @@ def delete_document(document_id: int) -> None:
 def list_documents(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
     with get_conn() as conn:
         if q:
-            like = f"%{q}%"
+            where, params = _search_clause(["title", "description"], q)
             rows = conn.execute(
-                "SELECT id, title, category, description, created_at FROM documents "
-                "WHERE title LIKE ? OR description LIKE ? ORDER BY id LIMIT ? OFFSET ?",
-                (like, like, limit, offset),
+                f"SELECT id, title, category, description, created_at FROM documents "
+                f"WHERE {where} ORDER BY id LIMIT ? OFFSET ?",
+                (*params, limit, offset),
             ).fetchall()
         else:
             rows = conn.execute(
@@ -877,10 +896,9 @@ def list_documents(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
 def count_documents(q: str = "") -> int:
     with get_conn() as conn:
         if q:
-            like = f"%{q}%"
+            where, params = _search_clause(["title", "description"], q)
             return conn.execute(
-                "SELECT COUNT(*) FROM documents WHERE title LIKE ? OR description LIKE ?",
-                (like, like),
+                f"SELECT COUNT(*) FROM documents WHERE {where}", params,
             ).fetchone()[0]
         return conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
 
