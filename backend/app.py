@@ -73,11 +73,15 @@ def _start_scheduled_poller() -> None:
         global _poller_last_run
         while True:
             try:
-                for tid in db.pop_due_scheduled(time.time()):
-                    try:
-                        db.process_transfer(tid)
-                    except Exception:
-                        pass
+                # 사이클 하나 동안 db 연결을 하나로 공유하고 사이클이 끝나면 확실히 닫는다
+                # (HTTP 요청의 request_scope와 같은 메커니즘 — 이 스레드는 별도 컨텍스트라
+                # HTTP 요청의 연결과 섞이지 않는다).
+                with db.request_scope():
+                    for tid in db.pop_due_scheduled(time.time()):
+                        try:
+                            db.process_transfer(tid)
+                        except Exception:
+                            pass
             except Exception:
                 pass
             _poller_last_run = time.time()   # 하트비트 갱신
