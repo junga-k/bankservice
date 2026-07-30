@@ -619,3 +619,27 @@
 **최종 상태**: BO_UsageStats/BO_Products 패널 콘텐츠 누락(감사후속 5건의 마지막 항목) 완료. 남은 건 `backlog.md`에 새로 기록된 "32px 인셋 불일치"(다음 세션 이후 별도 처리) 하나뿐.
 
 **footer "바로가기" 메뉴 순서 수정**: `site/index.html`의 footer "바로가기" 링크가 내 계좌→상품안내→AI은행원 순으로 상단 헤더 메뉴(홈→AI은행원→내 계좌→상품안내→고객센터) 순서와 어긋나 있던 걸 AI은행원→내 계좌→상품안내로 맞춤. SPA라 footer가 `.section` 밖에 한 벌만 있어(화면별 중복 없음) 이 수정 하나로 전체 화면에 적용됨.
+
+### 2026-07-31
+
+**Vercel/Turso 프로덕션 배포 완료 + 후속 발견 사항** — 대상: `backend/db.py`, `backend/app.py`, `backend/kafka_io.py`, `seed_usage.py`, `pyproject.toml` 등. 전체 마이그레이션 과정(Turso 연결계층 재작성, 요청-스코프 연결 재사용, 커넥션 누수 2건, Kafka 미가용 시 이체 동기 폴백, JOIN 최적화)은 `vercel-deploy-progress.md`에 단계별로 상세 기록돼 있어 여기선 배포 이후 발견된 것만 정리.
+
+- **시드 데이터 이관 누락 발견·수정**: Turso 마이그레이션이 스키마만 만들고(`init_db()`) 데이터는 한 번도 안 옮겼다는 걸 뒤늦게 발견 — `users`/`accounts`/`notices`/`faqs`/`documents`/`special_products`/`events`/`banners`/`usage_events` 전부 프로덕션에서 0건이었음. `seed_bank.py`/`seed_support.py`/`seed_usage.py`를 프로덕션 Turso에 직접 실행해 채우고 원격 `SELECT COUNT(*)`로 재검증. `seed_usage.py`가 원래 예금/적금 카테고리만 커버해서 "카테고리별 인기 상품 TOP5"에 대출 3종(주택담보대출/전세자금대출/신용대출)이 안 보이는 것도 추가로 발견 — 스크립트를 5종 전부 커버하도록 확장 후 재시딩(111건→216건).
+- **AI은행원(RAG 챗봇)이 프로덕션에서 완전히 작동 안 함을 발견**: 화면 스크린샷 검증 중 `site/js/main.js`의 `CHAT_URL`이 `http://localhost:8501`로 하드코딩된 걸 발견. 처음엔 "정상 작동"으로 보였는데, 이건 테스트에 쓴 로컬 머신에 우연히 Streamlit이 떠 있어서(`lsof -i :8501`로 확인) 방문자가 아니라 로컬 프로세스가 iframe에 렌더링된 착시였음 — 실제 프로덕션 검증이 아니었다는 걸 잡아내서 정정. `backend/app.py`에 `/js/env-config.js` 엔드포인트를 추가해 `CHAT_BASE_URL` 환경변수를 `window.CHAT_BASE_URL`로 주입하도록 코드는 고쳐뒀지만(로컬 동작 변화 없음, 값 없으면 기존과 동일하게 localhost 폴백), 실제 Streamlit을 어디에 호스팅할지는 미결(아래 참고) — 커밋 대기 중.
+- **Public 저장소 전환 전 git 히스토리 보안 스캔**: Streamlit Community Cloud(무료) 배포를 위해 저장소를 public으로 바꾸기 전, `gitleaks`(brew로 신규 설치)로 전체 59개 커밋 스캔 → 리크 0건. 추가로 `config.json`/`.streamlit/secrets.toml`(실제 키 보관 파일)이 히스토리에 커밋된 적이 없음을 `git log --diff-filter=A`로 직접 확인, `.streamlit/secrets.toml.example`은 최초 커밋부터 플레이스홀더뿐이었음도 확인. 흔한 키 포맷(`sk-`/`AIza`/`ghp_`/PEM 헤더) 패턴 보조 검색도 매치 없음 — BFG/filter-repo 없이 public 전환 가능 판정.
+- **Streamlit 호스팅 옵션 조사**: Vercel은 Streamlit의 WebSocket 상시연결 모델과 근본적으로 안 맞아 불가. Streamlit Community Cloud는 무료지만 12시간 무활동 시 sleep, 커스텀 도메인 불가, **private 앱은 iframe 임베드 공식 미지원**(저장소가 이번 조사 시점 기준 private이었어서 실질적 제약이었음 — 이후 public 전환으로 해소됨). Render/Railway/Fly.io는 Kafka 조사 때와 동일한 제약. 저장소를 public으로 전환하기로 결정.
+- **로컬에서 AI은행원 실제 동작 검증(4가지 시나리오)** — Vercel/Streamlit 배포와 무관하게 로컬(`localhost:8000`+`:8501`, `start_infra.sh`로 Kafka/ES/Redis 전부 기동한 상태)에서 실제 채팅으로 확인. `:8501` 직접 접속엔 로그인 폼 UI 자체가 없다는 것도 발견(코드에 `/api/login` 호출이 전혀 없음) — 백엔드에서 JWT 발급받아 `?token=` 쿼리파라미터로 접속해 우회.
+  1. 예금 상품 추천: 구체적으로 재질문하니 실제 FSS 데이터(SC제일은행 3.95% 등) 기반 정확한 추천.
+  2. 계좌 잔액 확인: 시드 데이터와 정확히 일치하는 실제 잔액 조회.
+  3. 이체 시나리오: "카카오뱅크에서 10만원 이체" → 받는 분 정보 요청 → 예금주(김철수) 확인 → 제안(수수료 500원) → 승인 대기 카드(비밀번호+체크박스, 자동실행 안 됨)까지 설계된 흐름 그대로 동작.
+  4. FAQ 관련 질문: **버그 발견** — 아래 항목.
+
+**FAQ/공지/서식 검색 버그 수정 + 로컬 sqlite3 크로스스레드 버그 수정** — 대상: `backend/db.py` (커밋 `43bd217`, `d6a7640`)
+
+- **재현**: "이용요금이 있나요? FAQ 알려줘"라고 물으니 AI가 "그런 FAQ 없다"고 답했는데, 실제로는 `"이용 요금이 있나요?"`(공백 있음)라는 FAQ가 시드돼 있었음(고객센터 화면에서 이미 렌더링 확인됨).
+- **원인**: `list_faqs`/`count_faqs`, `list_notices`/`count_notices`, `list_documents`/`count_documents` 6개 함수 전부 단순 `LIKE '%q%'` — 검색어(LLM이 사용자 문장에서 조사/공백을 붙이거나 뗀 형태로 추출, 이번엔 "이용요금")와 저장된 문구("이용 요금이 있나요?")의 공백 위치가 다르면 매칭 실패. 직접 재현: `curl "/api/faqs?q=이용요금"` → 0건.
+- **수정 방향 판단**: 사용자가 제시한 3가지 옵션(①공백/특수문자 정규화 ②키워드 분리 OR매칭 ③Elasticsearch 형태소분석 이관) 중 ③은 로컬 ES에 nori 플러그인이 없어 설치가 필요해 "인프라 작업 없이 끝나야 함" 조건과 안 맞다고 판단해 제외, ①+②를 조합해 SQL 레벨에서 해결.
+- **구현**: 공유 헬퍼 `_search_clause(columns, q)` 추가 — 검색어를 공백 기준으로 단어 분리 후 단어별 OR 매칭, 양쪽 다 `REPLACE(col, ' ', '')`로 공백 제거하고 비교. 6개 함수에 일괄 적용.
+- **검증 중 발견한 별개 버그**: 수정 검증을 위해 로컬 FastAPI(`uvicorn backend.app:app --port 8000`)를 재시작했더니 `/api/faqs`뿐 아니라 `/api/login`까지 500 에러(`SQLite objects created in a thread can only be used in that same thread`). 원인은 오늘 앞서 만든 요청-스코프 미들웨어(`_db_request_scope`, 비동기 함수 = 이벤트루프 스레드에서 연결을 염) + Starlette가 동기 라우트 핸들러를 스레드풀에서 돌리는 구조의 조합 — 연결을 연 스레드와 쓰는 스레드가 달라서 sqlite3 기본 제약(`check_same_thread=True`)에 걸림. 이전에 안 걸렸던 이유: 미들웨어 도입 전부터 떠 있던 uvicorn 프로세스가 코드 리로드 없이 계속 실행 중이어서 재현이 안 됐던 것 — 오늘 재시작하면서 처음 드러남. `_open_conn()`의 `sqlite3.connect(...)`에 `check_same_thread=False` 추가로 해결(한 요청 안에서는 순차 접근만 일어나 동시성 문제 없음을 확인 후 적용).
+- **재검증**: API 레벨(`curl`) — `q=이용요금` 0건→1건, `q=예금자보호`(documents) 1건, `q=정기점검`(notices, 원문과 단어 순서 다름) 1건 전부 정상. 실제 AI은행원 채팅으로도 재현 — "이용요금이 있나요? FAQ 알려줘" → "FAQ에 따르면, 검색·상담 서비스는 무료로 제공됩니다"로 정확한 FAQ 인용 답변 확인.
+- **남은 이슈(별개, backlog 기록)**: "예금자보호 한도가 얼마예요?" 질문은 검색 매칭은 이제 정상(API로 1건 확인)인데도, AI가 `tool_get_documents`를 아예 호출하지 않고 `tool_get_faqs`만 시도한 뒤 LLM 일반 지식으로 폴백함(결과적으로 정답이었지만 우리 문서 근거는 아님) — 크래시/오답이 아니라 에이전트의 도구 선택 로직 개선 항목으로 `backlog.md`에 별도 기록.
