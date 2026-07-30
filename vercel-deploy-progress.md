@@ -147,3 +147,30 @@ Turso(libSQL)로 마이그레이션하기로 함.
 ## 참고
 - Turso CLI는 로컬에 설치돼 있으나 로그인 필요 (`turso auth login`, 브라우저 인증 필요) — 완료, DB `matchbank` 생성됨(`libsql://matchbank-junga-k.aws-ap-northeast-1.turso.io`).
 - 프로덕션 URL: `https://bankservice-six.vercel.app` (Vercel 프로젝트 `junga-k/bankservice`).
+
+## 다음 세션 시작 항목: 배포 환경 재검증 → Figma 직접 수정 반영
+
+**1단계: 배포 환경 재스캔 (먼저 진행)**
+오늘 로컬 기준으로 진행했던 293건 재스캔과 같은 방식
+(Playwright computed style 대조)을, 배포된 Vercel URL
+(https://bankservice-six.vercel.app)을 대상으로 다시 실행.
+목적은 localhost와 배포 환경 사이에 폰트/이미지 경로/색상 등
+새로 생긴 차이가 있는지만 확인하는 것 — Figma-코드 정합성을
+처음부터 재확인하는 게 아니라 "배포 과정에서 틀어진 것"만
+좁게 확인. 발견되면 backlog.md에 기록, 없으면
+"배포 환경도 로컬과 동일하게 검증됨"으로 기록.
+
+**2단계: Figma 직접 수정 → 웹 반영 (1단계 완료 후 진행)**
+사용자가 Figma 디자인시스템 파일을 직접 열어보고 수정할
+부분을 찾아 직접 조정할 예정. 이후 그 수정 내용을 웹에
+반영할 때는 반드시 아래 절차를 거칠 것:
+  1. 사용자가 수정한 노드(화면명+노드명)를 알려주면, Figma
+     API로 실제 속성값(색상 hex/spacing px/radius px/
+     font-size 등)을 정확히 읽어서 표로 제시
+  2. 그 값이 tokens.md 기존 토큰과 일치하는지 확인 — 일치하면
+     해당 토큰명으로 코드 적용, 새 값이면 tokens.md 규칙상
+     임의 추가 금지이므로 사용자에게 먼저 확인받을 것
+  3. 적용 후 웹/Figma 스크린샷을 나란히 비교해서 일치 확인
+주의: 사용자가 Figma에서 눈대중으로 조정했을 수 있으므로,
+"이렇게 보여요"를 그대로 믿지 말고 반드시 실제 수치로
+재확인 후 반영할 것.
