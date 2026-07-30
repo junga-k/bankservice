@@ -135,7 +135,12 @@ def _open_conn():
         conn.execute("PRAGMA foreign_keys=ON")
         return _LibsqlConnection(conn)
 
-    conn = sqlite3.connect(DB_PATH, timeout=10)
+    # check_same_thread=False: request_scope는 미들웨어(비동기, 이벤트루프 스레드)에서
+    # 연결을 열고 실제 라우트 핸들러(동기 함수, Starlette가 스레드풀에서 실행)가 그 연결을
+    # 쓴다 — 서로 다른 스레드지만 한 요청 안에서 순차적으로만 쓰이므로(동시 접근 없음) 안전.
+    # 기본값(True)이면 "SQLite objects created in a thread can only be used in that same
+    # thread" 에러로 요청이 500 처리됨.
+    conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
