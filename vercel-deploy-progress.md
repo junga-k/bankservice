@@ -2,7 +2,7 @@
 
 ## 최종 요약 (2026-07-31)
 
-**상태: 배포 완료, 프로덕션 정상 동작 확인.** 프로덕션 URL: `https://bankservice-six.vercel.app` (Vercel 프로젝트 `junga-k/bankservice`).
+**상태: 배포 완료, DB/API 레이어 프로덕션 정상 동작 확인. 단, AI은행원(RAG 챗봇)은 별도 아키텍처 문제로 완전히 작동 안 함(아래 참고).** 프로덕션 URL: `https://bankservice-six.vercel.app` (Vercel 프로젝트 `junga-k/bankservice`).
 
 이번 배포 트랙에서 한 일(아래 각 단계 상세 기록 참고):
 1. **Turso(libSQL) 마이그레이션** — Vercel 서버리스 읽기전용 파일시스템 때문에 SQLite 배포가 크래시하던 문제 해결. 로컬은 sqlite3 그대로, 배포 환경(`TURSO_DATABASE_URL` 설정 시)만 libsql로 분기. `row_factory`/`executescript()` 미구현 등 libsql 특이사항을 래퍼로 흡수, db.py의 기존 85개 함수는 대부분 무수정.
@@ -10,11 +10,14 @@
 3. **커넥션 누수 2건 수정** — `init_db()`/예약이체 폴러/Kafka 컨슈머가 `with get_conn()`만 쓰고 "연결 닫을 책임"을 아무도 안 지던 문제(래퍼 결함 아님, 개별 호출부 책임 누락). 실측으로 원인 규명 후 수정, 폴러 3분 관찰·컨슈머 22회 반복 처리로 누수 없음 검증.
 4. **Kafka 미가용 시 이체 차단 문제 진단·수정** — Kafka 발행 실패가 부가기능이 아니라 이체 자체를 막는 core path였음을 확인. Kafka 없거나 실패 시 `process_transfer()`를 동기 폴백으로 직접 실행(멱등성 가드로 이중 차감 방지). `KAFKA_DISABLED=true`로 Vercel에서 부트스트랩 재시도 자체를 생략.
 5. **JOIN 최적화** — `process_transfer()` 내부 읽기 쿼리 3개(이체정보/출금계좌/입금계좌)를 `LEFT JOIN` 하나로 병합, 왕복 11회→9회. 프로덕션 웜 상태 ~10.2초→~9.0초.
+6. **시드 데이터 이관 누락 발견·수정** — Turso 마이그레이션이 스키마만 만들고 데이터는 한 번도 안 옮겼음을 발견(`users`/`accounts`/`notices`/`faqs`/`documents`/`special_products`/`events`/`banners`/`usage_events` 전부 0건이었음). `seed_bank.py`/`seed_support.py`/`seed_usage.py`를 프로덕션 Turso에 직접 실행해 전부 채움 + 원격 `SELECT COUNT(*)`로 재검증. `seed_usage.py`가 원래 예금/적금만 커버해 "카테고리별 인기 상품 TOP5"에 대출 3종이 안 보이는 것도 추가 발견해 스크립트 자체를 5종 전부 커버하도록 확장.
+7. **⚠️ AI은행원(RAG 챗봇) 완전 미작동 발견** — 화면 스크린샷 검증 중 `site/js/main.js`의 `CHAT_URL`이 `http://localhost:8501`로 하드코딩된 걸 발견. 실제 방문자 브라우저엔 그 주소에 아무것도 없어 빈 iframe. (처음엔 "정상 작동"으로 보였는데, 이건 테스트에 쓴 로컬 머신에 우연히 Streamlit이 떠 있어서(`lsof -i :8501`로 확인) 방문자가 아니라 내 로컬 프로세스가 렌더링된 것이었음 — 착각 잡아냄.) Vercel 배포에 Streamlit 자체가 없어서(FastAPI만 배포) 근본적으로 못 씀 — `backlog.md`에 Kafka와 동급 이슈로 기록.
 
-**남은 backlog** (`backlog.md` "별도 인프라 결정 필요" 그룹, 우선순위 없음):
+**남은 backlog** (`backlog.md` "별도 인프라 결정 필요" 그룹, 우선순위 없음 — 단 AI은행원 건은 영향도가 더 커서 우선 검토 권장으로 표시):
 - Kafka 브로커+컨슈머 상시 호스팅할 곳 마련(Railway 무료 폐지·Render는 15분 sleep·Fly.io 유료 최소 ~$2/월 — 조사 완료, 오늘 범위 밖)
 - `process_transfer()` 쓰기 쿼리(UPDATE/INSERT) 배치·병합(스키마 변경 필요)
 - 리전 지연 완화(Turso DB 리전 ↔ Vercel 함수 리전 조정 — 쿼리 1회당 300~650ms의 근본 원인)
+- **AI은행원 — `CHAT_URL` 하드코딩(localhost:8501) 교체 + Streamlit 상시 호스팅할 곳 마련**(Kafka와 같은 유형의 "상시 프로세스 호스팅 필요" 문제)
 
 ## 현재 문제
 SQLite가 Vercel 서버리스 읽기전용 파일시스템과 안 맞아서 배포(`bf6003a`)가 크래시남.

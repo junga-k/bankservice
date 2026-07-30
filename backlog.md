@@ -10,6 +10,7 @@
   - 대안(Confluent Cloud 등 관리형)은 SASL_SSL 인증 코드 추가가 필요하지만 큰 변경은 아님 — 어느 쪽이든 "상시 호스팅할 곳 마련"이 진짜 병목이라 오늘 범위 밖으로 미룸.
 - [ ] **`process_transfer()`의 쓰기 쿼리(UPDATE/INSERT) 배치·병합** — 읽기 쿼리 3개는 LEFT JOIN으로 병합 완료(2026-07-31, `backend/db.py`), 쓰기 5~7개(잔액차감 UPDATE, 거래내역 INSERT ×1~2, 잔액증액 UPDATE, 거래내역 INSERT, 상태갱신 UPDATE)는 서로 다른 행을 건드리는 개별 DML이라 JOIN 불가. libsql이 `executescript()`도 미구현이라 배치 실행도 안 됨 — 스키마 변경(예: 트리거로 잔액 자동갱신) 또는 더 큰 리팩토링이 필요해서 보류.
 - [ ] **리전 지연 완화(Turso/Vercel 리전 조정)** — Vercel 함수 리전(iad1, 미국 동부)과 Turso DB 리전(aws-ap-northeast-1, 아시아) 간 거리로 쿼리 1회당 300~650ms(로컬 실측치의 3~4배) 소요, `/api/transfer` 웜 상태 응답이 JOIN 병합 후에도 ~9초. 근본 해결은 Turso DB를 Vercel 함수와 같은 리전(또는 가까운 리전)으로 옮기거나, Vercel 함수 리전을 Turso 쪽(아시아)으로 맞추는 것 — 어느 쪽이든 기존 데이터/설정 재구성이 필요한 인프라 결정이라 오늘 범위 밖.
+- [ ] **⚠️ AI은행원(RAG 챗봇)이 프로덕션에서 완전히 작동 안 함 — 위 3건보다 영향도 큼, 우선 검토 권장.** `site/js/main.js`의 `CHAT_URL = "http://localhost:8501/..."`가 하드코딩돼 있어, iframe이 방문자 "자기 자신의" localhost:8501을 가리킴 — 실제 방문자 브라우저엔 아무것도 없어서 빈 화면. (2026-07-31 시딩 검증 중 발견: 화면이 정상으로 "보였던" 건 테스트에 쓴 로컬 머신에 우연히 Streamlit이 떠 있어서였고, `lsof -i :8501`로 로컬 프로세스 확인 후 착각임을 확인함 — 실제 방문자 재현 아님.) Vercel 배포(`[tool.vercel] entrypoint = backend.app:app`)엔 애초에 Streamlit이 포함되지 않음 — Kafka와 동일하게 "Streamlit을 상시 호스팅할 곳 마련" + `CHAT_URL`을 환경변수/상대경로로 교체하는 두 가지가 다 필요.
 
 ## Figma 디자인시스템 구축 — 다음 착수 항목부터
 
