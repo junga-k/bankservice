@@ -558,38 +558,43 @@ def process_transfer(transfer_id: int) -> str:
             # 대신 기본 isolation_level이 이미 DEFERRED라 아래 BEGIN IMMEDIATE와 자연히 호환됨)
         conn.execute("BEGIN IMMEDIATE")
 
-        tr = conn.execute(
-            "SELECT from_account, to_account, amount, fee, status, to_holder, memo, sender_memo "
-            "FROM transfers WHERE id = ?",
+        # 이체정보+출금계좌+입금계좌를 LEFT JOIN 하나로 묶어 왕복 3회→1회로 줄임
+        # (원래 3개 SELECT는 전부 transfers.id 하나에서 시작해서 순차 의존이 아니라
+        #  단순히 서로 다른 테이블을 따로 조회하고 있었을 뿐이라 JOIN으로 안전하게 병합 가능).
+        row = conn.execute(
+            "SELECT t.from_account, t.to_account, t.amount, t.fee, t.status, "
+            "t.to_holder, t.memo, t.sender_memo, "
+            "src.id AS src_id, src.balance AS src_balance, src.holder_name AS src_holder_name, "
+            "dst.id AS dst_id, dst.balance AS dst_balance "
+            "FROM transfers t "
+            "LEFT JOIN accounts src ON src.account_no = t.from_account "
+            "LEFT JOIN accounts dst ON dst.account_no = t.to_account "
+            "WHERE t.id = ?",
             (transfer_id,),
         ).fetchone()
-        if tr is None:
+        if row is None:
             conn.execute("ROLLBACK")
             return "failed"
-        if tr["status"] != "pending":
+        if row["status"] != "pending":
             conn.execute("ROLLBACK")
-            return tr["status"]  # 이미 처리됨(중복 방지)
+            return row["status"]  # 이미 처리됨(중복 방지)
 
-        from_no, to_no = tr["from_account"], tr["to_account"]
-        amount, fee = tr["amount"], tr["fee"]
+        from_no, to_no = row["from_account"], row["to_account"]
+        amount, fee = row["amount"], row["fee"]
         total = amount + fee
+        src_id, src_balance = row["src_id"], row["src_balance"]
+        dst_id, dst_balance = row["dst_id"], row["dst_balance"]
         # 통장 표시: 비워두면 상대방 이름으로 기본값(계좌번호는 최종 폴백)
-        out_counterparty = tr["sender_memo"] or tr["to_holder"] or to_no
-        in_counterparty = tr["memo"] or from_no  # src 조회 후 holder_name으로 보강
-
-        src = conn.execute(
-            "SELECT id, balance, holder_name FROM accounts WHERE account_no = ?", (from_no,)
-        ).fetchone()
-        if src is not None:
-            in_counterparty = tr["memo"] or src["holder_name"] or from_no
+        out_counterparty = row["sender_memo"] or row["to_holder"] or to_no
+        in_counterparty = row["memo"] or row["src_holder_name"] or from_no
 
         # 검증
         err = None
-        if src is None:
+        if src_id is None:
             err = "출금 계좌를 찾을 수 없습니다."
         elif amount <= 0:
             err = "이체 금액이 올바르지 않습니다."
-        elif src["balance"] < total:
+        elif src_balance < total:
             err = "잔액이 부족합니다."
 
         if err:
@@ -604,34 +609,31 @@ def process_transfer(transfer_id: int) -> str:
         # 출금 (금액 + 수수료)
         conn.execute(
             "UPDATE accounts SET balance = balance - ? WHERE id = ?",
-            (total, src["id"]),
+            (total, src_id),
         )
-        balance_after_amount = src["balance"] - amount
+        balance_after_amount = src_balance - amount
         conn.execute(
             "INSERT INTO transactions(account_id, type, amount, counterparty, balance_after, created_at) "
             "VALUES (?, 'out', ?, ?, ?, ?)",
-            (src["id"], amount, out_counterparty, balance_after_amount, now),
+            (src_id, amount, out_counterparty, balance_after_amount, now),
         )
         # 수수료가 있으면 별도 출금 내역
         if fee > 0:
             conn.execute(
                 "INSERT INTO transactions(account_id, type, amount, counterparty, balance_after, created_at) "
                 "VALUES (?, 'out', ?, '이체수수료', ?, ?)",
-                (src["id"], fee, balance_after_amount - fee, now),
+                (src_id, fee, balance_after_amount - fee, now),
             )
         # 입금(내부 계좌인 경우)
-        dst = conn.execute(
-            "SELECT id, balance FROM accounts WHERE account_no = ?", (to_no,)
-        ).fetchone()
-        if dst is not None:
+        if dst_id is not None:
             conn.execute(
                 "UPDATE accounts SET balance = balance + ? WHERE id = ?",
-                (amount, dst["id"]),
+                (amount, dst_id),
             )
             conn.execute(
                 "INSERT INTO transactions(account_id, type, amount, counterparty, balance_after, created_at) "
                 "VALUES (?, 'in', ?, ?, ?, ?)",
-                (dst["id"], amount, in_counterparty, dst["balance"] + amount, now),
+                (dst_id, amount, in_counterparty, dst_balance + amount, now),
             )
 
         conn.execute(
