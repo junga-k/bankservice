@@ -87,6 +87,18 @@ Turso(libSQL)로 마이그레이션하기로 함.
   - 검증: 실제 Kafka+실제 원격 Turso로 `process_transfer`를 강제 예외 발생시켜 에러 경로 22회 반복 처리 → 전 구간(2/2~32/32) 차이 0.
 - **코드베이스 전체에서 상시 실행 루프는 이 둘(폴러·컨슈머)뿐임을 확인**(`threading.Thread`/`while True` grep) — "개별 호출부 책임 누락" 패턴에 대한 원인 규명과 수정은 이걸로 완료.
 
+## 4단계 커밋 분리 + main 병합 + 실배포 (2026-07-30, 완료)
+- 워크트리(`worktree-vercel-deploy`)의 미커밋 변경사항을 작업 단위 4개 커밋으로 분리(`87fb984` Turso 마이그레이션 핵심/db.py, `a50ad6f` 요청-스코프 연결 재사용 미들웨어, `44d2cfc` 폴러·컨슈머 커넥션 누수 수정, `a3c39ef` 진행기록 문서화). app.py는 hunk 단위로 정확히 분리(`git apply --cached`), db.py는 각 단계가 물리적으로 얽혀있어 하나의 커밋으로 유지(커밋 메시지에 명시).
+- `main`으로 fast-forward 머지 → 워크트리 제거(`git worktree remove`) → 브랜치 삭제(`git branch -d`) → main 기준 git status 확인(오늘 작업분은 전부 클린, 단 무관한 `backlog.md`/`session-log.md`가 이미 수정된 상태였음 — 손대지 않음).
+- Vercel 프로젝트(`bankservice`, 기존에 크래시났던 그 프로젝트) 연결 → `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN`을 Production+Preview 환경변수로 등록 → `vercel --prod` 배포.
+- **첫 배포 실패 → 원인 발견·수정**: `ModuleNotFoundError: No module named 'libsql'`. Vercel Python 빌드는 `requirements.txt`가 아니라 **`pyproject.toml`의 `dependencies`**를 씀(빌드로그: "Installing required dependencies from pyproject.toml..."). `libsql`을 `requirements.txt`에만 추가했던 게 원인 — `pyproject.toml`에도 추가(커밋 `3bf0096`) 후 재배포해 해결.
+- **재배포 후 실 프로덕션 URL로 스모크 테스트**(`https://bankservice-six.vercel.app`):
+  - 사이트 루트 200, `/api/login` 401(정상 — 이 Turso DB엔 데모 계정 시드 안 함)이지만 응답 자체가 왔다는 게 Turso 연결 정상 동작 확인. 콜드스타트 첫 요청 14.5s → 웜 상태 1.3~1.5s(3단계 로컬 실측치 1.7~2s와 거의 일치, 리전 불일치 우려는 기우로 확인됨).
+  - `/api/products`(FSS 외부 API, Turso 무관) 웜 상태 200 정상.
+  - **실제 회원가입(A/B) → 로그인 → 이체 전체 흐름**을 프로덕션 URL로 직접 실행: 회원가입/로그인/Turso 잔액 반영까지는 전부 정상. **`/api/transfer`에서 Kafka 발행이 걸림** — 로그 확인 결과 `kafka-python`이 `localhost:9092`(로컬 개발용 주소)에 지수 백오프로 재시도하다 20초 넘게 걸려서야 `KafkaTimeoutError`로 실패(→ 이체 status=`failed`로 정상 처리는 됨, 단 응답이 수십 초 걸림). **오늘 마이그레이션 범위(Turso) 밖의 별개 이슈** — Vercel엔 애초에 Kafka가 없고 `KAFKA_BROKER` 환경변수로 외부 Kafka를 지정한 적도 없음. 테스트로 만든 사용자·계좌·이체 데이터는 정리 완료.
+
+**결론**: Turso 마이그레이션 자체(로그인/회원가입/상품조회/DB 읽고쓰기)는 프로덕션에서 정상 동작 확인. `/api/transfer`의 즉시실행 경로는 Kafka 브로커를 어딘가에 배포하고 `KAFKA_BROKER` 환경변수로 연결하기 전까지는 느리게(수십 초) 실패함 — 별도 후속 작업 필요.
+
 ## 다음 단계
 1. ~~파일럿 테스트(IntegrityError, 수동 트랜잭션)~~ 완료
 2. ~~로컬 개발 환경 전략 결정~~ 완료
@@ -94,7 +106,9 @@ Turso(libSQL)로 마이그레이션하기로 함.
 4. ~~연결 재사용 문제 해결~~ 완료 — 요청-스코프 공유 구현 + 실측(3~5배 개선)
 5. ~~쿼리 병렬화 가능성 조사~~ 완료 — 현재 스택에서 불가, ~1.7~2초가 현실적 하한선
 6. ~~미들웨어 예외 안전성 검증 + 커넥션 누수 2건(init_db·폴러, 컨슈머) 수정·검증~~ 완료
-7. Vercel 환경변수(`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`) 설정 + 실배포 검증
+7. ~~커밋 분리 + main 병합 + Vercel 환경변수 설정 + 실배포~~ 완료 — Turso 부분 프로덕션 검증 완료
+8. **(신규 후속과제) Kafka를 Vercel에서 접근 가능한 곳에 배포하고 `KAFKA_BROKER` 환경변수 설정** — 안 하면 `/api/transfer` 즉시실행 경로가 수십 초 뒤 실패함
 
 ## 참고
 - Turso CLI는 로컬에 설치돼 있으나 로그인 필요 (`turso auth login`, 브라우저 인증 필요) — 완료, DB `matchbank` 생성됨(`libsql://matchbank-junga-k.aws-ap-northeast-1.turso.io`).
+- 프로덕션 URL: `https://bankservice-six.vercel.app` (Vercel 프로젝트 `junga-k/bankservice`).
