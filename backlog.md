@@ -2,6 +2,14 @@
 
 아직 처리 안 된 작업 체크리스트. 완료하면 체크하고, 상세 조사/시행착오 기록은 `session-log.md`에 남긴다(이 파일엔 "무엇을 해야 하는지"만 간결하게 유지).
 
+## Vercel/Turso 마이그레이션 후속 (2026-07-31 추가, 상세: `vercel-deploy-progress.md`)
+
+- [ ] **Kafka 브로커 + `transfer_consumer.py` 컨슈머를 상시 호스팅할 곳 마련** — 지금은 `KAFKA_DISABLED=true`로 `/api/transfer`가 Kafka 없이 동기 폴백(`process_transfer()` 직접 호출)으로만 동작. 데이터 정확성은 검증됐지만 원래 설계였던 비동기 처리(빠른 "pending" 응답 + 폴링)는 못 씀.
+  - Railway는 2026년 초부로 무료 티어 완전 폐지. Render 무료 티어는 15분 무활동 시 sleep이라 상시 TCP 연결이 필요한 Kafka 브로커엔 부적합. Fly.io도 무료 없어졌고, "상시 켜짐" 설정 시 카드 등록 + 월 ~$2.
+  - Vercel은 서버리스라 `transfer_consumer.py`의 `while True` 루프를 못 돌림 — 브로커뿐 아니라 컨슈머가 상시 실행될 곳도 별도로 필요(Fly.io 등 한 곳에 브로커+컨슈머 같이 얹는 방안이 유력).
+  - 대안(Confluent Cloud 등 관리형)은 SASL_SSL 인증 코드 추가가 필요하지만 큰 변경은 아님 — 어느 쪽이든 "상시 호스팅할 곳 마련"이 진짜 병목이라 오늘 범위 밖으로 미룸.
+- [ ] **`process_transfer()`의 쓰기 쿼리(UPDATE/INSERT) 배치·병합** — 읽기 쿼리 3개는 LEFT JOIN으로 병합 완료(2026-07-31, `backend/db.py`), 쓰기 5~7개(잔액차감 UPDATE, 거래내역 INSERT ×1~2, 잔액증액 UPDATE, 거래내역 INSERT, 상태갱신 UPDATE)는 서로 다른 행을 건드리는 개별 DML이라 JOIN 불가. libsql이 `executescript()`도 미구현이라 배치 실행도 안 됨 — 스키마 변경(예: 트리거로 잔액 자동갱신) 또는 더 큰 리팩토링이 필요해서 보류.
+
 ## Figma 디자인시스템 구축 — 다음 착수 항목부터
 
 파일: `https://www.figma.com/design/KnJEcMeU05dCaVk3krDKKF`. 상태 원장: `/tmp/dsb-state-matchbank-001.json`(컬렉션/컴포넌트/화면 노드ID 정리돼 있음 — 세션 시작 시 먼저 읽을 것). 토큰 표: `docs/tokens.md`.

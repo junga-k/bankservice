@@ -99,15 +99,31 @@ Turso(libSQL)로 마이그레이션하기로 함.
 
 **결론**: Turso 마이그레이션 자체(로그인/회원가입/상품조회/DB 읽고쓰기)는 프로덕션에서 정상 동작 확인. `/api/transfer`의 즉시실행 경로는 Kafka 브로커를 어딘가에 배포하고 `KAFKA_BROKER` 환경변수로 연결하기 전까지는 느리게(수십 초) 실패함 — 별도 후속 작업 필요.
 
+## 5단계 Kafka 미가용 시 이체 차단 문제 진단·수정 (2026-07-31, 완료)
+- **확인**: Kafka 발행 실패가 부가기능(알림/로깅) 수준이 아니라 **이체 자체를 완전히 막는 core path**임을 코드로 확인. `process_transfer()`(실제 잔액차감+거래내역기록)는 오직 Kafka 컨슈머(`transfer_consumer.py`)를 통해서만 호출되고, `/api/transfer`는 그 함수를 직접 안 부름 — Kafka 없으면 `transfers` 행만 생기고 아무도 처리를 안 해서 `failed`로 끝나거나 무한 대기.
+- **수정**(`backend/app.py` `transfer()`, `backend/kafka_io.py`, 커밋 `91de157`):
+  - Kafka 발행 실패(or `KAFKA_DISABLED=true`) 시 같은 요청 안에서 `db.process_transfer()`를 동기 실행하는 폴백 추가. `process_transfer()`의 기존 멱등성 가드(`status != 'pending'`이면 스킵) 덕분에 나중에 Kafka가 살아나 같은 메시지를 재처리해도 이중 차감 없음. `fail_transfer()`를 먼저 호출하면 이 가드에 걸려 동기 처리가 스킵되므로 호출 순서 주의.
+  - `kafka_io.make_producer()`에 `bootstrap_timeout_ms=3000` 추가(기본 30000ms가 원인 중 하나) — 그런데 실측해보니 kafka-python이 부트스트랩 사이클을 여러 번 반복 재시도해서(백오프 구간은 이 타임아웃에 안 걸림) 여전히 20초 이상 걸림 → **`KAFKA_DISABLED` 환경변수**로 부트스트랩 시도 자체를 건너뛰는 스위치 추가, Vercel Production+Preview에 `true`로 설정.
+- **재측정 중 진짜 원인 추가 발견**: `KAFKA_DISABLED` 적용 후에도 웜 상태 응답이 9~11초로 예상(3초+933ms대)보다 훨씬 큼. 프로덕션에 임시 타이밍 로그를 심어(진단 후 제거) 확인한 결과, **Vercel(iad1, 미국 동부) ↔ Turso(aws-ap-northeast-1, 아시아) 간 쿼리 1회당 실제 300~650ms**(로컬 실측치 75~170ms의 3~4배) — 리전 거리 차이가 진짜 원인. `process_transfer()` 자체가 내부 순차쿼리 8~10개라 그것만 4~5초.
+- 실제 원격 Turso로 정확성 재검증: 프로덕션 URL로 회원가입→로그인→이체 실행 후 **DB 직접 조회로 잔액 변화·거래내역 확인**(A -30,000원/B +30,000원 정확히 반영). 테스트 데이터 정리 완료.
+
+## 6단계 process_transfer() 쿼리 병합으로 리전 지연 일부 완화 (2026-07-31, 완료)
+- Kafka 브로커+컨슈머 상시 호스팅(Railway/Render/Fly.io/Confluent Cloud 비교 조사 포함)은 오늘 범위 밖 → `backlog.md`로 이관.
+- `process_transfer()`의 읽기 쿼리 3개(이체정보/출금계좌/입금계좌, 전부 `transfers.id` 하나에서 시작하지만 순차 SELECT였음)를 `LEFT JOIN` 하나로 병합(커밋 `83f1400`). 왕복 11회(수수료 있는 내부이체 기준)→9회. 쓰기 쿼리(UPDATE/INSERT)는 서로 다른 행을 건드리는 개별 DML이라 병합 불가, libsql이 `executescript()`도 미구현이라 배치도 안 됨 — `backlog.md`에 별도 기록.
+- 실제 원격 Turso로 정확성 검증: 정상(수수료 포함)/잔액부족(롤백)/외부계좌(LEFT JOIN dst NULL) 3가지 케이스 전부 정확한 잔액·상태 확인 후 배포.
+- **재측정(프로덕션, 실제 성공 이체 기준)**: 웜 상태 평균 이전 ~10.2초(9.35/10.80/10.63s) → 이후 ~9.0초(9.48/8.35/9.19s), 약 1.2초(~12%) 절감 — 애초 예상한 600~1300ms 절감과 일치. (측정 중 손으로 옮겨적은 JWT 토큰이 한 번 손상돼 "1초대" 오측정이 있었으나, 응답 본문 확인으로 인증 실패임을 발견해 토큰을 파일로 안전하게 재발급받아 재측정 — 실제 이체 성공 케이스만 반영된 수치가 위 값).
+
 ## 다음 단계
 1. ~~파일럿 테스트(IntegrityError, 수동 트랜잭션)~~ 완료
 2. ~~로컬 개발 환경 전략 결정~~ 완료
 3. ~~Turso 계정/DB 프로비저닝 + 실서버 검증~~ 완료
 4. ~~연결 재사용 문제 해결~~ 완료 — 요청-스코프 공유 구현 + 실측(3~5배 개선)
-5. ~~쿼리 병렬화 가능성 조사~~ 완료 — 현재 스택에서 불가, ~1.7~2초가 현실적 하한선
+5. ~~쿼리 병렬화 가능성 조사~~ 완료 — 현재 스택에서 불가
 6. ~~미들웨어 예외 안전성 검증 + 커넥션 누수 2건(init_db·폴러, 컨슈머) 수정·검증~~ 완료
-7. ~~커밋 분리 + main 병합 + Vercel 환경변수 설정 + 실배포~~ 완료 — Turso 부분 프로덕션 검증 완료
-8. **(신규 후속과제) Kafka를 Vercel에서 접근 가능한 곳에 배포하고 `KAFKA_BROKER` 환경변수 설정** — 안 하면 `/api/transfer` 즉시실행 경로가 수십 초 뒤 실패함
+7. ~~커밋 분리 + main 병합 + Vercel 환경변수 설정 + 실배포~~ 완료
+8. ~~Kafka 미가용 시 이체 차단 문제 진단·수정~~ 완료 — 동기 폴백 + `KAFKA_DISABLED`
+9. ~~process_transfer() 읽기쿼리 JOIN 병합~~ 완료 — 웜 상태 ~10.2s → ~9.0s
+10. (후속, `backlog.md` 참고) Kafka 브로커+컨슈머 상시 호스팅, process_transfer() 쓰기쿼리 배치
 
 ## 참고
 - Turso CLI는 로컬에 설치돼 있으나 로그인 필요 (`turso auth login`, 브라우저 인증 필요) — 완료, DB `matchbank` 생성됨(`libsql://matchbank-junga-k.aws-ap-northeast-1.turso.io`).
