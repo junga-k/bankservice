@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import re
 import sqlite3
 import time
@@ -1485,6 +1486,19 @@ def admin_update_event(event_id: int, req: EventReq, user: dict = Depends(auth.r
 def admin_delete_event(event_id: int, user: dict = Depends(auth.require_admin)):
     db.delete_event(event_id)
     return {"ok": True}
+
+
+# site/js/main.js는 정적 파일이라 서버 템플릿 변수를 못 쓴다. AI은행원(Streamlit) iframe
+# 주소를 배포 환경마다 다르게 넣을 수 있도록, main.js가 로드되기 전에 이 작은 동적 스크립트로
+# window.CHAT_BASE_URL을 먼저 심어둔다. CHAT_BASE_URL 환경변수 미설정 시 빈 문자열 반환 →
+# main.js가 기존과 동일하게 http://localhost:8501로 폴백(로컬 개발 동작 변화 없음).
+@app.get("/js/env-config.js")
+def env_config_js():
+    chat_base_url = os.environ.get("CHAT_BASE_URL", "")
+    return Response(
+        content=f"window.CHAT_BASE_URL = {json.dumps(chat_base_url)};",
+        media_type="application/javascript",
+    )
 
 
 # ── 정적 사이트 서빙 (마지막에 마운트: /api 라우트가 우선) ───────────

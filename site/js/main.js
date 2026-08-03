@@ -5,7 +5,11 @@
  * - FAQ: 아코디언 토글
  */
 
-const CHAT_URL = "http://localhost:8501/?embed=true&embedded=1";
+// 배포 환경마다 다른 AI은행원(Streamlit) 주소는 js/env-config.js가 로드 시점에
+// window.CHAT_BASE_URL로 미리 심어둔다(env-config.js가 아직 없거나 값이 비어있으면
+// 로컬 개발 기본값인 localhost:8501로 폴백).
+const CHAT_BASE_URL = window.CHAT_BASE_URL || "http://localhost:8501";
+const CHAT_URL = `${CHAT_BASE_URL}/?embed=true&embedded=1`;
 const SECTIONS = ["home", "account", "products", "chat", "support", "auth", "mypage", "backoffice"];
 
 /* ── 인증 상태 (localStorage) ───────────────────────────────────────
