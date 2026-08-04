@@ -12,6 +12,9 @@ const CHAT_BASE_URL = window.CHAT_BASE_URL || "http://localhost:8501";
 const CHAT_URL = `${CHAT_BASE_URL}/?embed=true&embedded=1`;
 const SECTIONS = ["home", "account", "products", "chat", "support", "auth", "mypage", "backoffice"];
 
+// .faq-q 아코디언 공통 chevron 아이콘(사이트 아이콘 시스템과 동일한 feather 스타일 SVG, scroll-hint와 같은 path)
+const CHEV_SVG = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+
 /* ── 인증 상태 (localStorage) ───────────────────────────────────────
  * auth = { token, username, name, role }
  */
@@ -358,6 +361,9 @@ const BANK_BRAND = {
   "광주은행":    { label: "광주", color: "#F58220", logo: "gwangju.png" },
   "전북은행":    { label: "전북", color: "#EE3524", logo: "jeonbuk.png" },
   "제주은행":    { label: "제주", color: "#00AEEF", logo: "jeju.png" },
+  "수협은행":    { label: "수협", color: "#0C4DA2", logo: "suhyup.png" },
+  "한국산업은행": { label: "KDB", color: "#1B3F94", logo: "kdb.png" },
+  "한국씨티은행": { label: "씨티", color: "#EC1C24", logo: "citibank.png" },
 };
 const BANK_FALLBACK_COLORS = ["#5F6368", "#7B61FF", "#00838F", "#8D6E63", "#546E7A"];
 
@@ -1167,7 +1173,7 @@ function renderSpecialProductList(products) {
     .map((p) => {
       const badge = p.badge ? `<span class="special-badge">${escapeHtml(p.badge)}</span>` : "";
       const meta = [p.rate_text, p.description].filter(Boolean).map(escapeHtml).join(" · ");
-      return `<div class="faq-item"><div class="faq-q"><span>${badge}${bankBadge(p.bank_name)} ${escapeHtml(p.title)}</span><span class="chev">▾</span></div>` +
+      return `<div class="faq-item"><div class="faq-q"><span>${badge}${bankBadge(p.bank_name)} ${escapeHtml(p.title)}</span>${CHEV_SVG}</div>` +
         (meta ? `<div class="faq-a">${meta}</div>` : "") +
         `</div>`;
     })
@@ -4813,7 +4819,7 @@ function renderNoticeList(notices, reset) {
   const rows = notices
     .map(
       (n) =>
-        `<div class="faq-item"><div class="faq-q">${escapeHtml(n.title)} <span class="chev">▾</span></div>` +
+        `<div class="faq-item"><div class="faq-q">${escapeHtml(n.title)} ${CHEV_SVG}</div>` +
         `<div class="faq-a"><div class="tf-hint">${fmtDate(n.created_at)}</div>${escapeHtml(n.content)}</div></div>`
     )
     .join("");
@@ -4849,7 +4855,7 @@ function renderFaqList(faqs, reset) {
   const rows = faqs
     .map(
       (f) =>
-        `<div class="faq-item"><div class="faq-q">${escapeHtml(f.question)} <span class="chev">▾</span></div>` +
+        `<div class="faq-item"><div class="faq-q">${escapeHtml(f.question)} ${CHEV_SVG}</div>` +
         `<div class="faq-a">${escapeHtml(f.answer)}</div></div>`
     )
     .join("");
@@ -4939,7 +4945,7 @@ function renderEventList(events, reset) {
             `</div>`;
         }
       }
-      return `<div class="faq-item"><div class="faq-q"><span>${drawBadge}${escapeHtml(ev.title)}</span><span class="chev">▾</span></div>` +
+      return `<div class="faq-item"><div class="faq-q"><span>${drawBadge}${escapeHtml(ev.title)}</span>${CHEV_SVG}</div>` +
         `<div class="faq-a"><div class="tf-hint">${period}</div>${escapeHtml(ev.content)}${actionHtml}</div></div>`;
     })
     .join("");

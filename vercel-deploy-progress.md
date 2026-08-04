@@ -174,3 +174,15 @@ Turso(libSQL)로 마이그레이션하기로 함.
 주의: 사용자가 Figma에서 눈대중으로 조정했을 수 있으므로,
 "이렇게 보여요"를 그대로 믿지 말고 반드시 실제 수치로
 재확인 후 반영할 것.
+
+## 1단계 배포 환경 재검증 결과 (2026-08-03, 완료 — 차이 없음)
+
+Playwright로 로컬(`localhost:8000`)과 프로덕션(`https://bankservice-six.vercel.app`)을 나란히 실측 비교. **폰트/이미지 경로/색상 등 배포 과정에서 새로 생긴 차이 0건.**
+
+- **Home 화면 전수 대조**: `:root` 브랜드 컬러 변수 13개(`--blue`/`--blue-dark`/`--blue-soft`/`--blue-line`/`--bg-soft`/`--border`/`--text`/`--text-sub`/`--success`/`--warning`/`--error`/`--info`/`--font-display`) 전부 완전 일치. `body` 폰트(`IBM Plex Sans KR` 폴백체인)도 완전 일치. Google Fonts(IBM Plex Sans KR·Black Han Sans) 양쪽 다 200으로 정상 로드.
+- **네트워크 404 없음**: 정적 리소스(css/js/svg/폰트) 전부 양쪽 200. 유일한 "깨진 이미지"는 Backoffice 배너관리의 `#bo-banner-image-preview`(업로드 전 `display:none` 미리보기 `img`)로, 원래 src가 없는 의도된 placeholder — 버그 아님.
+- **은행 로고 404 16건 — 배포 문제 아니라 기존 동작임을 확인**: `#products`/`#account`에서 `img/banks/{shinhan,kb,kakaobank,woori,hana,...}.png` 404가 로컬·프로덕션 양쪽에서 **동일하게** 발생. `site/img/banks/`엔 애초에 `README.txt`만 있고 로고 PNG가 하나도 없음(`bankBadge()`가 로고 시도 후 실패하면 색상 배지로 자동 대체하는 기존 설계, CLAUDE.md에 문서화된 대로 정상 폴백). 배포로 새로 생긴 게 아니므로 이번 스코프 밖.
+- **인증 플로우 실제 검증**: 프로덕션에서 `demo/demo1234` 로그인 → `#account`(계좌 데이터 정상 렌더) → `admin/admin1234` 로그인 → `#backoffice`(회원/이체/이용통계/은행별통계/인프라메트릭 API 전부 200, 콘솔 에러 0건) 확인.
+- **결론: 배포 환경도 로컬과 동일하게 검증됨.** 새로 발견된 배포 고유 이슈 없음 — `backlog.md`에 추가할 항목 없음.
+
+다음: 2단계(Figma 직접 수정 반영) 진행 가능.

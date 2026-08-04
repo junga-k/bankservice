@@ -113,7 +113,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; font-weight: 700; text-wrap: balance; }
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   font-family: var(--font-display);
   font-size: var(--text-xl);
   color: var(--blue);
@@ -163,7 +163,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .container {
   max-width: var(--maxw);
   margin: 0 auto;
-  padding: 48px 24px;
+  padding: var(--space-7) var(--space-5);
 }
 
 .section-title {
@@ -174,7 +174,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .section-desc {
   color: var(--text-sub);
   font-size: 16px;
-  margin: 0 0 32px;
+  margin: 0 0 var(--space-6);
 }
 
 /* ── 홈: 히어로 ──────────────────────────────────────────────────── */
@@ -467,7 +467,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   letter-spacing: 0.04em;
   color: var(--blue-dark);
   background: var(--blue-soft);
-  padding: 4px 10px;
+  padding: var(--space-1) 10px;
   border-radius: var(--radius-pill);
   margin-bottom: var(--space-3);
 }
@@ -575,7 +575,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .mock-acct-tile-actions span {
   flex: 1;
   text-align: center;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 10px;
@@ -636,7 +636,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   background: rgba(255, 255, 255, 0.22);
   color: #fff;
   border-radius: var(--radius-pill);
-  padding: 2px 8px;
+  padding: 2px var(--space-2);
   font-size: 10px;
   font-weight: 700;
 }
@@ -700,7 +700,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border);
   border-radius: 10px;
   background: #fff;
@@ -719,7 +719,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   justify-content: space-between;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-2);
+  padding: var(--space-4) var(--space-5);
   cursor: pointer;
   font-weight: 600;
   font-size: 15px;
@@ -728,7 +728,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 .faq-q:hover { background: var(--bg-soft); }
 .faq-item.open .faq-q { color: var(--blue-dark); }
-.faq-q .chev { flex-shrink: 0; color: var(--text-sub); transition: transform var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.faq-q .chev { flex-shrink: 0; width: 16px; height: 16px; color: var(--text-sub); transition: transform var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
 .faq-item.open .faq-q .chev { transform: rotate(180deg); color: var(--blue); }
 .faq-a {
   display: none;
@@ -743,14 +743,14 @@ main { min-height: calc(100vh - var(--header-h)); }
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
   margin-bottom: 36px;
 }
 .metric {
   background: var(--bg-soft);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 24px;
+  padding: var(--space-5);
   text-align: center;
   box-shadow: var(--shadow-sm);
 }
@@ -765,7 +765,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   background: #fff;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 24px;
+  padding: var(--space-5);
   margin-bottom: 24px;
   box-shadow: var(--shadow-sm);
 }
@@ -919,7 +919,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .product-list-toggle {
   display: block;
   width: 100%;
-  padding: 12px;
+  padding: var(--space-3);
   margin-top: 4px;
   border: 1px solid var(--blue-line);
   border-radius: var(--radius-pill);
@@ -937,8 +937,8 @@ main { min-height: calc(100vh - var(--header-h)); }
 .pl-badge {
   font-size: 11px;
   font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 8px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
   background: var(--bg-soft);
   color: var(--text-sub);
 }
@@ -950,8 +950,8 @@ main { min-height: calc(100vh - var(--header-h)); }
   font-weight: 700;
   color: var(--blue);
   background: var(--blue-soft);
-  border-radius: 8px;
-  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-2);
 }
 .pl-bank { font-size: 12.5px; color: var(--text-sub); display: inline-flex; align-items: center; gap: 4px; }
 .pl-name { font-size: 17px; font-weight: 700; color: var(--text); flex: 1; min-width: 120px; }
@@ -966,7 +966,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   color: var(--text-sub);
   background: var(--bg-soft);
   border-radius: 6px;
-  padding: 3px 8px;
+  padding: 3px var(--space-2);
 }
 .pl-link { margin-top: 12px; font-size: 13px; padding: 6px 14px; }
 
@@ -1029,7 +1029,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   font-weight: 700;
   color: #0B8457;
   background: #E3F6EC;
-  padding: 1px 8px;
+  padding: 1px var(--space-2);
   border-radius: 10px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -1043,7 +1043,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .stat-products-columns {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 .stat-products-columns .topcat { margin-bottom: 0; }
 @media (max-width: 900px) {
@@ -1055,7 +1055,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 
 .chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .q-chip {
-  padding: 8px 14px;
+  padding: var(--space-2) 14px;
   background: var(--blue-soft);
   color: var(--blue-dark);
   border-radius: 18px;
@@ -1089,7 +1089,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .nav a.nav-auth { font-weight: 500; }
 /* 로그인: 외곽선 버튼 */
@@ -1176,7 +1176,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
   background: var(--blue-soft);
   color: var(--blue-dark);
@@ -1236,7 +1236,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 /* ── 내 계좌: 비로그인 안내 ──────────────────────────────────────── */
 .account-guest {
   text-align: center;
-  padding: 48px 24px;
+  padding: var(--space-7) var(--space-5);
 }
 .account-guest p { margin: 0 0 16px; color: var(--text-sub); }
 
@@ -1255,7 +1255,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   flex: 0 0 184px;
   position: sticky;
   top: calc(var(--header-h) + 24px);
-  padding: 4px 6px;
+  padding: var(--space-1) 6px;
 }
 .bo-content {
   flex: 1;
@@ -1263,7 +1263,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 
 .bo-menu-title {
-  margin: 4px 8px 10px;
+  margin: var(--space-1) var(--space-2) 10px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1279,7 +1279,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   position: relative;
   padding: 10px 14px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   font-size: 14px;
   font-weight: 600;
@@ -1307,7 +1307,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .perf-dashboard {
   display: grid;
   grid-template-columns: 2fr 1fr;
-  gap: 24px;
+  gap: var(--space-5);
   align-items: start;
 }
 .perf-main, .perf-side { min-width: 0; }
@@ -1331,14 +1331,14 @@ main { min-height: calc(100vh - var(--header-h)); }
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
   white-space: nowrap;
 }
 
 .dashboard-chart-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
+  gap: var(--space-5);
 }
 @media (max-width: 900px) {
   .dashboard-chart-grid { grid-template-columns: 1fr; }
@@ -1353,7 +1353,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .bo-toolbar input {
   flex: 0 1 280px;
   min-width: 160px;
-  padding: 9px 12px;
+  padding: 9px var(--space-3);
   border: 1px solid var(--border);
   border-radius: 10px;
   font-size: 14px;
@@ -1361,7 +1361,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .bo-filter-btn {
   padding: 6px 14px;
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   background: #fff;
   font-size: 13px;
   color: var(--text-sub);
@@ -1372,7 +1372,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .admin-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 14px; }
 .admin-table th {
   text-align: left;
-  padding: 10px 12px;
+  padding: 10px var(--space-3);
   background: var(--bg-soft);
   color: var(--text-sub);
   font-weight: 600;
@@ -1406,7 +1406,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .status-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 16px;
+  padding: var(--space-4);
   box-shadow: var(--shadow-sm);
   transition: box-shadow var(--dur-base) var(--ease);
 }
@@ -1430,7 +1430,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 14px 20px;
   margin-bottom: 24px;
   background: #fff;
@@ -1445,7 +1445,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 12px 4px 8px;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   font-size: 12px;
@@ -1472,7 +1472,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 /* 이체모니터링 요약: 8칸 — 스파크라인까지 넣으면 한 줄은 비좁아 4열 x 2줄로 고정 */
 #bo-transfer-summary {
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
   margin-bottom: 20px;
 }
 #bo-transfer-summary .metric { padding: 14px 10px; text-align: left; }
@@ -1480,7 +1480,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 /* 보안 이벤트 요약: 4칸 — 한 줄에 그대로, 미니 막대 추가 공간만 확보 */
 #bo-security-summary {
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
   margin-bottom: 14px;
 }
 #bo-security-summary .metric { padding: 14px 10px; text-align: left; }
@@ -1538,7 +1538,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 
 .bo-cancel-btn {
   margin-left: 6px;
-  padding: 1px 8px;
+  padding: 1px var(--space-2);
   border: 1px solid #D0D3D9;
   border-radius: 10px;
   background: #fff;
@@ -1557,7 +1557,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   grid-template-columns: 72px minmax(140px, max-content) minmax(0, 1fr) max-content 52px;
   align-items: center;
   column-gap: 12px;
-  padding: 10px 4px;
+  padding: 10px var(--space-1);
   border-bottom: 1px solid #EEF0F3;
   font-size: 13px;
 }
@@ -1573,7 +1573,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   grid-template-columns: 116px 56px minmax(0, 1fr) max-content max-content;
   align-items: center;
   column-gap: 12px;
-  padding: 9px 4px 9px 10px;
+  padding: 9px var(--space-1) 9px 10px;
   border-bottom: 1px solid #EEF0F3;
   border-left: 3px solid transparent;
   font-size: 13px;
@@ -1616,7 +1616,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .support-search input {
   flex: 0 1 220px;
   min-width: 140px;
-  padding: 6px 12px;
+  padding: 6px var(--space-3);
   font-size: 13px;
 }
 .support-search .btn { padding: 6px 14px; font-size: 13px; white-space: nowrap; flex-shrink: 0; }
@@ -1626,7 +1626,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .bo-search-inline input {
   flex: 0 1 220px;
   min-width: 140px;
-  padding: 6px 12px;
+  padding: 6px var(--space-3);
   font-size: 13px;
 }
 .bo-search-inline .btn { padding: 6px 14px; font-size: 13px; white-space: nowrap; flex-shrink: 0; }
@@ -1725,7 +1725,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-3);
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-4);
   background: #fff;
   border: 1px solid var(--border);
@@ -1865,7 +1865,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   position: relative;
   background: #fff;
   border-radius: var(--radius);
-  padding: 28px 24px 24px;
+  padding: 28px var(--space-5) var(--space-5);
   width: 100%;
   max-width: 380px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
@@ -1901,7 +1901,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   background: var(--bg-soft);
   color: var(--text);
   border-radius: 6px;
-  padding: 2px 8px;
+  padding: 2px var(--space-2);
 }
 .modal-close {
   position: absolute;
@@ -1912,14 +1912,14 @@ main { min-height: calc(100vh - var(--header-h)); }
   font-size: 16px;
   color: var(--text-sub);
   cursor: pointer;
-  padding: 4px;
+  padding: var(--space-1);
 }
 
 /* ── 데모 배지 ───────────────────────────────────────────────────── */
 .demo-badge {
   display: inline-block;
   margin-left: 6px;
-  padding: 2px 8px;
+  padding: 2px var(--space-2);
   background: #FEF3C7;
   color: #92400E;
   border-radius: 10px;
@@ -2056,7 +2056,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 8px 0;
+  padding: var(--space-2) 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: transparent;
@@ -2076,7 +2076,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 14px;
-  padding: 12px 4px;
+  padding: var(--space-3) var(--space-1);
   border-bottom: 1px solid var(--border);
 }
 .tx-row:last-child { border-bottom: none; }
@@ -2407,7 +2407,7 @@ main { min-height: calc(100vh - var(--header-h)); }
 .ab-response {
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: var(--space-3) 14px;
   min-height: 120px;
   max-height: 320px;
   overflow: auto;
@@ -2511,7 +2511,7 @@ main { min-height: calc(100vh - var(--header-h)); }
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-pill);
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.92);
@@ -2631,7 +2631,7 @@ main { min-height: calc(100vh - var(--header-h)); }
     display: block;
     font-family: var(--font-body);
     color: #000;
-    padding: 24px;
+    padding: var(--space-5);
   }
   #mp-stmt-print-area h1 { font-size: 20px; margin: 0 0 4px; }
   #mp-stmt-print-area p { font-size: 12px; color: #444; margin: 0 0 16px; }
