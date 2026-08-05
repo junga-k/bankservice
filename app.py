@@ -478,6 +478,39 @@ st.markdown("""<style>
     [data-testid="stSpinner"] { animation: none; }
 }
 
+/* ── AI 응답 대기 커스텀 아이콘 ────────────────────────────────────
+   위 stSpinner 재스킨과 별개로, "메시지 전송 → 응답 도착" 구간(에이전트 처리 중 /
+   스트리밍 첫 토큰 도착 전)에는 Streamlit 기본 스피너 대신 이 아이콘을 직접 그린다.
+   logo-mark.svg의 겹친 두 원을 그대로 축소해 하나의 강체로 보고 중심을 축으로
+   등속 회전시킨 것 — 새 도형은 없다. st.empty() placeholder에 unsafe_allow_html로
+   주입하고, 응답이 도착하면 placeholder를 비운 뒤 실제 내용으로 교체한다
+   (헬퍼: _thinking_indicator_html). SVG는 <symbol>+<use> 없이 매번 인라인으로
+   그린다 — <use>가 참조하는 그림자 트리 안의 원소에는 CSS 애니메이션이 실제로
+   시작되지 않는 걸 확인했다(document.getAnimations()로 검증). */
+.mb-thinking {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    margin: 4px 0;
+    background: var(--blue-soft);
+    border-radius: 999px;
+    width: fit-content;
+}
+.mb-thinking-svg { display: block; overflow: visible; flex-shrink: 0; }
+.mb-thinking-svg .mb-thinking-a { fill: var(--blue); }
+.mb-thinking-svg .mb-thinking-b { fill: var(--blue-dark); opacity: 0.68; }
+.mb-thinking-svg .mb-thinking-hub { transform-origin: 20px 20px; }
+@media (prefers-reduced-motion: no-preference) {
+    .mb-thinking-svg .mb-thinking-hub { animation: mbThinkingRotate 1.8s linear infinite; }
+}
+@keyframes mbThinkingRotate { to { transform: rotate(360deg); } }
+.mb-thinking-label {
+    color: var(--blue-dark);
+    font-size: 14px;
+    font-weight: 600;
+}
+
 /* ── 모델 팝오버 ────────────────────────────────────────────────── */
 [data-testid="stPopover"] {
     position: fixed !important;
@@ -547,11 +580,66 @@ st.markdown("""<style>
 }
 [class*="st-key-sugg_"] button p { font-size: 13px !important; }
 [class*="st-key-sugg_"] button > div { width: auto !important; }
+/* 빈 화면(새 채팅) 전용 레이아웃 — 원래 greeting 렌더 블록 안에 있었는데, 그 블록은
+   _pending_input(제출 직후)엔 미렌더되어 여기 CSS가 통째로 DOM에서 사라졌었다.
+   그 결과 제출 순간 추천 칩을 숨기던 규칙(바로 아래 body.kw-open 규칙)까지 같이 사라져,
+   Streamlit이 칩 버튼 자체를 지우기 전 한 프레임 동안 기본값(display:flex)으로 칩이
+   잠깐 다시 보이는 "잔상"이 실측 확인됐다(제출 직후 body 클래스가 빈 문자열로 리셋되는
+   순간과 겹침). 그래서 대화 상태와 무관하게 항상 떠 있어야 하는 이 CSS를 전역 블록으로 옮김. */
+body.chat-empty [data-testid="stBottom"]{
+  transform: translateY(-41vh) !important;   /* 레이아웃(사이드바 오프셋·가로중심) 유지한 채 위로만 */
+  background: transparent !important; box-shadow: none !important; border: none !important;
+}
+[data-testid="stChatInput"]{ margin-right: 0 !important; }
+body.chat-empty [data-testid="stChatInput"]{
+  max-width: 520px !important; margin-left: auto !important; margin-right: auto !important;
+}
+.stMain{ position: relative !important; }
+[data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){
+  position: absolute !important; left: 0 !important; right: 0 !important;
+  top: 60% !important;
+  justify-content: center !important; gap: 10px !important;
+  display: none !important; z-index: 39;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  padding: 4px 24px 10px !important;
+  scrollbar-width: none !important;      /* Firefox: 스크롤바 숨김 */
+  -ms-overflow-style: none !important;   /* 구형 Edge: 스크롤바 숨김 */
+}
+[data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"])::-webkit-scrollbar{
+  display: none !important;
+}
+[data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]) > [data-testid="stColumn"]{
+  flex: 0 0 auto !important; width: auto !important; min-width: 0 !important;
+}
+body.kw-open [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){ display: flex !important; }
 /* 제출 시작 즉시 인사말·키워드 숨김(블로킹 처리 중 잔상 방지) + 입력창 하단 고정 */
 body.chat-submitting .chat-hero-greeting,
 body.chat-submitting [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){ display: none !important; }
 body.chat-submitting [data-testid="stBottom"]{ transform: none !important; }
 </style>""", unsafe_allow_html=True)
+
+def _thinking_indicator_html(label: str = "답변을 준비하고 있어요…") -> str:
+    """AI 응답 대기 중 채팅창에 표시할 커스텀 아이콘 HTML.
+    st.empty() placeholder에 markdown(..., unsafe_allow_html=True)로 주입해 쓴다.
+
+    <symbol>+<use> 참조 방식으로 만들었다가, <use>가 인스턴스화하는 그림자 트리 안의
+    <g>에는 CSS @keyframes 애니메이션이 실제로 시작되지 않는 걸 확인했다
+    (document.getAnimations()로 검증 — mbThinkingRotate가 전혀 잡히지 않음).
+    그래서 매번 원 두 개를 직접 인라인으로 그린다. 이 아이콘은 한 번에 한 곳에서만
+    쓰이므로 sprite로 공유할 이유도 없다."""
+    return (
+        '<div class="mb-thinking">'
+        '<svg class="mb-thinking-svg" width="18" height="18" viewBox="0 0 40 40" '
+        'role="img" aria-label="응답 대기 중">'
+        '<g class="mb-thinking-hub">'
+        '<circle class="mb-thinking-a" cx="16.4" cy="20" r="7.2"/>'
+        '<circle class="mb-thinking-b" cx="23.6" cy="20" r="7.2"/>'
+        '</g></svg>'
+        f'<span class="mb-thinking-label">{label}</span>'
+        '</div>'
+    )
 
 # ── Phoenix 초기화 ────────────────────────────────────────────────────
 _phoenix = tracing.init_tracing()
@@ -809,43 +897,11 @@ if not conv["messages"] and not _pending_input:
               if _name else "안녕하세요, 무엇을 도와드릴까요?")
     # 빈 화면 전용 레이아웃: 입력창을 인사말 바로 아래 중앙으로 끌어올리고,
     # 추천 키워드는 기본 숨김 → 입력창을 누르면(포커스) 노출. (대화 시작 후엔 이 블록 미렌더 → 입력창 하단 복귀)
-    st.markdown("""
-<style>
-/* 입력창(하단 고정)을 인사말 바로 아래로. 가로는 Streamlit 기본(메인 컬럼) 중심 유지 +
-   기본 margin-right(150px) 제거로 인사말과 정확히 같은 중심축(가운데) */
-body.chat-empty [data-testid="stBottom"]{
-  transform: translateY(-41vh) !important;   /* 레이아웃(사이드바 오프셋·가로중심) 유지한 채 위로만 */
-  background: transparent !important; box-shadow: none !important; border: none !important;
-}
-[data-testid="stChatInput"]{ margin-right: 0 !important; }
-/* 빈 화면에선 입력창을 문구보다 조금 더 긴 정도로만(가운데). 대화 중엔 전체 폭 유지 */
-body.chat-empty [data-testid="stChatInput"]{
-  max-width: 520px !important; margin-left: auto !important; margin-right: auto !important;
-}
-/* 추천 키워드: 입력창 아래, 가로 한 줄 스크롤 리본. 기본 숨김 → 포커스 시 노출 */
-.stMain{ position: relative !important; }
-[data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){
-  position: absolute !important; left: 0 !important; right: 0 !important;
-  top: 60% !important;
-  justify-content: center !important; gap: 10px !important;
-  display: none !important; z-index: 39;
-  flex-wrap: nowrap !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
-  padding: 4px 24px 10px !important;
-  scrollbar-width: none !important;      /* Firefox: 스크롤바 숨김 */
-  -ms-overflow-style: none !important;   /* 구형 Edge: 스크롤바 숨김 */
-}
-/* Chrome/Safari(웹킷): 스크롤바 숨김 */
-[data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"])::-webkit-scrollbar{
-  display: none !important;
-}
-/* 컬럼이 폭을 채우며 늘어나지 않도록 → 내용 크기만큼만, 한 줄에 나열 */
-[data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]) > [data-testid="stColumn"]{
-  flex: 0 0 auto !important; width: auto !important; min-width: 0 !important;
-}
-body.kw-open [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){ display: flex !important; }
-</style>""", unsafe_allow_html=True)
+    # 관련 CSS는 여기가 아니라 최상단 전역 <style> 블록에 있다 — 이 블록 전체가
+    # _pending_input(제출 직후)일 땐 미렌더되는데, 이 CSS를 여기 두면 제출 순간 스타일시트 자체가
+    # DOM에서 사라져 추천 칩이 기본값(display:flex)으로 잠깐 다시 보이는 "잔상" 버그가 있었다
+    # (실측 확인: 제출 직후 body 클래스가 비워지는 한 프레임에서 칩이 flex로 노출됨).
+    # 그래서 대화 상태와 무관하게 항상 존재해야 하는 CSS라 전역 블록으로 옮겼다.
     st.markdown("<div style='height:16vh'></div>", unsafe_allow_html=True)
 
     if not auth_token:
@@ -1188,7 +1244,12 @@ _components.html("""<script>
     // 대화가 확정되면(메시지 존재) 제출/키워드 상태를 정리 → 다음 빈 화면이 깨끗하게 시작
     if (_msgN > 0){ pd.body.classList.remove('chat-submitting'); pd.body.classList.remove('kw-open'); }
     // 제출 시작(엔터·전송버튼·추천칩 클릭) 즉시 인사말/키워드 숨김 → 처리 중 잔상 제거
-    function markSubmitting(){ pd.body.classList.add('chat-submitting'); }
+    // kw-open을 같이 지우는 이유: body.chat-submitting(숨김)과 body.kw-open(노출) 규칙은
+    // CSS 명시도가 완전히 같아서(둘 다 class 1개 + [data-testid] + :has 안 attribute) 두 클래스가
+    // 동시에 걸리면 스타일시트에 나중에 나오는 kw-open 쪽이 이겨 칩이 안 사라졌다(실측 확인된 버그).
+    // 입력창 포커스 → 타이핑 → 엔터로 제출하는 게 일반적인 흐름이라 kw-open이 이미 켜진 채로
+    // 제출되는 경우가 사실상 항상이었음. 제출 시점엔 kw-open을 무조건 꺼서 이 경합을 없앤다.
+    function markSubmitting(){ pd.body.classList.add('chat-submitting'); pd.body.classList.remove('kw-open'); }
     var ta=pd.querySelector('[data-testid="stChatInput"] textarea');
     if(ta && !ta.dataset.subbound){
       ta.dataset.subbound='1';
@@ -1276,14 +1337,16 @@ if prompt:
             with st.chat_message("user"):
                 st.markdown(prompt)
         with st.chat_message("assistant"):
-            with st.spinner("🤖 처리 중…"):
-                try:
-                    result = agent.run_agent(
-                        conv["messages"], openai_key=openai_key, model=model,
-                        token=auth_token, system_prompt=system_prompt.strip() or None,
-                    )
-                except Exception as e:
-                    result = {"kind": "message", "text": f"처리 중 오류가 발생했습니다: {e}"}
+            _thinking_ph = st.empty()
+            _thinking_ph.markdown(_thinking_indicator_html("요청을 처리하고 있어요…"), unsafe_allow_html=True)
+            try:
+                result = agent.run_agent(
+                    conv["messages"], openai_key=openai_key, model=model,
+                    token=auth_token, system_prompt=system_prompt.strip() or None,
+                )
+            except Exception as e:
+                result = {"kind": "message", "text": f"처리 중 오류가 발생했습니다: {e}"}
+            _thinking_ph.empty()
             st.markdown(result["text"])
         conv["messages"].append({"role": "assistant", "content": result["text"]})
         if result["kind"] == "transfer_proposal":
@@ -1342,19 +1405,34 @@ if prompt:
                     st.text(rag_ctx)
 
     with st.chat_message("assistant"):
+        _thinking_ph = st.empty()
+        _thinking_ph.markdown(_thinking_indicator_html(), unsafe_allow_html=True)
         try:
-            response = st.write_stream(
-                llm.stream_chat(
-                    provider=provider,
-                    api_key=api_key,
-                    model=model,
-                    messages=llm_messages,
-                    temperature=temperature,
-                    system_prompt=system_prompt.strip() or None,
-                    attachments=attachments,
-                )
+            _stream = llm.stream_chat(
+                provider=provider,
+                api_key=api_key,
+                model=model,
+                messages=llm_messages,
+                temperature=temperature,
+                system_prompt=system_prompt.strip() or None,
+                attachments=attachments,
             )
+            # 첫 토큰이 도착하는 순간(=응답 대기가 끝나는 순간)까지만 커스텀 아이콘을 보여준다.
+            # next()로 첫 청크를 직접 당겨온 뒤, 그 청크를 다시 앞에 붙여 write_stream에 넘긴다
+            # (제너레이터는 한 번 소비하면 되돌릴 수 없어 청크를 잃지 않으려면 이렇게 이어붙여야 함).
+            _first_chunk = next(_stream)
+            _thinking_ph.empty()
+
+            def _resume_stream():
+                yield _first_chunk
+                yield from _stream
+
+            response = st.write_stream(_resume_stream())
+        except StopIteration:
+            _thinking_ph.empty()
+            response = ""
         except Exception as e:
+            _thinking_ph.empty()
             response = None
             st.error(f"응답 생성 중 오류가 발생했습니다:\n{e}")
 
