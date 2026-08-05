@@ -481,8 +481,12 @@ st.markdown("""<style>
 /* ── AI 응답 대기 커스텀 아이콘 ────────────────────────────────────
    위 stSpinner 재스킨과 별개로, "메시지 전송 → 응답 도착" 구간(에이전트 처리 중 /
    스트리밍 첫 토큰 도착 전)에는 Streamlit 기본 스피너 대신 이 아이콘을 직접 그린다.
-   logo-mark.svg의 겹친 두 원을 그대로 축소해 하나의 강체로 보고 중심을 축으로
-   등속 회전시킨 것 — 새 도형은 없다. st.empty() placeholder에 unsafe_allow_html로
+   logo-mark.svg의 겹친 두 원을 그대로 축소해 쓴 것 — 새 도형은 없다. 크기는
+   고정한 채 두 원이 서로 반대 방향으로 떨어졌다가 로고 모양으로 다시 겹치기를
+   반복한다(회전 아님 — 한 번 회전으로 바꿨다가 실제 화면에서 확인해보니 사용자가
+   원한 건 이 떨어짐/겹침 동작이라 되돌림). 배경 배지 없이 아이콘+문구를 채팅
+   말풍선 배경 위에 그대로 얹는다(Claude "Pondering"/Gemini 점 3개 참고 — 배경
+   박스 없는 편이 더 가벼워 보임). st.empty() placeholder에 unsafe_allow_html로
    주입하고, 응답이 도착하면 placeholder를 비운 뒤 실제 내용으로 교체한다
    (헬퍼: _thinking_indicator_html). SVG는 <symbol>+<use> 없이 매번 인라인으로
    그린다 — <use>가 참조하는 그림자 트리 안의 원소에는 CSS 애니메이션이 실제로
@@ -491,20 +495,18 @@ st.markdown("""<style>
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 16px;
+    padding: 4px 0;
     margin: 4px 0;
-    background: var(--blue-soft);
-    border-radius: 999px;
-    width: fit-content;
 }
 .mb-thinking-svg { display: block; overflow: visible; flex-shrink: 0; }
 .mb-thinking-svg .mb-thinking-a { fill: var(--blue); }
 .mb-thinking-svg .mb-thinking-b { fill: var(--blue-dark); opacity: 0.68; }
-.mb-thinking-svg .mb-thinking-hub { transform-origin: 20px 20px; }
 @media (prefers-reduced-motion: no-preference) {
-    .mb-thinking-svg .mb-thinking-hub { animation: mbThinkingRotate 1.8s linear infinite; }
+    .mb-thinking-svg .mb-thinking-a { animation: mbThinkingDriftA 2s cubic-bezier(0.4,0,0.2,1) infinite; }
+    .mb-thinking-svg .mb-thinking-b { animation: mbThinkingDriftB 2s cubic-bezier(0.4,0,0.2,1) infinite; }
 }
-@keyframes mbThinkingRotate { to { transform: rotate(360deg); } }
+@keyframes mbThinkingDriftA { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-4.9px); } }
+@keyframes mbThinkingDriftB { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(4.9px); } }
 .mb-thinking-label {
     color: var(--blue-dark);
     font-size: 14px;
@@ -626,17 +628,17 @@ def _thinking_indicator_html(label: str = "답변을 준비하고 있어요…")
 
     <symbol>+<use> 참조 방식으로 만들었다가, <use>가 인스턴스화하는 그림자 트리 안의
     <g>에는 CSS @keyframes 애니메이션이 실제로 시작되지 않는 걸 확인했다
-    (document.getAnimations()로 검증 — mbThinkingRotate가 전혀 잡히지 않음).
+    (document.getAnimations()로 검증 — 애니메이션이 전혀 잡히지 않음).
     그래서 매번 원 두 개를 직접 인라인으로 그린다. 이 아이콘은 한 번에 한 곳에서만
-    쓰이므로 sprite로 공유할 이유도 없다."""
+    쓰이므로 sprite로 공유할 이유도 없다. 두 원은 각자 반대 방향으로 translateX
+    되며 떨어졌다 로고 모양으로 다시 겹치기를 반복한다(회전 아님)."""
     return (
         '<div class="mb-thinking">'
         '<svg class="mb-thinking-svg" width="18" height="18" viewBox="0 0 40 40" '
         'role="img" aria-label="응답 대기 중">'
-        '<g class="mb-thinking-hub">'
-        '<circle class="mb-thinking-a" cx="16.4" cy="20" r="7.2"/>'
-        '<circle class="mb-thinking-b" cx="23.6" cy="20" r="7.2"/>'
-        '</g></svg>'
+        '<circle class="mb-thinking-a" cx="16" cy="20" r="8"/>'
+        '<circle class="mb-thinking-b" cx="24" cy="20" r="8"/>'
+        '</svg>'
         f'<span class="mb-thinking-label">{label}</span>'
         '</div>'
     )
