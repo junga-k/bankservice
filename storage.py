@@ -49,14 +49,30 @@ def _make_title(messages: list[dict]) -> str:
 
 
 def save_conversation(conv: dict) -> None:
-    """대화를 디스크에 저장. 메시지가 없으면 저장하지 않는다."""
+    """대화를 디스크에 저장. 메시지가 없으면 저장하지 않는다.
+
+    이미 저장된 messages와 완전히 같으면 updated_at을 건드리지 않는다 — 사이드바에서
+    다른 대화로 전환하기 직전 "혹시 몰라서" 현재 대화를 방어적으로 저장하는 호출이
+    있는데(app.py), 실제로는 매 메시지 전송 직후 이미 저장돼 있어 내용 변경이 없다.
+    그런데도 매번 updated_at을 지금 시각으로 덮어써서, 대화를 그냥 열람만 해도
+    "최근순" 사이드바 목록 순서가 흔들리는 버그가 있었다(2026-08-06 발견).
+    """
     if not conv.get("messages"):
         return
     _ensure_dir()
+    path = _path(conv["id"])
+    if path.exists():
+        try:
+            with open(path, encoding="utf-8") as f:
+                existing = json.load(f)
+            if existing.get("messages") == conv["messages"]:
+                return  # 내용 변경 없음 — updated_at 그대로 두고 재저장도 생략
+        except (json.JSONDecodeError, KeyError):
+            pass  # 기존 파일이 손상됐으면 그냥 새로 저장
     conv["updated_at"] = time.time()
     if conv.get("title", "새 대화") == "새 대화":
         conv["title"] = _make_title(conv["messages"])
-    with open(_path(conv["id"]), "w", encoding="utf-8") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(conv, f, ensure_ascii=False, indent=2)
 
 

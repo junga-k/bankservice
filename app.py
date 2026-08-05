@@ -254,6 +254,27 @@ st.markdown("""<style>
     box-shadow: none !important;
     outline: none !important;
 }
+/* 이전 대화 8개 이상일 때(container(height=340, key="conv_list_scroll"))의 스크롤바 —
+   기본값은 스크롤 중에만 잠깐 나타나는 macOS 오버레이 스크롤바라 목록에 더 있다는 게
+   안 보임. 얇지만 항상 보이는 스크롤바로 강제 표시(Firefox는 scrollbar-width/color,
+   Chrome/Safari는 -webkit-scrollbar-*). */
+[data-testid="stSidebar"] .st-key-conv_list_scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+[data-testid="stSidebar"] .st-key-conv_list_scroll::-webkit-scrollbar {
+    width: 6px;
+}
+[data-testid="stSidebar"] .st-key-conv_list_scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+[data-testid="stSidebar"] .st-key-conv_list_scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+[data-testid="stSidebar"] .st-key-conv_list_scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--blue-line);
+}
 
 /* ── 구분선: 존재감 낮춤 ───────────────────────────────────────────── */
 [data-testid="stSidebar"] hr {
@@ -798,7 +819,9 @@ with st.sidebar:
     # (적을 때는 자연 높이로 두어 빈 상자가 생기지 않게 함)
     if _query and not _convos:
         st.caption("검색 결과가 없습니다")
-    _list_box = st.container(height=340) if len(_convos) > 7 else st.container()
+    _list_box = (
+        st.container(height=340, key="conv_list_scroll") if len(_convos) > 7 else st.container()
+    )
     with _list_box:
         for meta in _convos:
             is_current = meta["id"] == current_id
