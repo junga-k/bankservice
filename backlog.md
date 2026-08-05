@@ -24,6 +24,12 @@
   - **최종 확정(위 회전 설명을 덮어씀)**: 실사용 확인 후 회전을 취소하고 원래의 "떨어짐/겹침"(각 원 `translateX` 왕복, 2s)으로 되돌림 + 알약형 배경 배지 제거(아이콘+문구가 배경 없이 말풍선 위에 바로 얹힘) + 원 반지름 7.2→8로 확대. `getComputedStyle`로 모션 주기·투명 배경 실측 검증 완료.
   - 상세: `session-log.md` `### 2026-08-06`, `### 2026-08-06 (계속)`.
 
+## AI은행원 UI — 사이드바 "이전 대화" 목록 (2026-08-06, 완료)
+
+- [x] ~~클릭할 때마다 최근순 정렬이 뒤바뀜~~ (완료, 2026-08-06) — `storage.save_conversation()`이 호출될 때마다 무조건 `updated_at`을 갱신해서, 다른 대화로 전환하기 전 현재 대화를 방어적으로 저장하는 호출(`app.py`)만으로도 실제 내용 변경 없이 순서가 흔들렸음. 저장 전 디스크의 기존 `messages`와 비교해 동일하면 `updated_at`을 그대로 두도록 `storage.py` 수정. 클릭 전후 JSON 파일 직접 비교로 검증.
+- [x] ~~8개 이상일 때 스크롤바가 안 보임~~ (완료, 2026-08-06) — 스크롤 컨테이너 자체는 이미 있었지만(`st.container(height=340)`) macOS 오버레이 스크롤바라 평소엔 안 보였음. `key="conv_list_scroll"` 부여 후 `::-webkit-scrollbar`/`scrollbar-width`로 항상 보이는 얇은 스크롤바 강제 표시(`--border`/`--blue-line` 토큰 재사용). `getComputedStyle(el, '::-webkit-scrollbar-thumb')`로 실제 렌더링 확인.
+  - 상세: `session-log.md` `### 2026-08-06 (계속) — 사이드바 "이전 대화" 목록 버그 2건`.
+
 ## Figma 디자인시스템 구축 — 다음 착수 항목부터
 
 파일: `https://www.figma.com/design/KnJEcMeU05dCaVk3krDKKF`. 상태 원장: `/tmp/dsb-state-matchbank-001.json`(컬렉션/컴포넌트/화면 노드ID 정리돼 있음 — 세션 시작 시 먼저 읽을 것). 토큰 표: `docs/tokens.md`.
