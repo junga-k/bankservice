@@ -1152,9 +1152,12 @@ if _pending:
                 st.caption(f"🗓️ {_sched_dt.strftime('%Y-%m-%d %H:%M')}에 실행 예약됩니다.")
 
         _ok = st.checkbox("받는 분(예금주명)과 금액을 확인했습니다", key="tf_confirm_chk")
-        _pw = st.text_input("이체 비밀번호 (로그인 비밀번호)", type="password", key="tf_pw")
+        _pw = st.text_input("이체 비밀번호 (숫자 6자리)", type="password", key="tf_pw",
+                            max_chars=6, placeholder="이체 비밀번호 6자리를 입력하세요")
 
-        _c1, _c2 = st.columns(2)
+        # 이체하기/취소 버튼을 화면 양끝으로 벌리지 않고 나란히 붙여 배치한다
+        # (동일폭 st.columns(2)는 두 버튼을 컨테이너 좌우 끝으로 밀어놓는 문제가 있었음).
+        _c1, _c2, _ = st.columns([1, 1, 3], gap="small")
         if _c1.button("✅ 이체하기", type="primary", key="tf_exec"):
             if not _ok:
                 st.warning("예금주명과 금액을 확인한 뒤 체크해 주세요.")

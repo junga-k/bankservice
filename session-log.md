@@ -951,3 +951,30 @@
   - **검증**: `getComputedStyle(el, '::-webkit-scrollbar')`/`'::-webkit-scrollbar-thumb'`로 가상 스크롤바 자체의 계산된 스타일을 직접 조회 — `width:6px`, `thumbBg: rgb(221,227,234)`(=`--border` 정확히 일치) 확인. 스크린샷에서는 색이 워낙 옅어(`--border` 자체가 매우 연한 회색) 눈에 잘 안 띄지만 실제로는 항상 렌더링되는 상태.
 
 **완료**: `app.py`/`storage.py` 커밋 대상.
+
+### 2026-08-07 — Figma `Screens / AI Banker Chat` 이체 플로우 화면 신설(8개) + 사이드바 정비 + 실제 버그 2건 수정
+
+**배경**: 사용자가 이체 확인 카드 스크린샷 2장(즉시/지연 상태)을 보여주며 "이체하기 옆에 취소버튼이 위치하도록" 요청, 이어서 이체 진행 화면·이체 완료(확인증) 화면·지연이체/예약이체 화면까지 순차로 요청 — 세션 내내 대화로 스코프가 계속 확장됨.
+
+**버튼 레이아웃 (코드+Figma 둘 다)**: `app.py`의 `_c1, _c2 = st.columns(2)`가 이체하기/취소 버튼을 컨테이너 좌우 끝으로 벌려놓던 원인 — `st.columns([1, 1, 3], gap="small")`로 교체해 두 버튼이 붙도록 수정(AskUserQuestion으로 "코드+Figma 둘 다" 확인 후 진행).
+
+**Figma 신규 화면 7개** (`Screens / AI Banker Chat` 페이지, 기존 Header/Sidebar를 clone해 재사용):
+- **Transfer Confirm(즉시)**: 채팅 메시지 형태의 이체 확인 카드를 디자인시스템 컴포넌트(Select/Checkbox/Text Input/Button)로 처음부터 신규 제작. 이체하기/취소 버튼 인접 배치.
+- **Transfer Processing**: `app.py`의 기존 "생각 중" 애니메이션 모티프(겹치는 두 원, 브랜드 그린)를 그대로 재사용해 "이체를 처리하고 있습니다…" + 동작 설명 주석 추가.
+- **Transfer Complete(즉시)**: `app.py:1189-1216` 그대로 반영 — "✅ **이체 완료** — …" 메시지(말풍선 없는 일반 텍스트) + "📄 이체내역 조회하기" 알약 버튼(실제 인라인 버튼 색상 `#E3F6EC`/`#0B8457`/`#A8E0C4` 그대로).
+- **Transfer Confirm/Complete (Delayed/Scheduled) 4개**: 즉시 확인카드를 clone해 라디오를 지연/예약으로 전환 + 지연시간 Select 또는 예약 날짜·시각 필드 추가. 완료화면은 `_show_txn_link`가 즉시 완료 분기에만 설정되는 걸 확인해 지연/예약 완료화면엔 조회 버튼을 넣지 않음.
+- **겪은 버그**: Delayed/Scheduled 확인카드는 필드가 늘어난 만큼 `chat-main` hug 높이가 828/856으로 커졌는데, `body`/`sidebar`가 여전히 원래 701 고정이라 버튼 행·입력창이 통째로 잘려 있었음(스크린샷에서 발견) — `body`/`sidebar`/`wrapper` 세 프레임을 `chat-main.height` 기준으로 다시 `resize()`해 해결. `figma-use` 레퍼런스에 있는 "auto-layout 부모 FIXED 높이는 자동으로 안 늘어남" 패턴이 재발한 사례.
+
+**메시지 정렬 버그 발견·수정**: 처음엔 유저 메시지를 채팅앱 관행대로 우측 정렬(꼬리 우측 하단)로 만들었는데, 사용자가 "웹에서는 왼쪽에 나온다"고 지적 — `app.py` CSS(`margin-right:auto`, user/assistant 버블 둘 다 좌측 정렬, `border-radius:18px 18px 18px 4px`로 좌측 하단이 뾰족)를 재확인해 7개 화면 전부의 유저 버블을 좌측 정렬 + 좌측하단 꼬리로 수정.
+
+**사이드바 정비**:
+- "AI은행원 유의사항" 노티스 신규 추가 — `app.py:850`의 `st.expander` collapsed 상태(라벨+정보아이콘, 하단 고정) 그대로. 새 `icon/info` 컴포넌트를 `Foundations / Icons`에 신설(기존 아이콘과 동일한 24×24 stroke 스타일).
+- "이전 대화" 목록이 항목 1개뿐이던 걸 실제 화면(7개 항목, 선택된 항목 연한 그린 배경, 항목마다 휴지통 삭제 아이콘)과 맞춰 재구성 — 새 `icon/trash` 컴포넌트 신설. 8개 화면에 한 번에 반영하는 스크립트를 돌렸는데 그중 4개에서 옛 플레이스홀더 텍스트("요즘 사람들이 많이 보는 적금은?")가 안 지워지고 리스트 아래 남아있는 걸 스크린샷으로 발견해 별도로 정리.
+- Select 컴포넌트(드롭다운 화살표)가 디자인시스템 아이콘이 아니라 민무늬 벡터였던 걸 사용자가 스크린샷으로 지적 — 마스터 컴포넌트(`Components / Input & Form`)의 벡터를 `icon/chevron-down` 인스턴스로 교체, 마스터 수정이라 파일 내 모든 Select 사용처(출금계좌 드롭다운 포함)에 자동 반영.
+- 이체 비밀번호 라벨이 "이체 비밀번호 (로그인 비밀번호)"로 돼 있던 걸 사용자가 지적 — 실제로는 회원가입/마이페이지에서 별도로 설정하는 숫자 6자리 PIN(`transfer_password_hash`)이 기준이라 `app.py`/Figma 둘 다 "이체 비밀번호 (숫자 6자리)"로 수정, 마스킹도 8자리→6자리로 맞춤.
+
+**실제 버그 수정 2건 (`site/`)**:
+1. **로그인 상태인데 받는 분 예금주 조회 시 "로그인이 필요합니다" 오류** — 사용자가 실제 화면 스크린샷으로 재현 제보. `site/js/main.js:742`의 `/api/accounts/lookup` 호출이 인증 헤더를 자동 첨부하는 `apiFetch()` 대신 맨 `fetch()`를 쓰고 있었음(같은 파일의 다른 인증 필요 호출은 전부 `apiFetch` 사용, 이 한 곳만 누락). `fetch`→`apiFetch` 한 줄 수정 후 Playwright로 로그인→이체 탭→예금주 조회까지 재현해 200 OK + 확인 모달 정상 노출 확인.
+2. **이체 테스트용 PIN 설정 + 전체 플로우 검증**: demo/admin 계정의 이체비밀번호(PIN)를 테스트 목적으로 `123123`으로 직접 DB 갱신(`db.set_transfer_password_hash` + `auth.verify_password`로 검증). `transfer_consumer.py`가 안 떠 있던 걸 발견해 백그라운드로 기동(Kafka는 이미 떠 있었음) 후, Playwright로 로그인→받는 분 확인→금액 입력→PIN `123123`으로 이체 실행까지 end-to-end 재현 — 거래상태 `completed`, 잔액 1,189,322→1,178,822원(이체 10,000원+수수료 500원) 정상 반영 확인.
+
+**완료**: `app.py`/`site/js/main.js` 커밋 대상. Figma는 파일 자체가 원본이라 커밋 대상 아님.

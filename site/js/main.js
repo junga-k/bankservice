@@ -739,7 +739,7 @@ async function runTfLookup(to, from) {
   holderEl.className = "tf-holder";
   holderEl.textContent = "예금주 조회 중…";
   try {
-    const res = await fetch(`/api/accounts/lookup?account_no=${encodeURIComponent(to)}&from_account=${encodeURIComponent(from)}`);
+    const res = await apiFetch(`/api/accounts/lookup?account_no=${encodeURIComponent(to)}&from_account=${encodeURIComponent(from)}`);
     if (!res.ok) {
       const { detail } = await res.json().catch(() => ({}));
       throw new Error(detail || "조회 실패");
