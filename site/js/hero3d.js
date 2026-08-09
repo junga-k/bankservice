@@ -18,8 +18,17 @@ function supportsWebGL() {
 
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const isDesktopWidth = window.matchMedia("(min-width: 900px)").matches;
+const hasWebGL = supportsWebGL();
 
-if (container && isDesktopWidth && !prefersReducedMotion && supportsWebGL()) {
+// 조건 중 하나라도 안 맞으면 조용히 CSS 블롭 대체로 넘어가던 것이라, 어떤 조건 때문에
+// 안 뜨는지 콘솔에서 바로 보이게 진단 로그를 남긴다(2026-08-10, 히어로 애니메이션이
+// 사용자 브라우저에서만 안 보인다는 신고로 추가 — 원인 후보: reduced-motion 설정,
+// 900px 미만 폭, WebGL 미지원/차단, 또는 아래 unpkg CDN 로드 실패).
+console.info("[hero3d] 초기화 조건:", {
+  container: !!container, isDesktopWidth, prefersReducedMotion, hasWebGL,
+});
+
+if (container && isDesktopWidth && !prefersReducedMotion && hasWebGL) {
   initHero3D(container);
 }
 
@@ -27,7 +36,8 @@ async function initHero3D(el) {
   let THREE;
   try {
     THREE = await import("three");
-  } catch {
+  } catch (e) {
+    console.warn("[hero3d] three.js CDN(unpkg.com) 로드 실패 — 광고차단기/네트워크 차단을 의심해보세요.", e);
     return; // CDN 로드 실패 — .hero::before 블롭이 자연스러운 대체
   }
 

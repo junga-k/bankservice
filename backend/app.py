@@ -299,7 +299,10 @@ def update_my_profile(req: ProfileReq, user: dict = Depends(auth.get_current_use
 def change_my_password(req: PasswordReq, user: dict = Depends(auth.get_current_user)):
     acct = db.get_user_by_username(user["username"])
     if acct is None or not auth.verify_password(req.current_password, acct["password_hash"]):
-        raise HTTPException(status_code=401, detail="현재 비밀번호가 올바르지 않습니다.")
+        # 401은 프런트(apiFetch)에서 "세션 무효 → 강제 로그아웃"으로 전역 처리된다.
+        # 이건 로그인 세션은 멀쩡하고 재확인용 비밀번호만 틀린 것이므로 403이 맞다
+        # (2026-08-10, 이체 비밀번호 오입력 시 로그아웃되던 버그와 같은 패턴 일괄 수정).
+        raise HTTPException(status_code=403, detail="현재 비밀번호가 올바르지 않습니다.")
     if len(req.new_password) < 4:
         raise HTTPException(status_code=400, detail="새 비밀번호는 4자 이상 입력하세요.")
     db.set_password_hash(user["id"], auth.hash_password(req.new_password))
@@ -311,7 +314,7 @@ def change_my_transfer_password(req: TransferPwReq, user: dict = Depends(auth.ge
     """이체 비밀번호 설정·변경·분실재설정 공용. 본인 확인은 로그인 비밀번호로."""
     acct = db.get_user_by_username(user["username"])
     if acct is None or not auth.verify_password(req.login_password, acct["password_hash"]):
-        raise HTTPException(status_code=401, detail="로그인 비밀번호가 올바르지 않습니다.")
+        raise HTTPException(status_code=403, detail="로그인 비밀번호가 올바르지 않습니다.")
     if not re.match(r"^\d{6}$", req.new_transfer_password or ""):
         raise HTTPException(status_code=400, detail="이체 비밀번호는 숫자 6자리로 설정하세요.")
     db.set_transfer_password_hash(user["id"], auth.hash_password(req.new_transfer_password))
@@ -413,7 +416,7 @@ def remove_favorite(fav_id: int, user: dict = Depends(auth.get_current_user)):
 def withdraw(req: WithdrawReq, user: dict = Depends(auth.get_current_user)):
     acct = db.get_user_by_username(user["username"])
     if acct is None or not auth.verify_password(req.password, acct["password_hash"]):
-        raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다.")
+        raise HTTPException(status_code=403, detail="비밀번호가 올바르지 않습니다.")
     if db.user_total_balance(user["id"]) != 0:
         raise HTTPException(status_code=409,
                             detail="잔액이 남은 계좌가 있어 탈퇴할 수 없습니다. 잔액을 먼저 정리하세요.")
@@ -937,7 +940,7 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
     if not _ok:
         db.log_security_event("password_fail", user["username"], req.from_account,
                               req.to_account, req.amount, "이체 비밀번호 재인증 실패")
-        raise HTTPException(status_code=401, detail="이체 비밀번호가 올바르지 않습니다. 본인 확인에 실패했습니다.")
+        raise HTTPException(status_code=403, detail="이체 비밀번호가 올바르지 않습니다. 본인 확인에 실패했습니다.")
 
     # 예약/지연 이체 판별: 즉시 실행이 아니면 미래 시각에 폴러가 처리
     now = time.time()

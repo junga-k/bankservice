@@ -654,13 +654,12 @@ body.kw-open [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){ dis
 body.chat-submitting .chat-hero-greeting,
 body.chat-submitting [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){ display: none !important; }
 body.chat-submitting [data-testid="stBottom"]{ transform: none !important; }
-/* 이체 확인 카드의 "이체하기"/"취소" 버튼 — st.columns(gap="small")만으로는 간격이 여전히
-   넓어 보여서(기본 gap이 1rem 단위라 좁은 두 버튼 컬럼 사이에도 그대로 적용됨), 이 행에만
-   명시적으로 좁은 픽셀 간격을 강제한다. */
-[data-testid="stHorizontalBlock"]:has(.st-key-tf_exec){ gap: 8px !important; }
-[data-testid="stHorizontalBlock"]:has(.st-key-tf_exec) [data-testid="stColumn"]{
-  width: auto !important; min-width: 0 !important; flex: 0 0 auto !important;
-}
+/* 이체 확인 카드의 "이체하기"/"취소" 버튼 간격. 컬럼 자체를 content-width로 줄이려던
+   첫 시도(width:auto+min-width:0)는 Streamlit 내부 width:100% 중첩 구조와 충돌해 버튼이
+   쪼그라들며 "이체/하기"처럼 줄바꿈되는 버그를 냈다(2026-08-10) — 대신 버튼 쪽에
+   use_container_width=True를 줘서 버튼이 컬럼 폭을 정확히 채우게 했고(app.py 코드),
+   그 덕분에 여기 gap 값이 곧 버튼 사이 실제 간격이 된다. */
+[data-testid="stHorizontalBlock"]:has(.st-key-tf_exec){ gap: 16px !important; }
 </style>""", unsafe_allow_html=True)
 
 def _thinking_indicator_html(label: str = "답변을 준비하고 있어요…") -> str:
@@ -1217,8 +1216,11 @@ if _pending:
 
         # 이체하기/취소 버튼을 화면 양끝으로 벌리지 않고 나란히 붙여 배치한다
         # (동일폭 st.columns(2)는 두 버튼을 컨테이너 좌우 끝으로 밀어놓는 문제가 있었음).
+        # use_container_width=True로 버튼이 컬럼 폭을 정확히 채우게 해서, 버튼 사이 실제
+        # 간격이 gap 값 그대로 나오게 한다(컬럼이 버튼보다 넓어서 남는 여백 때문에 간격이
+        # 벌어져 보이던 문제를 CSS 폭 트릭 없이 해결 — 그 트릭이 버튼 줄바꿈 버그를 냈었음).
         _c1, _c2, _ = st.columns([1, 1, 3], gap="small")
-        if _c1.button("✅ 이체하기", type="primary", key="tf_exec"):
+        if _c1.button("이체하기", type="primary", key="tf_exec", use_container_width=True):
             if not _ok:
                 st.warning("예금주명과 금액을 확인한 뒤 체크해 주세요.")
             elif not _pw:
@@ -1280,7 +1282,7 @@ if _pending:
                     _clear_transfer_widget_keys()
                     storage.save_conversation(conv)
                     st.rerun()
-        if _c2.button("취소", key="tf_cancel_confirm"):
+        if _c2.button("취소", key="tf_cancel_confirm", use_container_width=True):
             st.session_state.pop("pending_transfer", None)
             _clear_transfer_widget_keys()
             conv["messages"].append({"role": "assistant", "content": "이체를 취소했습니다."})
