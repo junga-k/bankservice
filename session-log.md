@@ -1105,3 +1105,13 @@
 **한계**: 이미 "새 대화"로 잘못 저장된 과거 대화 기록은 소급 수정되지 않음(다음에 그 대화에 메시지를 추가하기 전까진 그대로) — 사용자에게 고지함.
 
 **완료**: `app.py` 커밋 대상.
+
+### 2026-08-10 (계속) — AI은행원 상품 추천 요청이 항상 타임아웃 나는 버그
+
+**배경**: 사용자가 AI은행원에게 "1년 만기로 금리가 높은 적금이였으면 좋겠어"라고 물었더니 `처리 중 오류가 발생했습니다: HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=5)` 오류 스크린샷을 보고 확인 요청.
+
+**원인 추적**: `agent.py`의 백엔드 호출 헬퍼 `_get()`/`_post()`가 모든 도구 호출에 공용 `_TIMEOUT = 5`(초)를 쓰고 있었음. `search_products` 도구가 부르는 `/api/products`(`backend/app.py`)는 `_PRODUCT_CACHE`(TTL 1시간)가 비어있으면 **금융감독원(FSS) Open API를 실시간으로 순차 조회**하는데(`fss_fetcher.fetch_category_structured` → `_fetch_pages`가 `while True`로 페이지를 순차 요청), 실측 결과 콜드 상태의 "적금" 카테고리 하나만도 **16.65초**(58개 상품) 걸렸음(`.venv/bin/python3 -c "...fss_fetcher.fetch_category_structured(...)"`로 직접 시간 측정, FSS 키는 `config.json`에서 로드). `search_products`가 카테고리를 특정 못 하면 기본값이 "금리비교"(예금+적금을 순차 두 번 호출)라 콜드 상태면 30초 넘게 걸릴 수도 있음 — 5초 제한으로는 콜드 캐시일 때 사실상 항상 실패하는 구조였음.
+
+**수정**: `agent.py` `_get()`에 `timeout` 파라미터를 추가(기본값은 기존 `_TIMEOUT`대로 유지, 다른 호출부는 무변경)하고, `tool_search_products`의 `/api/products` 호출에만 `timeout=45`를 명시 — 계좌조회·이체 등 우리 DB만 조회하는 다른 도구들의 5초 타임아웃은 그대로 둠(원래도 빠름). 캐시 적중 시엔 기존처럼 즉시 응답, 콜드 스타트일 때만 더 기다리게 됨.
+
+**완료**: `agent.py` 커밋 대상.

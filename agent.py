@@ -43,9 +43,10 @@ def _auth_headers(token: str | None) -> dict:
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
-def _get(path: str, token: str | None = None, params: dict | None = None) -> dict:
+def _get(path: str, token: str | None = None, params: dict | None = None,
+         timeout: float = _TIMEOUT) -> dict:
     r = requests.get(f"{BACKEND_URL}{path}", headers=_auth_headers(token),
-                     params=params, timeout=_TIMEOUT)
+                     params=params, timeout=timeout)
     if not r.ok:
         return {"error": _detail(r)}
     return r.json()
@@ -168,7 +169,11 @@ def tool_search_products(args, ctx):
             cat = "신용대출"  # 대출 종류를 특정할 수 없으면 가장 범용적인 신용대출로 추정
         else:
             cat = "금리비교"
-    data = _get("/api/products", params={"category": cat})
+    # /api/products는 캐시 미스 시 금융감독원(FSS) API를 실시간으로 순차 조회한다 — 실측 결과
+    # 카테고리 하나(예: 적금)만도 콜드 상태에서 16초 넘게 걸렸고, "금리비교"는 예금+적금을
+    # 순차로 두 번 호출해 그 두 배까지 걸릴 수 있다. 다른 도구들이 쓰는 공용 타임아웃(5초)으로는
+    # 콜드 캐시일 때 항상 실패해서, 이 호출만 넉넉하게 늘림(캐시 적중 시엔 원래도 즉시 응답).
+    data = _get("/api/products", params={"category": cat}, timeout=45)
     if "error" in data:
         return data
     products = data.get("products", [])[:12]  # 정렬 상위만(예금·적금은 최고금리, 대출은 최저금리 순)
