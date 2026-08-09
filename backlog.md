@@ -2,6 +2,14 @@
 
 아직 처리 안 된 작업 체크리스트. 완료하면 체크하고, 상세 조사/시행착오 기록은 `session-log.md`에 남긴다(이 파일엔 "무엇을 해야 하는지"만 간결하게 유지).
 
+## 로고 워드마크 폰트 재검토 — 결국 Black Han Sans 유지로 결론 (2026-08-10, 완료)
+
+Figma 로고 아이콘(`site/img/logo-mark.svg`)만 있고 "매치뱅크" 워드마크가 없던 걸 발견 → Figma에 로고+워드마크/워드마크 단독 조합형 추가 → 여러 라운드의 폰트 후보 비교 끝에 한때 **Gothic A1 ExtraBold**로 확정해 코드·Figma·문서까지 반영했으나, 최종적으로 사용자가 다시 **Black Han Sans**로 되돌리기로 결정 — 코드·Figma·문서 전부 원상복구 완료. 상세 경위: `session-log.md` `### 2026-08-10 (계속) — 로고 워드마크 폰트 확정` + 뒤이은 되돌림 기록.
+
+- [x] **`site/index.html`/`site/css/style.css`** — 최종 상태: `--font-display: "Black Han Sans"`, Google Fonts 링크도 `Black+Han+Sans` 그대로(중간에 Gothic A1로 바꿨다가 재변경). `.brand`/`.auth-logo-text`/`.auth-aside-brand-text`는 원래대로 `font-weight` 미지정(Black Han Sans는 굵기가 1개뿐이라 불필요).
+- [x] **Figma `Foundations / Logo`** — `Logo + Wordmark`/`Wordmark` 두 섹션 워드마크 4곳 전부 Black Han Sans로 원복, 설명 텍스트도 원문으로 복원.
+- [x] **`docs/tokens.md`/`CLAUDE.md`** — `--font-display` 토큰·`.brand` 실측 표·타이포그래피 설명 전부 Black Han Sans 상태로 복원.
+
 ## 고객 대면 사이트 — "더 보기" → 스크롤박스·페이지네이션 전환분 Figma 반영 (2026-08-10, 완료)
 
 이번 세션에서 웹에 새로 추가한 `bo-scroll-list`/`bo-scroll-table`(테두리+radius 10px 박스) 스타일을 Figma 12개 프레임에 반영 — 실사이트가 Figma보다 앞서나간 부분을 Figma 쪽에서 따라잡음(반대 방향 없음, 이번엔 전부 "웹이 맞고 Figma가 뒤처진" 케이스).

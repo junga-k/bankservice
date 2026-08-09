@@ -1058,3 +1058,26 @@
 **전 화면 공통 발견 — stale "더 보기" 버튼**: FAQ·공지사항관리 문의내역 탭 정리 도중, 이번 세션 초반에 실사이트에서 A/B 카테고리로 전환한 목록들(회원관리·챗봇피드백·문의내역-관리자·프롬프트이력·자료실·특판상품·공지사항·FAQ·이벤트·배너관리·이체내역)의 "더 보기" 버튼이 Figma에는 아직 그대로 남아있다는 걸 뒤늦게 발견 — `figma.root.children`으로 Members/Transfers/Prompt/Products/FAQ&Notices/Banners 6개 페이지를 스캔해 "더 보기" 텍스트가 남은 위치를 정확히 특정(`findAll(n => n.characters.includes("더 보기"))`), 이체모니터링(이미 "완료"로 표시돼 있었지만 이번 세션 이전 작업 이후 새로 벌어진 갭)까지 포함 총 5곳에서 제거. 회원관리는 재확인 결과 이미 없어서 손 안 댐.
 
 **완료**: Figma는 파일 자체가 원본이라 커밋 대상 아님(코드 변경 없음).
+
+### 2026-08-10 (계속) — 로고 워드마크 폰트 확정: Black Han Sans → Gothic A1 ExtraBold
+
+**배경**: "예전에 로고를 추출해서 Figma에 추가했는데 아이콘만 되고 '매치뱅크' 글자는 추출이 안 됐다"는 지적으로 시작. `Foundations / Logo`(`11:2`) 확인 결과 실제로 `logo-mark.svg`(아이콘)만 문서화돼 있고 워드마크는 아예 없었음.
+
+**1단계 — 로고+워드마크/워드마크 단독 섹션 신설**: 실제 사이트 CSS 실측(`.brand`: Black Han Sans 22px 브랜드그린, `.auth-logo-text`: 20px 자간2px, `.auth-aside-brand-text`: 18px 자간2px 흰색)을 기준으로 `Logo + Wordmark`(`589:2`)/`Wordmark`(`589:22`) 두 섹션을 On White/On Green 스와치 패턴(기존 "배경별 사용" 섹션과 동일 톤)으로 신규 제작.
+
+**2단계 — 폰트 후보 비교 (여러 차례 반려 끝에 확정)**: "다른 폰트 3가지 추천"으로 시작해 총 4라운드에 걸쳐 후보를 좁힘. 매 라운드 Figma `Foundations / Logo` 페이지 하단에 비교 섹션 추가 + 웹 아티팩트(실제 헤더 레이아웃 재현, `site/img/logo-mark.svg` 인라인 SVG + Google Fonts CSS2 API의 `text=` 파라미터로 "매치뱅크" 4글자만 서브셋한 초소형 woff2를 base64 data URI로 인라인 — 폰트당 3~8KB라 아티팩트 CSP(외부 폰트 CDN 차단) 문제 없이 정확히 렌더링됨)로 실물 비교 제공.
+1. **1차**: Do Hyeon(1순위 추천)/Jua/Gothic A1 Black — 라이선스(전부 SIL OFL 1.1, 상업적 무료) + Figma 지원 여부(전부 `listAvailableFontsAsync()`로 확인됨) 질문에 답변.
+2. **2차**: "1순위는 남기고, 금융과 사람을 연결 + 손쉬운 사용이라는 의미를 담은 폰트"로 Gamja Flower(네이버 손글씨체)/Kirang Haerang(서울시 공공서체)로 교체 — **사용자 반려**: "너무 손글씨/캐주얼함, 가독성 떨어짐, 아이콘과 안 어울림" (AskUserQuestion 멀티셀렉트로 반려 사유 명확히 확인).
+3. **3차**: 손글씨 계열을 전부 배제하고 산세리프로 좁혀 Jua/Gothic A1 ExtraBold/Noto Sans KR Black 재추천 — **사용자 지적**: "처음 추천한 거랑 똑같다" (Jua·Gothic A1 둘 다 1차에서 이미 나왔던 폰트라 사실상 반복이었음). 대신 "Gothic A1 ExtraBold가 아이콘 크기랑 비슷해서 어울린다"는 구체적 긍정 피드백 확보.
+4. **4차**: Gothic A1 ExtraBold를 기준으로 같은 "기하학적 산세리프" 결의 폰트만 탐색 — Figma에 임시 프리뷰 프레임(스크린샷 확인 후 즉시 삭제, 파일에 흔적 안 남김)으로 Gothic A1/Stylish/Sunflower Bold/IBM Plex Sans KR Bold/Noto Sans KR Bold 5개를 나란히 렌더링해 직접 눈으로 비교 — Stylish는 너무 얇고 Noto Sans KR Bold는 결이 달라 제외, **Sunflower Bold**(모서리만 살짝 둥근 거의 동일 굵기)와 **IBM Plex Sans KR Bold**(본문 폰트와 동일 계열이라 시스템 통일감)만 최종 후보로 압축해 제시.
+5. **확정**: 사용자가 "Gothic A1 ExtraBold로 확정할게" 응답.
+
+**3단계 — 실제 반영**:
+- `site/index.html`: Google Fonts 링크 `family=Black+Han+Sans` → `family=Gothic+A1:wght@800`.
+- `site/css/style.css`: `--font-display: "Gothic A1", sans-serif;`로 교체 + `.brand`/`.auth-aside-brand-text`/`.auth-logo-text` 3곳 전부 `font-weight: 800;` 명시 추가 — Black Han Sans는 굵기가 1개뿐이라 weight 지정이 필요 없었지만, Gothic A1은 Thin~Black까지 9개 굵기가 있어 명시 안 하면 기본값(400, Regular)으로 렌더링돼 승인받은 ExtraBold 느낌이 안 남. Chrome으로 `location.reload(true)` 후 헤더 스크린샷으로 실제 렌더링 확인 완료.
+- Figma `589:11`/`589:19`/`589:27`/`589:31`(워드마크 텍스트 4곳) `fontName`을 Gothic A1 ExtraBold로 교체, 두 섹션의 설명 텍스트(`589:4`/`589:24`)도 "Gothic A1 ExtraBold(아이콘의 원·렌즈 두께와 결이 맞아 확정)"으로 갱신. 결정이 끝난 비교용 제안 섹션(`591:2`)은 삭제.
+- `docs/tokens.md`(`--font-display` 토큰 정의 + `.brand` 실측 표 weight 컬럼)와 `CLAUDE.md`(타이포그래피 절의 `--font-display` 설명, weight 명시 필요성 메모 포함) 2곳 갱신 — 둘 다 "현재 코드 상태"를 기술하는 살아있는 문서라 Black Han Sans 언급이 남아있으면 부정확해지는 곳이었음(반면 `session-log.md`/`vercel-deploy-progress.md`의 과거 날짜 기록은 그 시점 스냅샷이라 안 건드림).
+
+**완료(당시 기준)**: `site/index.html`/`site/css/style.css`/`docs/tokens.md`/`CLAUDE.md` 커밋 대상. Figma는 파일 자체가 원본이라 커밋 대상 아님.
+
+**→ 곧이어 번복**: 확정 직후 사용자가 "로고를 Black Han Sans로 바꿔야할것같아"로 마음을 바꿔, 위 4개 코드/문서 변경과 Figma 4곳(워드마크 텍스트 노드)을 전부 Black Han Sans로 원상복구. `font-weight: 800`(Gothic A1용으로 추가했던 것)도 3곳 다 제거해 원래 코드와 완전히 동일한 상태로 되돌림 — Google Fonts 링크도 `Black+Han+Sans`로 복귀. 브라우저 라이브 확인 + Figma 스크린샷 둘 다 원래 모습으로 돌아온 것 재확인. 결과적으로 이번 세션의 워드마크 폰트 탐색은 "Gothic A1 ExtraBold가 유력했지만 최종적으로는 원래 폰트(Black Han Sans) 유지"로 결론.
