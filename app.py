@@ -933,7 +933,8 @@ _chat_input = st.chat_input(
     file_type=["txt", "md", "py", "js", "ts", "csv", "json", "html", "css",
                "pdf", "png", "jpg", "jpeg", "gif", "webp"],
 )
-_pending_input = bool(_chat_input or st.session_state.get("_retry_prompt"))
+_pending_input = bool(_chat_input or st.session_state.get("_retry_prompt")
+                      or st.session_state.get("_chip_prompt"))
 
 if not conv["messages"] and not _pending_input:
     import html as _html
@@ -979,7 +980,10 @@ if not conv["messages"] and not _pending_input:
         _scols = st.columns(len(_SUGGESTIONS))
         for _i, _sugg in enumerate(_SUGGESTIONS):
             if _scols[_i].button(_sugg, key=f"sugg_{_i}", use_container_width=False):
-                st.session_state["_retry_prompt"] = _sugg.split(" ", 1)[1]  # 이모지 제거
+                # _retry_prompt와 별개 키를 쓴다 — _retry_prompt는 "이미 conv에 있는 메시지를
+                # 다시 보낸다"는 의미라 재추가를 건너뛰는데, 칩은 이번이 처음 보내는 새 메시지라
+                # conv에 추가돼야 사이드바 제목(첫 사용자 메시지 기준)이 "새 대화"로 안 남는다.
+                st.session_state["_chip_prompt"] = _sugg.split(" ", 1)[1]  # 이모지 제거
                 st.rerun()
 
     # 입력창을 누르면(포커스) 추천 키워드 노출 (iframe → 부모 DOM)
@@ -1431,12 +1435,15 @@ if model not in _models:
 # _chat_input 은 위(대화 렌더링 앞)에서 이미 생성했다. 여기서는 재사용만 한다.
 # accept_file=True라 chat_input은 문자열이 아니라 ChatInputValue(text, files)를 반환한다.
 _retry_prompt = st.session_state.pop("_retry_prompt", None)
-prompt = (_chat_input.text if _chat_input else None) or _retry_prompt
+_chip_prompt = st.session_state.pop("_chip_prompt", None)
+prompt = (_chat_input.text if _chat_input else None) or _retry_prompt or _chip_prompt
 uploaded_files = _chat_input.files if _chat_input else []
 
 if prompt:
     st.session_state.pop("_show_txn_link", None)  # 새 메시지 입력 시 이체내역 링크 정리
-    if _chat_input:
+    if _chat_input or _chip_prompt:
+        # _retry_prompt는 conv["messages"]에 이미 있는 메시지를 재사용하는 것뿐이라 여기서
+        # 또 추가하면 중복된다 — _chat_input(직접 입력)과 _chip_prompt(추천 칩)만 새로 추가.
         conv["messages"].append({"role": "user", "content": prompt})
 
     # ── 은행업무 에이전트 경로 (로그인 + OpenAI) ──────────────────────
