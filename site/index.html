@@ -306,7 +306,8 @@
 
           <div class="panel" id="acct-detail" style="display:none">
             <h3 id="acct-detail-title">거래내역</h3>
-            <div id="acct-transactions"><!-- JS 렌더 --></div>
+            <div id="acct-transactions" class="bo-scroll-list"><!-- JS 렌더 --></div>
+            <div class="bo-pagination" id="acct-transactions-pagination"></div>
           </div>
         </div>
 
@@ -535,7 +536,7 @@
 
             <div class="panel">
               <h3>내 보안 이력</h3>
-              <div id="mp-security-events"><!-- JS 렌더 --></div>
+              <div id="mp-security-events" class="bo-scroll-list"><!-- JS 렌더 --></div>
             </div>
           </div>
 
@@ -543,7 +544,7 @@
           <div class="mypage-panel" id="mypage-panel-accounts" style="display:none">
             <div class="panel">
               <h3>내 계좌</h3>
-              <div id="mp-accounts"><!-- JS 렌더 --></div>
+              <div id="mp-accounts" class="bo-scroll-list"><!-- JS 렌더 --></div>
             </div>
             <div class="panel">
               <h3>계좌 추가</h3>
@@ -579,7 +580,7 @@
           <div class="mypage-panel" id="mypage-panel-favorites" style="display:none">
             <div class="panel">
               <h3>자주 쓰는 계좌</h3>
-              <div id="mp-favorites"><!-- JS 렌더 --></div>
+              <div id="mp-favorites" class="bo-scroll-list"><!-- JS 렌더 --></div>
             </div>
             <div class="panel">
               <h3>즐겨찾기 추가</h3>
@@ -612,7 +613,7 @@
           <div class="mypage-panel" id="mypage-panel-scheduled" style="display:none">
             <div class="panel">
               <h3>예약/지연 이체</h3>
-              <div id="mp-scheduled"><!-- JS 렌더 --></div>
+              <div id="mp-scheduled" class="bo-scroll-list"><!-- JS 렌더 --></div>
             </div>
           </div>
 
@@ -620,7 +621,8 @@
           <div class="mypage-panel" id="mypage-panel-inquiries" style="display:none">
             <div class="panel">
               <h3>내 문의 내역</h3>
-              <div id="mp-inquiries"><!-- JS 렌더 --></div>
+              <div id="mp-inquiries" class="bo-scroll-list"><!-- JS 렌더 --></div>
+              <div class="bo-pagination" id="mp-inquiries-pagination"></div>
             </div>
           </div>
 
@@ -639,7 +641,8 @@
                   PDF 다운로드
                 </button>
               </div>
-              <div id="mp-stmt-list"><!-- JS 렌더 --></div>
+              <div id="mp-stmt-list" class="bo-scroll-list"><!-- JS 렌더 --></div>
+              <div class="bo-pagination" id="mp-stmt-pagination"></div>
               <span id="mp-statement-status" class="tf-status"></span>
             </div>
           </div>
@@ -1032,11 +1035,13 @@
               <input type="text" id="bo-user-search" placeholder="아이디/이름 검색" />
               <button class="btn btn-ghost" type="button" id="bo-user-search-btn">검색</button>
             </div>
-            <table class="admin-table">
-              <thead><tr><th>아이디</th><th>이름</th><th>권한</th><th>상태</th><th>가입일</th><th></th></tr></thead>
-              <tbody id="bo-user-rows"><!-- JS 렌더 --></tbody>
-            </table>
-            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-user-more">더 보기</button>
+            <div class="bo-scroll-table">
+              <table class="admin-table">
+                <thead><tr><th>아이디</th><th>이름</th><th>권한</th><th>상태</th><th>가입일</th><th></th></tr></thead>
+                <tbody id="bo-user-rows"><!-- JS 렌더 --></tbody>
+              </table>
+            </div>
+            <div class="bo-pagination" id="bo-user-pagination"></div>
           </div>
         </div>
 
@@ -1052,7 +1057,21 @@
           <div class="panel">
             <h3>보안 이벤트</h3>
             <div class="metric-grid" id="bo-security-summary"><!-- JS 렌더 --></div>
-            <div id="bo-security-events"><!-- JS 렌더 --></div>
+            <div class="bo-scroll-list" id="bo-security-events"><!-- JS 렌더 --></div>
+            <div class="bo-pagination" id="bo-security-pagination"></div>
+          </div>
+
+          <div class="panel">
+            <h3>개인신용정보 접근 로그</h3>
+            <p class="section-desc">이체내역·회원상세 등 개인신용정보 조회 시 자동 기록됩니다(누가·언제·무엇을 조회했는지).</p>
+            <div class="metric-grid" id="bo-access-log-summary"><!-- JS 렌더 --></div>
+            <div class="bo-scroll-table">
+              <table class="admin-table">
+                <thead><tr><th>시각</th><th>관리자</th><th>동작</th><th>대상</th><th>상세</th></tr></thead>
+                <tbody id="bo-access-log-rows"><!-- JS 렌더 --></tbody>
+              </table>
+            </div>
+            <div class="bo-pagination" id="bo-access-log-pagination"></div>
           </div>
 
           <div class="panel">
@@ -1093,11 +1112,13 @@
               <button type="button" class="bo-filter-btn" data-status="delayed">지연</button>
               <button type="button" class="bo-filter-btn" data-status="canceled">취소</button>
             </div>
-            <table class="admin-table">
-              <thead><tr><th>ID</th><th>출금</th><th>입금</th><th>금액</th><th>수수료</th><th>상태</th><th>일시</th></tr></thead>
-              <tbody id="bo-transfer-rows"><!-- JS 렌더 --></tbody>
-            </table>
-            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-transfer-more">더 보기</button>
+            <div class="bo-scroll-table">
+              <table class="admin-table">
+                <thead><tr><th>ID</th><th>출금</th><th>입금</th><th>금액</th><th>수수료</th><th>상태</th><th>일시</th></tr></thead>
+                <tbody id="bo-transfer-rows"><!-- JS 렌더 --></tbody>
+              </table>
+            </div>
+            <div class="bo-pagination" id="bo-transfer-pagination"></div>
           </div>
         </div>
 
@@ -1208,11 +1229,13 @@
                 <option value="down" selected>싫어요</option>
               </select>
             </div>
-            <table class="admin-table">
-              <thead><tr><th>질문</th><th>평가</th><th>이유</th><th>등록일</th><th></th></tr></thead>
-              <tbody id="bo-feedback-rows"><!-- JS 렌더 --></tbody>
-            </table>
-            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-feedback-more">더 보기</button>
+            <div class="bo-scroll-table">
+              <table class="admin-table">
+                <thead><tr><th>질문</th><th>평가</th><th>이유</th><th>등록일</th><th></th></tr></thead>
+                <tbody id="bo-feedback-rows"><!-- JS 렌더 --></tbody>
+              </table>
+            </div>
+            <div class="bo-pagination" id="bo-feedback-pagination"></div>
           </div>
 
           <div class="panel bo-ab-panel">
@@ -1250,13 +1273,15 @@
           <div class="panel">
             <h3>버전 이력</h3>
             <p class="section-desc">저장할 때마다 이전 설정이 자동으로 기록됩니다. 과거 버전과 현재 시스템 프롬프트를 비교하거나, 문제가 생기면 이전 버전으로 되돌릴 수 있습니다.</p>
-            <table class="admin-table">
-              <thead>
-                <tr><th>저장일시</th><th>모델</th><th>변경자</th><th></th></tr>
-              </thead>
-              <tbody id="bo-cc-history-rows"></tbody>
-            </table>
-            <button class="btn btn-ghost" type="button" id="bo-cc-history-more" style="display:none">더 보기</button>
+            <div class="bo-scroll-table">
+              <table class="admin-table">
+                <thead>
+                  <tr><th>저장일시</th><th>모델</th><th>변경자</th><th></th></tr>
+                </thead>
+                <tbody id="bo-cc-history-rows"></tbody>
+              </table>
+            </div>
+            <div class="bo-pagination" id="bo-cc-history-pagination"></div>
           </div>
         </div>
 
@@ -1325,11 +1350,13 @@
               <input type="text" id="bo-doc-search" placeholder="제목 검색" />
               <button class="btn btn-ghost" type="button" id="bo-doc-search-btn">검색</button>
             </div>
-            <table class="admin-table">
-              <thead><tr><th>제목</th><th>구분</th><th>등록일</th><th></th></tr></thead>
-              <tbody id="bo-doc-rows"><!-- JS 렌더 --></tbody>
-            </table>
-            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-doc-more">더 보기</button>
+            <div class="bo-scroll-table">
+              <table class="admin-table">
+                <thead><tr><th>제목</th><th>구분</th><th>등록일</th><th></th></tr></thead>
+                <tbody id="bo-doc-rows"><!-- JS 렌더 --></tbody>
+              </table>
+            </div>
+            <div class="bo-pagination" id="bo-doc-pagination"></div>
           </div>
 
           <div class="panel" id="bo-producttab-special" style="display:none">
@@ -1356,11 +1383,13 @@
               <input type="text" id="bo-special-search" placeholder="제목 검색" />
               <button class="btn btn-ghost" type="button" id="bo-special-search-btn">검색</button>
             </div>
-            <table class="admin-table">
-              <thead><tr><th>제목</th><th>은행명</th><th>금리</th><th></th></tr></thead>
-              <tbody id="bo-special-rows"><!-- JS 렌더 --></tbody>
-            </table>
-            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-special-more">더 보기</button>
+            <div class="bo-scroll-table">
+              <table class="admin-table">
+                <thead><tr><th>제목</th><th>은행명</th><th>금리</th><th></th></tr></thead>
+                <tbody id="bo-special-rows"><!-- JS 렌더 --></tbody>
+              </table>
+            </div>
+            <div class="bo-pagination" id="bo-special-pagination"></div>
           </div>
         </div>
 
@@ -1388,11 +1417,13 @@
               <input type="text" id="bo-notice-search" placeholder="제목/내용 검색" />
               <button class="btn btn-ghost" type="button" id="bo-notice-search-btn">검색</button>
             </div>
-            <table class="admin-table">
-              <thead><tr><th>제목</th><th>등록일</th><th></th></tr></thead>
-              <tbody id="bo-notice-rows"><!-- JS 렌더 --></tbody>
-            </table>
-            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-notice-more">더 보기</button>
+            <div class="bo-scroll-table">
+              <table class="admin-table">
+                <thead><tr><th>제목</th><th>등록일</th><th></th></tr></thead>
+                <tbody id="bo-notice-rows"><!-- JS 렌더 --></tbody>
+              </table>
+            </div>
+            <div class="bo-pagination" id="bo-notice-pagination"></div>
           </div>
 
           <div class="panel" id="bo-faqtab-faq" style="display:none">
@@ -1410,11 +1441,13 @@
               <input type="text" id="bo-faq-search" placeholder="질문/답변 검색" />
               <button class="btn btn-ghost" type="button" id="bo-faq-search-btn">검색</button>
             </div>
-            <table class="admin-table">
-              <thead><tr><th>질문</th><th>등록일</th><th></th></tr></thead>
-              <tbody id="bo-faq-rows"><!-- JS 렌더 --></tbody>
-            </table>
-            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-faq-more">더 보기</button>
+            <div class="bo-scroll-table">
+              <table class="admin-table">
+                <thead><tr><th>질문</th><th>등록일</th><th></th></tr></thead>
+                <tbody id="bo-faq-rows"><!-- JS 렌더 --></tbody>
+              </table>
+            </div>
+            <div class="bo-pagination" id="bo-faq-pagination"></div>
           </div>
 
           <div class="panel" id="bo-faqtab-events" style="display:none">
@@ -1443,11 +1476,13 @@
               <input type="text" id="bo-event-search" placeholder="제목/내용 검색" />
               <button class="btn btn-ghost" type="button" id="bo-event-search-btn">검색</button>
             </div>
-            <table class="admin-table">
-              <thead><tr><th>제목</th><th>기간</th><th>추첨</th><th></th></tr></thead>
-              <tbody id="bo-event-rows"><!-- JS 렌더 --></tbody>
-            </table>
-            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-event-more">더 보기</button>
+            <div class="bo-scroll-table">
+              <table class="admin-table">
+                <thead><tr><th>제목</th><th>기간</th><th>추첨</th><th></th></tr></thead>
+                <tbody id="bo-event-rows"><!-- JS 렌더 --></tbody>
+              </table>
+            </div>
+            <div class="bo-pagination" id="bo-event-pagination"></div>
           </div>
 
           <div class="panel" id="bo-faqtab-inquiries" style="display:none">
@@ -1457,11 +1492,13 @@
               <input type="text" id="bo-inquiry-search" placeholder="제목/내용 검색" />
               <button class="btn btn-ghost" type="button" id="bo-inquiry-search-btn">검색</button>
             </div>
-            <table class="admin-table">
-              <thead><tr><th>작성자</th><th>제목</th><th>등록일</th><th></th></tr></thead>
-              <tbody id="bo-inquiry-rows"><!-- JS 렌더 --></tbody>
-            </table>
-            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-inquiry-more">더 보기</button>
+            <div class="bo-scroll-table">
+              <table class="admin-table">
+                <thead><tr><th>작성자</th><th>제목</th><th>등록일</th><th></th></tr></thead>
+                <tbody id="bo-inquiry-rows"><!-- JS 렌더 --></tbody>
+              </table>
+            </div>
+            <div class="bo-pagination" id="bo-inquiry-pagination"></div>
           </div>
         </div>
 
@@ -1518,11 +1555,13 @@
               <span class="tf-status" id="bo-banner-form-status"></span>
             </div>
           </form>
-          <table class="admin-table">
-            <thead><tr><th>이미지</th><th>제목</th><th>연결대상</th><th>순서</th><th>활성</th><th></th></tr></thead>
-            <tbody id="bo-banner-rows"><!-- JS 렌더 --></tbody>
-          </table>
-          <button class="btn btn-ghost bo-btn-right" type="button" id="bo-banner-more">더 보기</button>
+          <div class="bo-scroll-table">
+            <table class="admin-table">
+              <thead><tr><th>이미지</th><th>제목</th><th>연결대상</th><th>순서</th><th>활성</th><th></th></tr></thead>
+              <tbody id="bo-banner-rows"><!-- JS 렌더 --></tbody>
+            </table>
+          </div>
+          <div class="bo-pagination" id="bo-banner-pagination"></div>
         </div>
 
         </div><!-- /.bo-content -->
@@ -1561,20 +1600,20 @@
 
         <!-- 공지사항 -->
         <div class="support-panel" id="support-panel-notices">
-          <div class="panel"><div id="notice-list"><!-- JS 렌더 --></div></div>
-          <button class="btn btn-ghost" type="button" id="notice-more">더 보기</button>
+          <div class="panel"><div id="notice-list" class="bo-scroll-list"><!-- JS 렌더 --></div></div>
+          <div class="bo-pagination" id="notice-pagination"></div>
         </div>
 
         <!-- FAQ -->
         <div class="support-panel" id="support-panel-faq" style="display:none">
-          <div class="panel"><div id="faq-list"><!-- JS 렌더 --></div></div>
-          <button class="btn btn-ghost" type="button" id="faq-more">더 보기</button>
+          <div class="panel"><div id="faq-list" class="bo-scroll-list"><!-- JS 렌더 --></div></div>
+          <div class="bo-pagination" id="faq-pagination"></div>
         </div>
 
         <!-- 이벤트 -->
         <div class="support-panel" id="support-panel-events" style="display:none">
-          <div class="panel"><div id="event-list"><!-- JS 렌더 --></div></div>
-          <button class="btn btn-ghost" type="button" id="event-more">더 보기</button>
+          <div class="panel"><div id="event-list" class="bo-scroll-list"><!-- JS 렌더 --></div></div>
+          <div class="bo-pagination" id="event-pagination"></div>
         </div>
 
         <!-- 문의하기 -->
@@ -1605,15 +1644,16 @@
 
             <div class="panel">
               <h3>내 문의 내역</h3>
-              <div id="inquiry-list"><!-- JS 렌더 --></div>
+              <div id="inquiry-list" class="bo-scroll-list"><!-- JS 렌더 --></div>
+              <div class="bo-pagination" id="inquiry-pagination"></div>
             </div>
           </div>
         </div>
 
         <!-- 서식·약관·설명서 -->
         <div class="support-panel" id="support-panel-documents" style="display:none">
-          <div class="panel"><div id="document-list"><!-- JS 렌더 --></div></div>
-          <button class="btn btn-ghost" type="button" id="document-more">더 보기</button>
+          <div class="panel"><div id="document-list" class="bo-scroll-list"><!-- JS 렌더 --></div></div>
+          <div class="bo-pagination" id="document-pagination"></div>
         </div>
       </div>
     </section>

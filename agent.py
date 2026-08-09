@@ -89,9 +89,17 @@ def tool_get_transactions(args, ctx):
     return _get(f"/api/accounts/{acc_id}/transactions", ctx.get("token"))
 
 
+def _digits(account_no: str) -> str:
+    """계좌번호에서 숫자만 남긴다(하이픈·공백 등 구분자 무관하게 조회하기 위함).
+    백엔드(db.lookup_account)도 동일하게 정규화하지만, 에이전트가 LLM이 넘긴 문자열을
+    그대로 신뢰하지 않고 한 번 더 정규화해 하이픈 포함 입력에서도 항상 같은 결과를 보장한다."""
+    import re
+    return re.sub(r"[^0-9]", "", account_no or "")
+
+
 def tool_lookup_recipient(args, ctx):
     return _get("/api/accounts/lookup", ctx.get("token"), params={
-        "account_no": args.get("account_no", ""),
+        "account_no": _digits(args.get("account_no", "")),
         "from_account": args.get("from_account") or "",
     })
 
@@ -99,7 +107,7 @@ def tool_lookup_recipient(args, ctx):
 def tool_propose_transfer(args, ctx):
     """이체 제안만 생성(실행 안 함). 예금주·수수료 확인 후 pending 반환."""
     look = _get("/api/accounts/lookup", ctx.get("token"), params={
-        "account_no": args.get("to_account", ""),
+        "account_no": _digits(args.get("to_account", "")),
         "from_account": args.get("from_account") or "",
     })
     if "error" in look:

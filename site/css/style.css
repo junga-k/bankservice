@@ -770,6 +770,8 @@ main { min-height: calc(100vh - var(--header-h)); }
   box-shadow: var(--shadow-sm);
 }
 .panel h3 { margin: 0 0 18px; font-size: 17px; }
+/* 특별상품 패널: TOP 추천(흰 배경+그린 스트로크)보다 특별상품이 더 눈에 띄도록 연한 그린 배경을 준다 */
+#special-products-panel .panel { background: var(--blue-soft); border-color: var(--blue-line); }
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 18px; }
 .panel-head h3 { margin: 0; }
 .panel-total { font-size: 13px; font-weight: 600; color: var(--text-sub); flex-shrink: 0; }
@@ -816,36 +818,38 @@ main { min-height: calc(100vh - var(--header-h)); }
 .cat-tab.active:hover { transform: none; }
 
 /* ── 상품안내: TOP 추천 카드 ─────────────────────────────────────── */
+/* 특별상품 패널(연한 그린 배경)이 더 눈에 띄도록, TOP 추천은 솔리드 배경 대신
+   흰 배경 + 브랜드 그린 스트로크로 표시한다. */
 .top-pick {
   position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  background: linear-gradient(135deg, var(--blue) 0%, var(--blue-dark) 100%);
-  border: none;
+  background: #fff;
+  border: 2px solid var(--blue);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   margin-bottom: var(--space-4);
-  color: #fff;
-  box-shadow: var(--shadow-brand);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
   transition: box-shadow var(--dur-base) var(--ease), transform var(--dur-base) var(--ease);
 }
-.top-pick:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+.top-pick:hover { box-shadow: var(--shadow-brand); transform: translateY(-2px); }
 .top-pick-badge {
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  background: var(--blue-soft);
+  color: var(--blue-dark);
   border-radius: var(--radius-pill);
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-xs);
   font-weight: 700;
 }
 .top-pick-body { flex: 1; min-width: 0; }
-.top-pick-bank { font-size: var(--text-sm); color: rgba(255, 255, 255, 0.85); display: flex; align-items: center; gap: var(--space-2); }
-.top-pick-name { margin-top: var(--space-1); font-size: var(--text-lg); font-weight: 700; color: #fff; }
+.top-pick-bank { font-size: var(--text-sm); color: var(--text-sub); display: flex; align-items: center; gap: var(--space-2); }
+.top-pick-name { margin-top: var(--space-1); font-size: var(--text-lg); font-weight: 700; color: var(--text); }
 .top-pick-rate { flex-shrink: 0; text-align: right; }
-.top-pick-rate-label { display: block; font-size: var(--text-xs); color: rgba(255, 255, 255, 0.85); }
-.top-pick-rate-num { font-size: 26px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+.top-pick-rate-label { display: block; font-size: var(--text-xs); color: var(--text-sub); }
+.top-pick-rate-num { font-size: 26px; font-weight: 800; color: var(--blue-dark); font-variant-numeric: tabular-nums; }
 
 /* ── FSS 상품 목록 (상품안내 탭 클릭 시) ───────────────────────── */
 .product-list-panel { margin: var(--space-6) 0; }
@@ -1083,6 +1087,33 @@ main { min-height: calc(100vh - var(--header-h)); }
   background: var(--bg-soft);
 }
 .chat-guest .btn { width: 100%; justify-content: center; margin-top: var(--space-2); }
+
+/* AI은행원 화면 전용: 대화창 높이를 "100vh - 헤더"로 고정해뒀던 탓에 사이트 푸터가
+   화면 한 번 스크롤 차이로 걸쳐 있어(보였다 안 보였다 하는) 혼란스럽다는 피드백(2026-08-08).
+   #chat이 활성 섹션일 때만 body를 flex column으로 바꿔 header/본문/footer가 정확히
+   한 화면(100vh) 안에 다 들어오도록 한다 — 푸터 실제 높이를 하드코딩하지 않고 flex가
+   자동으로 나눠 갖게 해서, 반응형으로 푸터 레이아웃이 바뀌어도(680px 이하 세로 스택 등)
+   깨지지 않는다. #chat이 활성일 때는 다른 section이 전부 display:none이라 이 규칙이
+   다른 화면에는 영향을 주지 않는다.*/
+body:has(#chat.active) {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+body:has(#chat.active) main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+body:has(#chat.active) #chat.section.active {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+body:has(#chat.active) #chat-frame-wrap,
+body:has(#chat.active) .chat-guest {
+  height: 100%;
+  min-height: 0;
+}
 
 /* ── 로그인/회원가입 헤더 링크 강조 ──────────────────────────────── */
 .nav-auth-group {
@@ -1400,6 +1431,66 @@ main { min-height: calc(100vh - var(--header-h)); }
 #bo-panel-prompt .admin-table th:nth-child(2),
 #bo-panel-prompt .admin-table td:nth-child(2) {
   text-align: center;
+}
+/* 이체모니터링: 보안 이벤트·이체 내역·접근 로그처럼 계속 쌓이는 목록/표를 고정 높이로
+   캡핑해 페이지 전체가 늘어지지 않게 하고, 내부에서만 스크롤되게 함(더 보기로 이어붙임).
+   .diff-box(1912행)와 동일한 max-height+overflow 조합 재사용. */
+.bo-scroll-table {
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.bo-scroll-table .admin-table { margin-bottom: 0; }
+/* .admin-table th의 기본 sticky top은 페이지 헤더 높이(--header-h) 기준인데, 스크롤 부모가
+   이제 .bo-scroll-table 자신이므로 그 상단(0)에 붙어야 한다 */
+.bo-scroll-table .admin-table th { top: 0; }
+.bo-scroll-list {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px 0;
+}
+/* 보안 이벤트·접근 로그·이체 내역 공용 번호 페이지네이션(◀ 이전 1 … 5 6 [7] 8 9 … 155 다음 ▶) */
+.bo-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: var(--space-4);
+  flex-wrap: wrap;
+}
+.bo-pagination .bo-page-nav,
+.bo-pagination .bo-page-num {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-sub);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.bo-pagination .bo-page-num:hover:not(.active),
+.bo-pagination .bo-page-nav:not(:disabled):hover {
+  background: var(--bg-soft);
+  color: var(--text);
+}
+.bo-pagination .bo-page-num.active {
+  color: var(--blue-dark);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 5px;
+  text-decoration-thickness: 2px;
+}
+.bo-pagination .bo-page-nav:disabled {
+  color: var(--border);
+  cursor: default;
+}
+.bo-pagination .bo-page-dots {
+  color: var(--text-sub);
+  padding: 0 2px;
 }
 
 .status-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }

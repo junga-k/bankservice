@@ -488,7 +488,13 @@ def admin_user_detail(user_id: int, user: dict = Depends(auth.require_admin)):
     target = db.get_user_by_id(user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="회원을 찾을 수 없습니다.")
-    return {"user": target, "accounts": db.list_accounts(user_id)}
+    accounts = db.list_accounts(user_id)
+    db.log_admin_access(
+        user["username"], user["name"], "view_user_detail",
+        target=f"{target['username']}({target.get('name', '')})",
+        detail=f"계좌 {len(accounts)}건",
+    )
+    return {"user": target, "accounts": accounts}
 
 
 # ── Backoffice: 이체모니터링 ──────────────────────────────────────────
@@ -497,8 +503,14 @@ def admin_transfers(
     offset: int = 0, limit: int = 20, status: str = "", q: str = "",
     user: dict = Depends(auth.require_admin),
 ):
+    transfers = db.list_transfers(offset, limit, status, q)
+    db.log_admin_access(
+        user["username"], user["name"], "view_transfers",
+        target=f"상태={status or '전체'} 검색어={q or '-'}",
+        detail=f"{len(transfers)}건 조회",
+    )
     return {
-        "transfers": db.list_transfers(offset, limit, status, q),
+        "transfers": transfers,
         "total": db.count_transfers(status, q),
         "summary": db.transfer_summary(),
     }
@@ -518,7 +530,22 @@ def admin_security_events(
     """이체 보안 이벤트(한도초과·비번실패·신규계좌) 로그 + 요약."""
     return {
         "events": db.list_security_events(offset, limit, event_type),
+        "total": db.count_security_events(event_type),
         "summary": db.security_event_summary(),
+    }
+
+
+@app.get("/api/admin/access-log")
+def admin_access_log(
+    offset: int = 0, limit: int = 20, action: str = "",
+    user: dict = Depends(auth.require_admin),
+):
+    """관리자의 개인신용정보(이체내역·회원상세) 열람 로그 + 요약.
+    이 엔드포인트 자체는 로깅하지 않는다(자기 참조 방지)."""
+    return {
+        "logs": db.list_admin_access_log(offset, limit, action),
+        "total": db.count_admin_access_log(action),
+        "summary": db.admin_access_log_summary(),
     }
 
 
@@ -765,11 +792,16 @@ def get_accounts(user: dict = Depends(auth.get_current_user)):
 
 
 @app.get("/api/accounts/{account_id}/transactions")
-def get_transactions(account_id: int, user: dict = Depends(auth.get_current_user)):
+def get_transactions(account_id: int, offset: int = 0, limit: int = 50,
+                      user: dict = Depends(auth.get_current_user)):
     acc = db.get_account(account_id, user["id"])
     if acc is None:
         raise HTTPException(status_code=404, detail="계좌를 찾을 수 없습니다.")
-    return {"account": acc, "transactions": db.list_transactions(account_id)}
+    return {
+        "account": acc,
+        "transactions": db.list_transactions(account_id, offset, limit),
+        "total": db.count_transactions(account_id),
+    }
 
 
 @app.get("/api/accounts/lookup")

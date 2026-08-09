@@ -365,6 +365,15 @@ _SCHEMA_SQL = """
                 is_active  INTEGER NOT NULL DEFAULT 1,
                 created_at REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS admin_access_log (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                admin_username TEXT NOT NULL DEFAULT '',
+                admin_name     TEXT NOT NULL DEFAULT '',
+                action         TEXT NOT NULL DEFAULT '',  -- view_transfers | view_user_detail
+                target         TEXT NOT NULL DEFAULT '',  -- 조회 대상 요약(회원/검색조건 등)
+                detail         TEXT NOT NULL DEFAULT '',  -- 부가정보(조회 건수 등)
+                created_at     REAL NOT NULL
+            );
             """
 
 
@@ -423,14 +432,23 @@ def lookup_account(account_no: str) -> dict | None:
     return dict(row) if row else None
 
 
-def list_transactions(account_id: int, limit: int = 50) -> list[dict]:
+def list_transactions(account_id: int, offset: int = 0, limit: int = 50) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT type, amount, counterparty, balance_after, created_at FROM transactions "
-            "WHERE account_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
-            (account_id, limit),
+            "WHERE account_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+            (account_id, limit, offset),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def count_transactions(account_id: int) -> int:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM transactions WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+    return row["c"] if row else 0
 
 
 # ── 이체 ─────────────────────────────────────────────────────────────
@@ -1338,6 +1356,81 @@ def security_event_summary() -> dict:
             "SELECT COUNT(*) FROM security_events WHERE created_at >= ?", (since,)
         ).fetchone()[0]
     return {"total": total, "by_type": by_type, "last_24h": last24h}
+
+
+def count_security_events(event_type: str = "") -> int:
+    where, params = [], []
+    if event_type:
+        where.append("event_type = ?")
+        params.append(event_type)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    with get_conn() as conn:
+        return conn.execute(
+            f"SELECT COUNT(*) FROM security_events {clause}", tuple(params)
+        ).fetchone()[0]
+
+
+def log_admin_access(admin_username: str, admin_name: str, action: str,
+                     target: str = "", detail: str = "") -> None:
+    """관리자의 개인신용정보(계좌번호·금액 등) 열람을 기록. 실패해도 호출부(조회 응답)를
+    막지 않는다(log_security_event와 동일한 fire-and-forget 패턴)."""
+    import time as _time
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO admin_access_log "
+                "(admin_username, admin_name, action, target, detail, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (admin_username, admin_name, action, target, detail, _time.time()),
+            )
+    except Exception:
+        pass
+
+
+def list_admin_access_log(offset: int = 0, limit: int = 20, action: str = "") -> list[dict]:
+    """관리자 개인신용정보 열람 로그 목록(최신순). action 지정 시 필터."""
+    where, params = [], []
+    if action:
+        where.append("action = ?")
+        params.append(action)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM admin_access_log {clause} "
+            "ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_admin_access_log(action: str = "") -> int:
+    where, params = [], []
+    if action:
+        where.append("action = ?")
+        params.append(action)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    with get_conn() as conn:
+        return conn.execute(
+            f"SELECT COUNT(*) FROM admin_access_log {clause}", tuple(params)
+        ).fetchone()[0]
+
+
+def admin_access_log_summary() -> dict:
+    """동작별 총 건수 + 최근 24시간 건수."""
+    import time as _time
+    since = _time.time() - 86400
+    with get_conn() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM admin_access_log").fetchone()[0]
+        by_action = {
+            r["action"]: r["n"]
+            for r in conn.execute(
+                "SELECT action, COUNT(*) AS n FROM admin_access_log GROUP BY action"
+            ).fetchall()
+        }
+        last24h = conn.execute(
+            "SELECT COUNT(*) FROM admin_access_log WHERE created_at >= ?", (since,)
+        ).fetchone()[0]
+    return {"total": total, "by_action": by_action, "last_24h": last24h}
 
 
 def is_new_payee(user_id: int, to_account: str) -> bool:

@@ -214,14 +214,18 @@ st.markdown("""<style>
     border-radius: 10px !important;
     transition: background 0.15s !important;
 }
-/* 현재 대화(primary): 연한 그린 필 배경으로 "선택됨"을 명확히 표시 */
-[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stButton"] > button[kind="primary"] {
+/* 현재 대화(primary): 연한 그린 필 배경으로 "선택됨"을 명확히 표시
+   주의: Streamlit 1.5x부터 버튼 엘리먼트에 kind="primary" 같은 원시 HTML 속성이 안 붙고
+   data-testid="stBaseButton-primary"/"stBaseButton-secondary"로만 노출된다(React가 알 수 없는
+   DOM 속성인 kind를 렌더링 전에 걸러냄) — button[kind="primary"] 셀렉터는 절대 안 걸리는
+   죽은 규칙이었음(2026-08-09 발견, 6곳 전부 동일 문제라 일괄 수정). */
+[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stButton"] button[data-testid="stBaseButton-primary"] {
     background: var(--blue-soft) !important;
     color: var(--blue-dark) !important;
     font-weight: 700 !important;
 }
 /* hover(선택되지 않은 행): 중립 회색 — 그린은 "선택됨" 전용이라 구분되게 */
-[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stButton"] > button[kind="secondary"]:hover {
+[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stButton"] button[data-testid="stBaseButton-secondary"]:hover {
     background: #F0F2F5 !important;
 }
 /* 대화 제목: 왼쪽 정렬 (첫 번째 컬럼 버튼만, 삭제 버튼은 그대로) */
@@ -561,17 +565,17 @@ st.markdown("""<style>
     text-align: left !important;
     box-shadow: none !important;
 }
-[data-testid="stPopoverBody"] [data-testid="stButton"] > button[kind="secondary"] {
+[data-testid="stPopoverBody"] [data-testid="stButton"] button[data-testid="stBaseButton-secondary"] {
     border: none !important; background: transparent !important; color: var(--text) !important;
 }
-[data-testid="stPopoverBody"] [data-testid="stButton"] > button[kind="secondary"]:hover {
+[data-testid="stPopoverBody"] [data-testid="stButton"] button[data-testid="stBaseButton-secondary"]:hover {
     background: var(--bg-soft) !important; color: var(--blue-dark) !important;
 }
-[data-testid="stPopoverBody"] [data-testid="stButton"] > button[kind="primary"] {
+[data-testid="stPopoverBody"] [data-testid="stButton"] button[data-testid="stBaseButton-primary"] {
     border: none !important; background: var(--blue-soft) !important;
     color: var(--blue-dark) !important; font-weight: 600 !important;
 }
-[data-testid="stPopoverBody"] [data-testid="stButton"] > button[kind="primary"]:hover {
+[data-testid="stPopoverBody"] [data-testid="stButton"] button[data-testid="stBaseButton-primary"]:hover {
     background: var(--blue-line) !important; color: var(--blue-dark) !important;
 }
 /* 추천 질문(제안) 버튼: 가로 스크롤 리본의 작은 알약형 칩.
@@ -1012,7 +1016,7 @@ for i, msg in enumerate(conv["messages"]):
         _display = _inject_bank_links(msg["content"]) if msg["role"] == "assistant" else msg["content"]
         st.markdown(_display)
 
-        if msg["role"] == "assistant":
+        if msg["role"] == "assistant" and msg.get("type") != "transfer_record":
             _cb64 = _base64.b64encode(msg["content"].encode()).decode()
             _fb = msg.get("feedback") or {}
             _like_cls = " active" if _fb.get("rating") == "up" else ""
@@ -1095,113 +1099,223 @@ def _my_accounts(token: str) -> list[dict]:
     return []
 
 
+# ── 이체 진행상태 폴링 헬퍼 ────────────────────────────────────────────
+def _poll_transfer_status(transfer_id: int, token: str,
+                          timeout_s: float = 6.0, interval_s: float = 0.3) -> dict:
+    """Kafka 비동기 처리 중(pending)인 이체가 completed/failed로 바뀔 때까지 짧게 폴링한다.
+    타임아웃까지 pending이면 마지막 응답을 그대로 반환(호출부가 지연 안내 문구로 처리)."""
+    deadline = time.time() + timeout_s
+    tr = {"status": "pending"}
+    while time.time() < deadline:
+        try:
+            r = requests.get(f"{_BACKEND_URL}/api/transfers/{transfer_id}",
+                             headers={"Authorization": f"Bearer {token}"}, timeout=3)
+            if r.ok:
+                tr = r.json()
+                if tr.get("status") != "pending":
+                    return tr
+        except Exception:
+            pass
+        time.sleep(interval_s)
+    return tr
+
+
+def _clear_transfer_widget_keys() -> None:
+    """이체 플로우 위젯 상태를 정리 — 다음 번 새 이체에 이전 값(특히 비밀번호)이 새지 않도록."""
+    for _k in ("tf_from_sel", "tf_when", "tf_delay", "tf_sched_d", "tf_sched_t",
+               "tf_confirm_chk", "tf_pw"):
+        st.session_state.pop(_k, None)
+
+
 # ── 에이전트 이체 확인 카드 (사용자 확인 + 비밀번호 인증 후에만 실행) ──
+# 2단계 대화형 스텝(확인→비밀번호)으로 진행하며, 통과한 단계는 다른 메시지처럼
+# conv["messages"]에 고정 기록으로 남고(새로고침해도 유지) 인터랙티브 위젯만 사라진다.
+# 완료 전까지는 "이전"으로 확인 단계를 되돌려 수정할 수 있다.
 _pending = st.session_state.get("pending_transfer")
 if _pending:
+    _flow = st.session_state.setdefault("transfer_flow", {
+        "step": "confirm",
+        "from_account": _pending["from_account"],
+        "when": "즉시 이체",
+        "delay_minutes": 0,
+        "scheduled_at": None,
+        "confirm_msg_idx": None,
+    })
     _accts = _my_accounts(auth_token)
-    with st.chat_message("assistant"):
-        _amt = _pending["amount"]
-        st.markdown(f"**💸 {_pending['holder_name']}님에게 {_amt:,}원({_won_kor(_amt)}) 이체할까요?**")
+    _amt = _pending["amount"]
 
-        # 출금 계좌 선택(계좌 2개 이상일 때)
-        _from = _pending["from_account"]
-        if len(_accts) > 1:
-            _opts = [a["account_no"] for a in _accts]
-            _labels = {a["account_no"]: f"{a['bank_name']} {a['account_no']} (잔액 {a['balance']:,}원)"
-                       for a in _accts}
-            if _from in _opts:
-                _def = _opts.index(_from)
-            else:
-                _def = next((i for i, a in enumerate(_accts) if a.get("is_primary")), 0)
-            _from = st.selectbox("출금 계좌", _opts, index=_def,
-                                 format_func=lambda x: _labels.get(x, x), key="tf_from_sel")
+    if _flow["step"] == "confirm":
+        with st.chat_message("assistant"):
+            st.markdown(f"**💸 {_pending['holder_name']}님에게 {_amt:,}원({_won_kor(_amt)}) 이체할까요?**")
 
-        _from_bank = next((a["bank_name"] for a in _accts if a["account_no"] == _from), "")
-        st.markdown(
-            f"- **출금계좌**: {_from_bank} {_from}\n"
-            f"- **받는계좌**: {_pending['bank_name']} {_pending['to_account']} · 예금주 **{_pending['holder_name']}**\n"
-            f"- 수수료: {_pending['fee']:,}원 (참고 · 실제 수수료는 처리 시 확정)"
-        )
-        if _pending.get("is_new_payee"):
-            st.warning("⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.")
-        st.caption("AI가 이체를 위해 정리한 정보입니다. 정확한지 확인 후 진행해 주세요.")
-
-        # 실행 시점 선택: 즉시 / 지연(취소 가능) / 예약(지정 시각)
-        _when = st.radio("이체 시점", ["즉시 이체", "지연 이체 (취소 가능)", "예약 이체 (지정 시각)"],
-                         horizontal=True, key="tf_when")
-        _sched_at = None
-        _delay_min = 0
-        if _when == "지연 이체 (취소 가능)":
-            _delay_labels = {"10분 후": 10, "30분 후": 30, "1시간 후": 60}
-            _dsel = st.selectbox("지연 시간", list(_delay_labels), key="tf_delay")
-            _delay_min = _delay_labels[_dsel]
-            st.caption(f"⏳ {_dsel} 실행됩니다. 실행 전까지 내 계좌·관리자 화면에서 취소할 수 있어요.")
-        elif _when == "예약 이체 (지정 시각)":
-            import datetime as _dt
-            _now = _dt.datetime.now()
-            _cd, _ct = st.columns(2)
-            _pd_date = _cd.date_input("예약 날짜", value=_now.date(),
-                                      min_value=_now.date(), key="tf_sched_d")
-            _pd_time = _ct.time_input("예약 시각", value=(_now + _dt.timedelta(hours=1)).time(),
-                                      key="tf_sched_t")
-            _sched_dt = _dt.datetime.combine(_pd_date, _pd_time)
-            _sched_at = _sched_dt.timestamp()
-            if _sched_at <= _now.timestamp() + 30:
-                st.warning("예약 시각은 현재보다 미래여야 합니다.")
-            else:
-                st.caption(f"🗓️ {_sched_dt.strftime('%Y-%m-%d %H:%M')}에 실행 예약됩니다.")
-
-        _ok = st.checkbox("받는 분(예금주명)과 금액을 확인했습니다", key="tf_confirm_chk")
-        _pw = st.text_input("이체 비밀번호 (숫자 6자리)", type="password", key="tf_pw",
-                            max_chars=6, placeholder="이체 비밀번호 6자리를 입력하세요")
-
-        # 이체하기/취소 버튼을 화면 양끝으로 벌리지 않고 나란히 붙여 배치한다
-        # (동일폭 st.columns(2)는 두 버튼을 컨테이너 좌우 끝으로 밀어놓는 문제가 있었음).
-        _c1, _c2, _ = st.columns([1, 1, 3], gap="small")
-        if _c1.button("✅ 이체하기", type="primary", key="tf_exec"):
-            if not _ok:
-                st.warning("예금주명과 금액을 확인한 뒤 체크해 주세요.")
-            elif not _pw:
-                st.warning("이체 비밀번호를 입력해 주세요.")
-            elif _when == "예약 이체 (지정 시각)" and (not _sched_at or _sched_at <= time.time() + 30):
-                st.warning("예약 시각을 현재보다 미래로 설정해 주세요.")
-            else:
-                _exec = dict(_pending, from_account=_from)
-                _res = agent.execute_transfer(_exec, auth_token, _pw,
-                                              scheduled_at=_sched_at, delay_minutes=_delay_min)
-                if "error" in _res:
-                    st.error(f"이체 실패: {_res['error']}")   # 카드 유지 → 수정 후 재시도
+            # 출금 계좌 선택(계좌 2개 이상일 때)
+            _from = _flow["from_account"]
+            if len(_accts) > 1:
+                _opts = [a["account_no"] for a in _accts]
+                _labels = {a["account_no"]: f"{a['bank_name']} {a['account_no']} (잔액 {a['balance']:,}원)"
+                           for a in _accts}
+                if _from in _opts:
+                    _def = _opts.index(_from)
                 else:
-                    st.session_state.pop("pending_transfer", None)
-                    _status = _res.get("status")
-                    if _status == "scheduled":
-                        import datetime as _dt2
-                        _when_txt = _dt2.datetime.fromtimestamp(_res["scheduled_at"]).strftime("%Y-%m-%d %H:%M")
-                        conv["messages"].append({"role": "assistant", "content":
-                            f"🗓️ **예약 완료** — {_pending['holder_name']}님에게 {_amt:,}원을 "
-                            f"{_when_txt}에 이체하도록 예약했어요. (거래번호 {_res['transfer_id']}) "
-                            f"실행 전까지 취소할 수 있어요."})
-                    elif _status == "delayed":
-                        import datetime as _dt2
-                        _when_txt = _dt2.datetime.fromtimestamp(_res["scheduled_at"]).strftime("%H:%M")
-                        conv["messages"].append({"role": "assistant", "content":
-                            f"⏳ **지연 이체 접수** — {_pending['holder_name']}님에게 {_amt:,}원을 "
-                            f"{_when_txt}에 이체합니다. (거래번호 {_res['transfer_id']}) "
-                            f"그 전까지 내 계좌·관리자 화면에서 취소할 수 있어요."})
-                    else:
-                        _bal = next((a["balance"] for a in _my_accounts(auth_token)
-                                     if a["account_no"] == _from), None)
-                        _tail = f" · 출금계좌({_from[-4:]}) 잔액 {_bal:,}원" if _bal is not None else ""
-                        conv["messages"].append({"role": "assistant", "content":
-                            f"✅ **이체 완료** — {_pending['holder_name']}님에게 {_amt:,}원을 보냈어요.{_tail}"})
-                        st.session_state["_show_txn_link"] = {"account_no": _from}
+                    _def = next((i for i, a in enumerate(_accts) if a.get("is_primary")), 0)
+                _from = st.selectbox("출금 계좌", _opts, index=_def,
+                                     format_func=lambda x: _labels.get(x, x), key="tf_from_sel")
+
+            _from_bank = next((a["bank_name"] for a in _accts if a["account_no"] == _from), "")
+            st.markdown(
+                f"- **출금계좌**: {_from_bank} {_from}\n"
+                f"- **받는계좌**: {_pending['bank_name']} {_pending['to_account']} · 예금주 **{_pending['holder_name']}**\n"
+                f"- 수수료: {_pending['fee']:,}원 (참고 · 실제 수수료는 처리 시 확정)"
+            )
+            if _pending.get("is_new_payee"):
+                st.warning("⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.")
+            st.caption("AI가 이체를 위해 정리한 정보입니다. 정확한지 확인 후 진행해 주세요.")
+
+            # 실행 시점 선택: 즉시 / 지연(취소 가능) / 예약(지정 시각)
+            _when = st.radio("이체 시점", ["즉시 이체", "지연 이체 (취소 가능)", "예약 이체 (지정 시각)"],
+                             horizontal=True, key="tf_when")
+            _sched_at = None
+            _delay_min = 0
+            if _when == "지연 이체 (취소 가능)":
+                _delay_labels = {"10분 후": 10, "30분 후": 30, "1시간 후": 60}
+                _dsel = st.selectbox("지연 시간", list(_delay_labels), key="tf_delay")
+                _delay_min = _delay_labels[_dsel]
+                st.caption(f"⏳ {_dsel} 실행됩니다. 실행 전까지 내 계좌·관리자 화면에서 취소할 수 있어요.")
+            elif _when == "예약 이체 (지정 시각)":
+                import datetime as _dt
+                _now = _dt.datetime.now()
+                _cd, _ct = st.columns(2)
+                _pd_date = _cd.date_input("예약 날짜", value=_now.date(),
+                                          min_value=_now.date(), key="tf_sched_d")
+                _pd_time = _ct.time_input("예약 시각", value=(_now + _dt.timedelta(hours=1)).time(),
+                                          key="tf_sched_t")
+                _sched_dt = _dt.datetime.combine(_pd_date, _pd_time)
+                _sched_at = _sched_dt.timestamp()
+                if _sched_at <= _now.timestamp() + 30:
+                    st.warning("예약 시각은 현재보다 미래여야 합니다.")
+                else:
+                    st.caption(f"🗓️ {_sched_dt.strftime('%Y-%m-%d %H:%M')}에 실행 예약됩니다.")
+
+            _ok = st.checkbox("받는 분(예금주명)과 금액을 확인했습니다", key="tf_confirm_chk")
+
+            # 다음/취소 버튼을 화면 양끝으로 벌리지 않고 나란히 붙여 배치한다
+            # (동일폭 st.columns(2)는 두 버튼을 컨테이너 좌우 끝으로 밀어놓는 문제가 있었음).
+            _c1, _c2, _ = st.columns([1, 1, 3], gap="small")
+            if _c1.button("다음 →", type="primary", key="tf_next"):
+                if not _ok:
+                    st.warning("예금주명과 금액을 확인한 뒤 체크해 주세요.")
+                elif _when == "예약 이체 (지정 시각)" and (not _sched_at or _sched_at <= time.time() + 30):
+                    st.warning("예약 시각을 현재보다 미래로 설정해 주세요.")
+                else:
+                    _flow.update(from_account=_from, when=_when,
+                                 delay_minutes=_delay_min, scheduled_at=_sched_at, step="pin")
+                    _summary = (
+                        f"💸 **{_pending['holder_name']}님에게 {_amt:,}원({_won_kor(_amt)}) 이체를 진행할게요.**\n"
+                        f"- 출금계좌: {_from_bank} {_from}\n"
+                        f"- 받는계좌: {_pending['bank_name']} {_pending['to_account']} · 예금주 {_pending['holder_name']}\n"
+                        f"- 이체시점: {_when}"
+                    )
+                    conv["messages"].append({"role": "assistant", "content": _summary,
+                                             "type": "transfer_record"})
+                    _flow["confirm_msg_idx"] = len(conv["messages"]) - 1
                     storage.save_conversation(conv)
                     st.rerun()
-        if _c2.button("취소", key="tf_cancel"):
-            st.session_state.pop("pending_transfer", None)
-            conv["messages"].append({"role": "assistant", "content": "이체를 취소했습니다."})
-            storage.save_conversation(conv)
-            st.rerun()
+            if _c2.button("취소", key="tf_cancel_confirm"):
+                st.session_state.pop("pending_transfer", None)
+                st.session_state.pop("transfer_flow", None)
+                _clear_transfer_widget_keys()
+                conv["messages"].append({"role": "assistant", "content": "이체를 취소했습니다."})
+                storage.save_conversation(conv)
+                st.rerun()
+
+    elif _flow["step"] == "pin":
+        with st.chat_message("assistant"):
+            st.markdown("**🔒 비밀번호를 입력해주세요.**")
+            _pin_area = st.empty()
+            with _pin_area.container():
+                _pw = st.text_input("이체 비밀번호 (숫자 6자리)", type="password", key="tf_pw",
+                                    max_chars=6, placeholder="이체 비밀번호 6자리를 입력하세요")
+                _c1, _c2, _ = st.columns([1, 1, 3], gap="small")
+                _do_back = _c1.button("이전", key="tf_back")
+                _do_exec = _c2.button("이체하기", type="primary", key="tf_exec")
+
+            if _do_back:
+                _idx = _flow.get("confirm_msg_idx")
+                if _idx is not None:
+                    conv["messages"] = conv["messages"][:_idx]
+                _flow["step"] = "confirm"
+                _flow["confirm_msg_idx"] = None
+                storage.save_conversation(conv)
+                st.rerun()
+
+            if _do_exec:
+                if not _pw:
+                    st.warning("이체 비밀번호를 입력해 주세요.")
+                else:
+                    # 입력창/버튼은 아직 지우지 않는다 — 요청이 실패하면 바로 재입력할 수 있어야 하므로,
+                    # 성공이 확정된 뒤에야(아래) 지운다. 인디케이터는 그 위/아래에 나란히 잠깐 보여도
+                    # 무방(요청이 실패하면 거의 바로 사라짐).
+                    _thinking_ph = st.empty()
+                    _thinking_ph.markdown(_thinking_indicator_html("이체를 처리하고 있어요…"),
+                                          unsafe_allow_html=True)
+                    _from = _flow["from_account"]
+                    _exec = dict(_pending, from_account=_from)
+                    _res = agent.execute_transfer(_exec, auth_token, _pw,
+                                                  scheduled_at=_flow["scheduled_at"],
+                                                  delay_minutes=_flow["delay_minutes"])
+                    if "error" in _res:
+                        _thinking_ph.empty()
+                        st.error(f"이체 실패: {_res['error']}")   # PIN 단계 유지 → 바로 재입력 가능
+                    else:
+                        _pin_area.empty()   # 성공 확정 후에야 입력창/버튼을 지운다
+                        conv["messages"].append({"role": "assistant",
+                                                 "content": "🔒 본인 확인을 완료했어요.",
+                                                 "type": "transfer_record"})
+                        _status = _res.get("status")
+                        if _status == "scheduled":
+                            import datetime as _dt2
+                            _when_txt = _dt2.datetime.fromtimestamp(_res["scheduled_at"]).strftime("%Y-%m-%d %H:%M")
+                            _final_text = (
+                                f"🗓️ **예약 완료** — {_pending['holder_name']}님에게 {_amt:,}원을 "
+                                f"{_when_txt}에 이체하도록 예약했어요. (거래번호 {_res['transfer_id']}) "
+                                f"실행 전까지 취소할 수 있어요.")
+                        elif _status == "delayed":
+                            import datetime as _dt2
+                            _when_txt = _dt2.datetime.fromtimestamp(_res["scheduled_at"]).strftime("%H:%M")
+                            _final_text = (
+                                f"⏳ **지연 이체 접수** — {_pending['holder_name']}님에게 {_amt:,}원을 "
+                                f"{_when_txt}에 이체합니다. (거래번호 {_res['transfer_id']}) "
+                                f"그 전까지 내 계좌·관리자 화면에서 취소할 수 있어요.")
+                        elif _status == "pending":
+                            # Kafka 비동기 처리 — 워커가 completed/failed로 바꿀 때까지 짧게 폴링
+                            _tr = _poll_transfer_status(_res["transfer_id"], auth_token)
+                            _final_status = _tr.get("status")
+                            if _final_status == "completed":
+                                _bal = next((a["balance"] for a in _my_accounts(auth_token)
+                                             if a["account_no"] == _from), None)
+                                _tail = f" · 출금계좌({_from[-4:]}) 잔액 {_bal:,}원" if _bal is not None else ""
+                                _final_text = f"✅ **이체 완료** — {_pending['holder_name']}님에게 {_amt:,}원을 보냈어요.{_tail}"
+                                st.session_state["_show_txn_link"] = {"account_no": _from}
+                            elif _final_status == "failed":
+                                _reason = _tr.get("error") or "알 수 없는 오류"
+                                _final_text = f"❌ **이체 실패** — {_reason}"
+                            else:
+                                _final_text = ("⏳ 처리가 지연되고 있어요. 완료되면 내 계좌 거래내역에서 "
+                                              f"확인해 주세요. (거래번호 {_res['transfer_id']})")
+                        else:  # "completed" (Kafka 꺼진 동기 경로 — 이미 처리 끝난 상태)
+                            _bal = next((a["balance"] for a in _my_accounts(auth_token)
+                                         if a["account_no"] == _from), None)
+                            _tail = f" · 출금계좌({_from[-4:]}) 잔액 {_bal:,}원" if _bal is not None else ""
+                            _final_text = f"✅ **이체 완료** — {_pending['holder_name']}님에게 {_amt:,}원을 보냈어요.{_tail}"
+                            st.session_state["_show_txn_link"] = {"account_no": _from}
+
+                        _thinking_ph.empty()
+                        conv["messages"].append({"role": "assistant", "content": _final_text})
+                        st.session_state.pop("pending_transfer", None)
+                        st.session_state.pop("transfer_flow", None)
+                        _clear_transfer_widget_keys()
+                        storage.save_conversation(conv)
+                        st.rerun()
 
 # ── 이체 완료 후: 내 계좌 거래내역으로 이동하는 액션(부모 SPA에 postMessage) ──
 _txn_link = st.session_state.get("_show_txn_link")
