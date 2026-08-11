@@ -2,6 +2,16 @@
 
 아직 처리 안 된 작업 체크리스트. 완료하면 체크하고, 상세 조사/시행착오 기록은 `session-log.md`에 남긴다(이 파일엔 "무엇을 해야 하는지"만 간결하게 유지).
 
+## 로고 워드마크 폰트 Cafe24 Ssurround 확정·적용 + Figma Button List Toggle 변형 (2026-08-12, 완료)
+
+여기어때 잘난체 계열 후보 비교(Black Han Sans/잘난체/카페24 써라운드/배민 한나체 Pro) 끝에 카페24 써라운드로 확정, 웹·Figma 양쪽 반영. 상세: `session-log.md` `### 2026-08-12 — 로고 워드마크 폰트 Black Han Sans → Cafe24 Ssurround 확정·적용 + Figma Button에 List Toggle 변형 추가`.
+
+- [x] 웹: `site/fonts/cafe24-ssurround-subset.woff` 자체 호스팅(4글자 서브셋) + `@font-face` + `--font-display` 토큰 교체, `index.html` Black Han Sans Google Fonts 링크 제거, `docs/tokens.md`/`CLAUDE.md` 갱신. `localhost:8000` 헤더·푸터 라이브 확인.
+- [x] `site/img/logo.svg`(아이콘+워드마크, CLAUDE.md엔 있었지만 실제 파일은 없었던 것)·`site/img/logo-wordmark.svg`(텍스트 단독) 신규 — 폰트 아웃라인을 fontTools로 벡터 변환.
+- [x] Figma `Foundations / Logo`(`11:2`) — Cafe24 Ssurround 미설치라 벡터로 대체 배치, 아이콘 strokeWeight 버그(44px 남음) 수정.
+- [x] Figma `Components / Button`(`8:41`) — `.product-list-toggle`("더보기" 알약형 버튼)을 `Style=List Toggle`로 추가, Hover 배경색 누락 버그·Label 프로퍼티 오버라이드 버그 수정.
+- [ ] **미확인**: 로그인/회원가입 화면(`.auth-aside-brand-text`/`.auth-logo-text`)의 새 폰트 렌더링은 코드상 동일 토큰이라 동작 확실하지만 화면을 직접 열어보진 않음 — 다음에 확인.
+
 ## AI은행원 이체 확인 카드가 안 뜨고 계좌를 채팅으로 되묻는 프롬프트 버그 (2026-08-10, 완료)
 
 시스템 프롬프트의 "출금 계좌 미지정 시 확인 카드에서 선택하도록 안내" 문구가 모호해서, AI가 `propose_transfer`를 건너뛰고 채팅으로 계좌를 먼저 물어보던 버그 — 그 결과 이체 확인 카드 자체가 안 뜸. `agent.run_agent()` 직접 호출로 재현·수정 검증 완료. 상세: `session-log.md` `### 2026-08-10 (계속) — AI은행원 이체 확인 카드가 안 뜨고 계좌를 채팅으로 되묻는 프롬프트 버그`.

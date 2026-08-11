@@ -1159,3 +1159,18 @@
 **참고**: 이번 세션에서 새로 만든 버그가 아니라 원래부터 있던 프롬프트 문제 — AI은행원 채팅으로 실제 이체를 테스트한 게 사실상 이번이 처음이라(그동안 브라우저 자동화 타이핑 제약으로 직접 검증을 못 했음) 이제야 드러남.
 
 **완료**: `agent.py` 커밋 대상.
+
+### 2026-08-12 — 로고 워드마크 폰트 Black Han Sans → Cafe24 Ssurround 확정·적용 + Figma Button에 List Toggle 변형 추가
+
+**배경**: "이전에 로고텍스트 글씨체를 정했는데 내가 얘기하는 글씨체를 외부에 검색해서 찾아줄 수 있어?"로 시작 — 당시 적용돼 있던 `--font-display: "Black Han Sans"`를 웹서치로 확인·정리(Google Fonts, Zess Type 제작). 이어서 "여기어때 잘난체"(같은 계열의 두꺼운 타이틀용 고딕)를 찾아달라는 요청 → 상업 이용 라이선스까지 확인(무료, 폰트 파일 판매·재배포만 금지, ㈜위드이노베이션 소유). 이후 "잘난체와 비슷한 다른 폰트 3가지 찾아서 매치뱅크 로고에 적용해 웹으로 보여달라"는 요청으로 비교 아티팩트 제작.
+
+**후보 비교 아티팩트**: 여기어때 잘난체·카페24 써라운드·배달의민족 한나체 Pro 3종 + 참고용 Black Han Sans까지 실제 폰트 파일을 눈누(noonnu.cc) jsDelivr CDN에서 받아 매치뱅크 헤더/로고 아이콘 자리에 그대로 적용해 비교하는 Artifact 페이지 제작. 두 차례 추가 수정: ① "로고와 텍스트 사이즈를 맞춰달라"는 요청에 아이콘을 `1em`→`1.18em`로(원형 아이콘이 사각형 글자보다 작아 보이는 광학 보정 — 실측 후 확정). ② 폰트 4개를 통짜로 base64 임베드해 3.2MB라 아티팩트가 아예 로딩 실패하는 버그 발견 — "매치뱅크" 4글자만 쓰는 페이지라 `pyftsubset`으로 실사용 글자만 남겨 25KB로 축소해 해결.
+
+**확정 및 실제 반영**: 카페24 써라운드로 확정.
+- **웹**: `site/css/style.css`에 `@font-face`로 `site/fonts/cafe24-ssurround-subset.woff` 자체 호스팅(전체 글자셋 대신 "매치뱅크" 4글자 서브셋, 2.8KB). `--font-display` 토큰 값 교체, `index.html`에서 안 쓰는 Black Han Sans Google Fonts 링크 제거. `docs/tokens.md`/`CLAUDE.md` 갱신. `localhost:8000`에서 헤더·푸터 라이브 렌더링 직접 확인(로그인/회원가입 화면은 동일 토큰이라 미확인이지만 동작 확실).
+- **Figma**: `Foundations / Logo` 페이지(`11:2`) — Cafe24 Ssurround가 Figma에 미설치(`listAvailableFontsAsync`로 확인)라 라이브 텍스트 대신 `fontTools`(SVGPathPen+TransformPen으로 Y-flip)로 폰트 아웃라인을 실제 벡터 SVG로 변환해 `upload_assets`로 업로드 후 기존 `Logo + Wordmark`/`Wordmark` 섹션의 On White/On Green 스와치에 배치(설명 텍스트도 갱신). 배치 직후 아이콘이 "링/도넛"처럼 깨져 보이는 버그 발견 — `resize()`로 도형 크기는 비율대로 줄었는데 `strokeWeight`(44.25)만 안 줄어서 원을 거의 다 뒤덮은 게 원인, 원래 비율(지름의 4%)로 재계산해 수정하고 스크린샷으로 확인.
+- **로컬 설치용 파일**: "로고에 적용한 폰트를 피그마에 설치할 수 있어?"라는 질문에 — Plugin API엔 폰트 설치 기능 자체가 없어(OS 레벨 동작) 대신 설치 가능한 `.otf`(전체 글자셋, WOFF→OTF 변환)를 만들어 스크래치패드에 준비, 설치는 사용자가 직접 하도록 안내(시스템 변경이라 대행 안 함).
+
+**Figma Components/Button — List Toggle 변형 추가**: `site/css/style.css`의 `.product-list-toggle`("더보기 (N개 더 보기) ▼" 알약형 버튼, 상품 목록 8개 초과 시 노출)을 `Components / Button` 컴포넌트셋(`8:41`)에 새 `Style=List Toggle` 옵션(State: Default/Hover, Disabled는 코드에 없어 제외)으로 추가. Ghost 변형을 복제해 pill radius·padding·Bold 14px·색상을 실제 CSS 그대로 맞춤. 작업 중 발견한 버그 2건: ① Hover 배경을 디자인 변수에 바인딩할 때 실제 색상값 없이 더미 검정을 넣어서 검은 배경으로 렌더링됨 — 실제 resolved RGB를 채워서 수정. ② 공용 `Label` 텍스트 프로퍼티에 연결했더니 다른 버튼들의 기본값("AI은행원에게 물어보기")으로 덮어써짐 — 이 버튼은 텍스트가 동적(개수+펼침상태)이라 공용 프로퍼티와 성격이 달라서 연결을 풀고 고정 텍스트로 되돌림. 컴포넌트 설명에 이 사실 기록.
+
+**완료**: `CLAUDE.md`/`docs/tokens.md`/`site/css/style.css`/`site/index.html`/`site/fonts/`/`site/img/logo.svg`/`site/img/logo-wordmark.svg` 커밋 대상. Figma 변경(`Foundations / Logo`, `Components / Button`)은 파일 URL(`https://www.figma.com/design/KnJEcMeU05dCaVk3krDKKF`)에 직접 반영 완료 — 별도 커밋 대상 아님.

@@ -147,7 +147,7 @@ Kafka·Elasticsearch·Phoenix 3개를 매번 따로 띄우는 대신 `./start_in
 
 **타이포그래피**
 - 본문 폰트: `IBM Plex Sans KR` (site·챗봇 동일, 챗봇은 Google Fonts `@import`로 로드)
-- site에는 `--font-display: "Black Han Sans"`(강조용)와 `--text-xs`(12px)~`--text-3xl`(40px) 스케일이 정의돼 있음. 챗봇(`app.py`)에는 이 스케일이 없고 값을 그때그때 하드코딩(예: 칩 13px, 유의사항 11.5px) — 화면을 늘릴수록 이 격차가 문제될 수 있음.
+- site에는 `--font-display: "Cafe24 Ssurround"`(로고 워드마크 전용, 2026-08-12부로 Black Han Sans에서 교체 — "매치뱅크" 문구에만 쓰여서 실제 4글자만 남긴 서브셋을 `site/fonts/`에 자체 호스팅)와 `--text-xs`(12px)~`--text-3xl`(40px) 스케일이 정의돼 있음. 챗봇(`app.py`)에는 이 스케일이 없고 값을 그때그때 하드코딩(예: 칩 13px, 유의사항 11.5px) — 화면을 늘릴수록 이 격차가 문제될 수 있음.
 
 **사이즈/모양 스케일 (site `:root`, "리디자인 Phase 0" 추가분 — 정의는 돼 있으나 아직 전면 적용은 안 된 상태)**
 - spacing: 8px 기준 `--space-1`(4px)~`--space-9`(96px)

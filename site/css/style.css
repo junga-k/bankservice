@@ -1,4 +1,14 @@
 /* ── 매치뱅크 홈페이지 공통 스타일 ───────────────────────────────── */
+
+/* 로고 워드마크 전용 폰트. --font-display는 "매치뱅크" 문구에만 쓰여서
+   실제 쓰는 4글자(매/치/뱅/크)만 남긴 서브셋(2.8KB)을 자체 호스팅한다. */
+@font-face {
+  font-family: "Cafe24 Ssurround";
+  src: url("../fonts/cafe24-ssurround-subset.woff") format("woff");
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   /* 브랜드 프라이머리 컬러(매치뱅크 로고 그린) — 변수명은 --blue로 유지 */
   --blue:        #0FA968;
@@ -56,7 +66,7 @@
 
   /* 타이포 스케일 */
   --font-body:    "IBM Plex Sans KR", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-  --font-display: "Black Han Sans", sans-serif;
+  --font-display: "Cafe24 Ssurround", sans-serif;
   --text-xs:  12px;
   --text-sm:  14px;
   --text-md:  16px;

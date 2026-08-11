@@ -119,7 +119,7 @@ Figma 파일엔 아래 Semantic 값들 밑에 `Primitives` 컬렉션(`green/100~
 | `--text-2xl` | `28px` |
 | `--text-3xl` | `40px` |
 
-폰트 패밀리: `--font-body: "IBM Plex Sans KR", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif` / `--font-display: "Black Han Sans", sans-serif`
+폰트 패밀리: `--font-body: "IBM Plex Sans KR", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif` / `--font-display: "Cafe24 Ssurround", sans-serif`(2026-08-12부로 Black Han Sans에서 교체 — "매치뱅크" 4글자만 쓰는 서브셋을 `site/fonts/`에 자체 호스팅)
 
 ### 4-2. 실제 엘리먼트별 typography (getComputedStyle 실측, weight/line-height/letter-spacing 포함)
 
