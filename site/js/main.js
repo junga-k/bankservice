@@ -5254,9 +5254,33 @@ function escapeHtml(s) {
   const btn = document.getElementById("scroll-top");
   if (!btn) return;
   const toggle = () => btn.classList.toggle("show", window.scrollY > 300);
+
+  /* CSS의 right 계산식은 --maxw(1080px) 기준 중앙 콘텐츠 컬럼을 가정하는데, Backoffice
+     (.container-wide, 1440px)는 그 식만으론 표·목록 위에 버튼이 겹쳤다 — 화면이 좁을수록
+     실제 여백이 거의 없어서 고정 계산식으로는 폭 차이를 못 따라감. 화면마다 컨테이너 폭이
+     다를 수 있으니 아예 폭을 가정하지 않고, 매번 현재 활성 화면의 실제 콘텐츠 오른쪽 끝을
+     getBoundingClientRect로 직접 측정해서 그 바깥에 붙인다 — 어떤 폭이든 안전.
+     Backoffice는 사이드바 옆 .bo-content가 실제 콘텐츠 폭이라 이걸 우선 쓰고, 없으면
+     일반 화면의 .container를 쓴다. */
+  const reposition = () => {
+    const active = document.querySelector("main > .section.active");
+    const content = active?.querySelector(".bo-content") || active?.querySelector(".container");
+    if (!content) { btn.style.right = ""; return; }
+    // CSS "right"는 뷰포트 오른쪽 끝에서 버튼까지의 거리 — 버튼(46px)+간격(18px)이
+    // 콘텐츠 바깥 여백 안에 다 들어가야 하므로 그만큼을 빼야 한다(더했던 게 부호 버그였음:
+    // 실측했더니 오히려 콘텐츠 쪽으로 파고들어 표를 덮고 있었음).
+    const marginOutsideContent = window.innerWidth - content.getBoundingClientRect().right;
+    btn.style.right = Math.max(12, marginOutsideContent - btn.offsetWidth - 18) + "px";
+  };
+
   window.addEventListener("scroll", toggle, { passive: true });
+  window.addEventListener("resize", reposition);
+  window.addEventListener("scroll", reposition, { passive: true });
   btn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
   toggle();
+  reposition();
+  // 섹션 전환(navigate) 후 콘텐츠가 바뀌므로 약간의 지연 후 재계산
+  window.addEventListener("hashchange", () => setTimeout(reposition, 50));
 })();
 
 /* ── 스크롤 유도 힌트: 화면 전환 시 아래에 더 볼 내용이 있으면 노출,

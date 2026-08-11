@@ -1174,3 +1174,21 @@
 **Figma Components/Button — List Toggle 변형 추가**: `site/css/style.css`의 `.product-list-toggle`("더보기 (N개 더 보기) ▼" 알약형 버튼, 상품 목록 8개 초과 시 노출)을 `Components / Button` 컴포넌트셋(`8:41`)에 새 `Style=List Toggle` 옵션(State: Default/Hover, Disabled는 코드에 없어 제외)으로 추가. Ghost 변형을 복제해 pill radius·padding·Bold 14px·색상을 실제 CSS 그대로 맞춤. 작업 중 발견한 버그 2건: ① Hover 배경을 디자인 변수에 바인딩할 때 실제 색상값 없이 더미 검정을 넣어서 검은 배경으로 렌더링됨 — 실제 resolved RGB를 채워서 수정. ② 공용 `Label` 텍스트 프로퍼티에 연결했더니 다른 버튼들의 기본값("AI은행원에게 물어보기")으로 덮어써짐 — 이 버튼은 텍스트가 동적(개수+펼침상태)이라 공용 프로퍼티와 성격이 달라서 연결을 풀고 고정 텍스트로 되돌림. 컴포넌트 설명에 이 사실 기록.
 
 **완료**: `CLAUDE.md`/`docs/tokens.md`/`site/css/style.css`/`site/index.html`/`site/fonts/`/`site/img/logo.svg`/`site/img/logo-wordmark.svg` 커밋 대상. Figma 변경(`Foundations / Logo`, `Components / Button`)은 파일 URL(`https://www.figma.com/design/KnJEcMeU05dCaVk3krDKKF`)에 직접 반영 완료 — 별도 커밋 대상 아님.
+
+### 2026-08-12 (계속) — Backoffice/Transfers Figma 웹 기준 재동기화 + 맨 위로 버튼 겹침 버그
+
+**Figma 이체모니터링 화면 웹 기준 재동기화**: "이체모니터링에 피그마에 반영 안 된 부분이 있다, 이체정책은 다르게 반영됐고 페이지네이션·스크롤 생긴 부분 표시해달라"는 요청으로 `localhost:8000`과 Figma `Backoffice / Transfers`(`40:5`)를 직접 비교. 실측 결과 3곳 차이 발견 → 처음엔 경고색(amber) 주석 카드로 캔버스에 표시만 해뒀다가, "실제로 반영해줘" 요청에 실제 구현:
+- **"개인신용정보 접근 로그" 섹션 신규 추가**(웹엔 있는데 Figma엔 섹션 자체가 없었음) — KPI 4개(`.metric-grid`) + 표(`.admin-table`) + 스크롤 박스(`.bo-scroll-table`) + 페이지네이션(`.bo-pagination`)을 실제 CSS 스펙대로 새로 제작.
+- **"이체 정책" 레이아웃 교정** — 가로 3단 → 세로 1컬럼(`.tf-field` 패턴), 빠져있던 설명 문단도 추가.
+- **"이체 내역" 표에 페이지네이션 추가**.
+- `main`(`46:35`) 자식 대부분이 `layoutPositioning:"ABSOLUTE"`라 앞쪽 패널 높이가 바뀔 때마다 뒤따르는 모든 노드 y를 수동 재계산 + `main`/`body`/최상위 프레임 `resize()` + 캔버스 `Footer` y 이동까지 필요(총 델타 962px).
+- **후속 간격 버그**: 처음 만들 때 간격을 감(18px 균일)으로 넣어서 사용자가 스크린샷으로 "간격이 안 맞다" 지적 → `getBoundingClientRect()`로 실측(제목→설명 18 / 설명→다음 콘텐츠 32, 폰트도 14 아니라 16px / KPI→표 36 / 표→페이지네이션 16 / 패널↔패널 24 공통) 후 재수정. Figma 오토레이아웃은 `itemSpacing` 하나만 균일 적용되므로 지점마다 다른 간격은 투명 스페이서 프레임을 자식 사이에 `insertChild`하는 방식으로 구현.
+- **최신 데이터로 갱신**: 사용자가 준 최신 스크린샷 기준으로 KPI 값(904→1268 등)·표 8행·페이지네이션 마지막 페이지(31→43) 갱신. 이 과정에서 "대상"/"상세" 컬럼이 실측 결과 우측 정렬(`text-align:right`)인데 좌측 정렬로 잘못 넣었던 것도 같이 수정. 참고: 이 표 숫자는 10초마다 자동 갱신되는 값이라 "최신"을 계속 쫓기보다 특정 시점 스냅샷으로 고정.
+- **Focus 상태 분리**: 사용자가 "저장" 버튼에 초록 링이 덧씌워진 스크린샷을 보내며 "왜 반영 안 하냐"고 물어서 확인해보니 사이트 전역 `:focus-visible{outline:2px solid var(--blue); outline-offset:2px}` 접근성 스타일이 마침 포커스된 채 캡처된 것이었음. 처음엔 Transfers 화면에 그대로 반영했다가, "별도 Focus 상태로 분리해달라"는 요청에 화면에서는 제거하고 `Components / Button`(`8:41`)에 `State=Focus`를 새 옵션으로 추가(Primary·Ghost 두 스타일, List Toggle은 기존에 Disabled도 없어서 제외) — outline-offset은 Figma에 없는 개념이라 버튼보다 4px씩 큰 테두리-only 사각형을 겹쳐서 구현.
+
+**맨 위로 이동 버튼이 Backoffice 콘텐츠와 겹치는 버그**: 스크린샷으로 신고받음 — `.scroll-top`의 위치 계산식이 `--maxw`(1080px, 일반 페이지 폭) 기준인데 Backoffice는 `.container-wide`(1440px)라 버튼이 콘텐츠 안쪽에 겹침.
+- **1차 수정(불충분했음)**: `body:has(#backoffice.active) .scroll-top { right: ...1440px 기준... }` CSS 규칙 추가 — 그런데 좁은 창 폭(1440~1600px대, 흔한 노트북 해상도)에서는 이 고정 계산식도 실제 여백보다 부정확해서 여전히 표 위에 겹침(직접 스크린샷으로 재현: "개인신용정보 접근 로그" 표 행 위에 버튼이 그대로 얹힘).
+- **2차 수정(최종)**: CSS 계산식을 아예 버리고 `site/js/main.js`에서 스크롤/리사이즈/화면전환마다 **현재 활성 화면의 실제 콘텐츠(`.bo-content` 또는 `.container`) 오른쪽 끝을 `getBoundingClientRect()`로 직접 측정**해서 그 바깥에 버튼을 붙이도록 변경 — 화면 폭을 가정하지 않으므로 어떤 컨테이너 폭이든 안전. 구현 중 부호를 반대로 써서(여백이 넓을수록 오히려 콘텐츠 쪽으로 더 밀어넣는 버그) 처음엔 더 심하게 겹쳤던 걸 실측으로 잡아냄(`right = marginOutsideContent - 버튼폭 - 간격`이 맞는 식, `+`가 아니라 `-`).
+- **검증**: 문제가 재현됐던 정확한 스크롤 위치에서 버튼-표 간격 43px 확보 확인, 이용통계/FAQ·공지사항 관리/홈 화면에서도 스크린샷으로 겹침 없음 확인. 대시보드~배너관리 9개 메뉴가 같은 `.bo-content` 하나를 공유해서 이 수정 하나로 전부 커버됨.
+
+**완료**: `site/css/style.css`, `site/js/main.js` 커밋 대상. Figma `Backoffice / Transfers`는 파일에 직접 반영 완료 — 별도 커밋 대상 아님.

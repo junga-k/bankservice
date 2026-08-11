@@ -2,6 +2,15 @@
 
 아직 처리 안 된 작업 체크리스트. 완료하면 체크하고, 상세 조사/시행착오 기록은 `session-log.md`에 남긴다(이 파일엔 "무엇을 해야 하는지"만 간결하게 유지).
 
+## Backoffice/Transfers Figma 재동기화 + 맨 위로 버튼 겹침 버그 (2026-08-12, 완료)
+
+이체모니터링 Figma 화면을 웹 기준으로 재동기화(신규 섹션·간격·Focus 상태 분리)하고, 맨 위로 이동 버튼이 Backoffice 콘텐츠와 겹치던 버그를 수정. 상세: `session-log.md` `### 2026-08-12 (계속) — Backoffice/Transfers Figma 웹 기준 재동기화 + 맨 위로 버튼 겹침 버그`.
+
+- [x] Figma `Backoffice / Transfers`(`40:5`) — "개인신용정보 접근 로그" 섹션 신규 추가, "이체 정책" 가로 3단→세로 1컬럼, "이체 내역" 페이지네이션 추가.
+- [x] 위 섹션들 간격을 실측(`getBoundingClientRect`)해서 재수정(처음엔 감으로 18px 균일 — 실제는 18/32/36/16 제각각 + 설명 폰트 14→16px).
+- [x] Figma `Components / Button`(`8:41`) — `State=Focus` 신규 추가(Primary·Ghost), 화면 목업에는 기본 상태만 남기고 분리.
+- [x] `site/css/style.css`/`site/js/main.js` — `.scroll-top` 버튼이 Backoffice(`.container-wide` 1440px)에서 표/목록과 겹치던 버그. CSS 고정 계산식(처음엔 `:has()` 규칙) 대신 JS가 매 스크롤/리사이즈마다 현재 화면의 실제 콘텐츠 오른쪽 끝을 측정해 위치를 맞추도록 변경 — 9개 백오피스 메뉴 전체 커버.
+
 ## 로고 워드마크 폰트 Cafe24 Ssurround 확정·적용 + Figma Button List Toggle 변형 (2026-08-12, 완료)
 
 여기어때 잘난체 계열 후보 비교(Black Han Sans/잘난체/카페24 써라운드/배민 한나체 Pro) 끝에 카페24 써라운드로 확정, 웹·Figma 양쪽 반영. 상세: `session-log.md` `### 2026-08-12 — 로고 워드마크 폰트 Black Han Sans → Cafe24 Ssurround 확정·적용 + Figma Button에 List Toggle 변형 추가`.
