@@ -2653,7 +2653,6 @@ function ensureBoTabLoaded(name) {
   }
   if (name === "usage") {
     loadBoUsageStats();
-    loadTopProductsGrid("bo-stat-products");
   }
   if (name === "perf") { loadBoPerfInfra(); loadBoInfraConfig(); loadBoBatchPerf(); loadBoFssStatus(); }
   if (name === "prompt") { loadBoChatbotConfig(); loadBoChatbotHistory(); loadBoChatFeedback(); }

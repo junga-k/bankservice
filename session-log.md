@@ -1192,3 +1192,28 @@
 - **검증**: 문제가 재현됐던 정확한 스크롤 위치에서 버튼-표 간격 43px 확보 확인, 이용통계/FAQ·공지사항 관리/홈 화면에서도 스크린샷으로 겹침 없음 확인. 대시보드~배너관리 9개 메뉴가 같은 `.bo-content` 하나를 공유해서 이 수정 하나로 전부 커버됨.
 
 **완료**: `site/css/style.css`, `site/js/main.js` 커밋 대상. Figma `Backoffice / Transfers`는 파일에 직접 반영 완료 — 별도 커밋 대상 아님.
+
+### 2026-08-12 (계속) — Figma Members/Performance 마무리 + 백오피스 이용통계 패널 삭제 + Prompt Mgmt·Products 전면 재동기화
+
+**Backoffice/Members "가입일→보기" 간격 근본 원인**: "가입일" 텍스트가 오토레이아웃에서 HUG(내용 크기만큼만) 사이징이라 버튼이 날짜 텍스트 길이에 딱 붙어 행마다 위치가 들쭉날쭉했음 — 실제 웹은 가입일이 고정폭 컬럼이라 텍스트 길이 무관하게 버튼이 항상 표 오른쪽 끝. `가입일` 텍스트를 FIXED 259px로 바꿔서 해결. (이 화면은 총 3라운드: ①색상 ②행높이·컨테이너 리사이즈 ③간격 근본원인 — 각각 사용자가 스크린샷으로 재지적해서 발견함.)
+
+**Backoffice/Performance "시스템 상태" 카드**: 사용자가 "웹은 흰바탕+radius 20인데 Figma는 초록바탕+radius 999"라고 스크린샷으로 지적 — 높이만 고치고 fills/cornerRadius를 안 봤던 게 원인. 4개 카드 전부 `fills`가 `--blue-soft`, `cornerRadius`가 999(알약형)였음 → 흰 배경(`color/bg/base`) + `radius-lg`(20) + `border`(1px) + `Shadow/sm`으로 수정. **교훈**: 눈에 띄는 차이 하나(높이) 고치고 나면 fills/strokes/cornerRadius/effects도 반드시 별도로 재확인할 것 — "한 가지만 보고 다른 건 놓침" 패턴이 이 세션에 여러 번 반복됨.
+
+**백오피스 이용통계 "카테고리별 인기 상품 TOP 5" 패널 삭제**: 사용자 요청으로 웹에서만 제거(Figma는 사용자가 직접 삭제). `site/index.html`에서 패널 div 제거, `site/js/main.js`의 `ensureBoTabLoaded()` `usage` 분기에서 `loadTopProductsGrid("bo-stat-products")` 호출 제거. `loadTopProductsGrid()` 함수 자체는 상품안내 페이지(`#stat-products`)·금융상품관리 탭(`#bo-product-stat-products`)에서도 쓰는 공용 함수라 그대로 둠 — 호출 한 줄만 제거. 라이브 확인: DOM에 잔여 참조 없음.
+
+**Backoffice/Prompt Mgmt(`40:8`) 전면 재구축**: 4개 패널 중 3개가 사실상 실제와 무관한 상태 — 이 세션에서 가장 드리프트가 컸던 페이지.
+- AI은행원 설정: 설명 문단 없음(추가) / textarea 120px+미리보기 텍스트 → 849자 전체+340px / "웹 검색 사용" 체크박스+"저장" 버튼 footer 자체가 없었음(신규).
+- AI 답변 피드백: "총 3건"→"총 10건", 스탯카드 3/1/2/67%→10/5/5/50%, "싫어요 이유 분포" 2개 항목(둘 다 초록)→실제 4개(말투/스타일 40%·부정확한 정보 20%·기타 20%·응답느림 20%, 색상도 각각 다름) — Ranked Bar 컴포넌트 clone해서 확장, 라벨을 TRUNCATE(고정 92px)로 고쳐 줄바꿈 버그 방지. 피드백 표 가짜 2행→실제 5행.
+- 프롬프트 A/B 비교: 제목 텍스트 자체가 없었고 내용은 완전히 지어낸 가짜 답변+범용 Button이었음 — 실제 기능(질문 입력창+"비교 실행"+A/B 빈 응답박스+"이 대답으로 선택하기")으로 전부 재제작.
+- "버전 이력" 패널 자체가 없었음(4번째 패널) — 저장일시/모델/변경자 표(6행, 최신행만 "현재 적용 중" 텍스트, 나머지는 "비교"+"되돌리기" 버튼) 신규 제작.
+- 이 페이지는 `main`이 AUTO라 패널 append만 하면 순서·간격 자동 반영, `body`만 마지막에 수동 resize 필요.
+- **반복 버그**: 헬퍼 함수 안에서 `appendChild` 전에 `layoutSizingHorizontal="FILL"`을 설정하면 에러 — 이 세션에 최소 3번 반복(멤버 표, FSS 리스트, 버전이력 표). 항상 "생성→부모에 append→그 다음 sizing 설정" 순서 지킬 것.
+- `get_screenshot`이 리사이즈 직후 캐시된 이전 크기로 응답하는 문제가 3번째 발생 — `use_figma`로 노드 height를 먼저 재조회해 실제 반영을 확인한 뒤 스크린샷 재시도하는 게 이제 표준 절차.
+
+**Backoffice/Products(`40:9`) 웹 기준 재동기화**: 4개 탭(상품 미리보기/인기 상품 통계/서식·약관·설명서/특별상품 관리)이 각각 별도 프레임으로 캔버스에 나란히 배치돼 있음 — 탭마다 드리프트 정도가 크게 달라서 무조건 전체를 다시 만들지 않고 스크린샷 비교 먼저 해서 스코프를 좁힘.
+- 상품 미리보기(드리프트 가장 큼): 은행 로고 컬럼이 통째로 없었음(텍스트만) — `site/img/banks/*.png` 실제 로고 5개(sc/jeonbuk/suhyup/kbank/jeju)를 `upload_assets`로 업로드해 `imageHash`를 딴 뒤 사각형 fill에 재사용(SVG뿐 아니라 래스터 이미지도 이 방식 가능, placeholder 프레임은 삭제). 표 3행→38행 중 대표 8행으로 확장. "최신 공시일 2026.08.06"→"08.11" 4개 탭 전체 일괄 수정.
+- 인기 상품 통계: 구조는 이미 실제와 거의 동일 — 항목 텍스트만 대조해서 예금 5위 1건, 적금 전체 순서 수정. 나머지 3개 카테고리는 이미 정확히 일치.
+- 서식·약관·설명서/특별상품 관리: 실측 결과 이미 실제와 거의 정확히 일치(과거 세션 작업이 잘 남아있었음) — 날짜만 갱신, 스크린샷 레벨로만 확인(값 단위 실측은 안 함, 다음에 문제 지적되면 상세 확인 필요).
+- 이 페이지의 `main`은 `primaryAxisSizingMode:"FIXED"`(Performance/Prompt Mgmt의 AUTO와 다름) — 표가 커진 만큼 main/body/최상위 프레임을 전부 수동 resize 필요. **페이지마다 auto-layout 사이징 모드가 다르니 매번 먼저 확인할 것**(지금까지 3가지 패턴 확인: 전부 ABSOLUTE 수동배치 / main만 AUTO / main도 FIXED).
+
+**완료**: `site/index.html`, `site/js/main.js`(카테고리별 인기 상품 패널 삭제) 커밋 대상. Figma 변경(Members/Performance/Prompt Mgmt/Products)은 전부 파일에 직접 반영 완료 — 별도 커밋 대상 아님.

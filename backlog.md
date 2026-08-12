@@ -2,6 +2,17 @@
 
 아직 처리 안 된 작업 체크리스트. 완료하면 체크하고, 상세 조사/시행착오 기록은 `session-log.md`에 남긴다(이 파일엔 "무엇을 해야 하는지"만 간결하게 유지).
 
+## Figma Members/Performance 마무리 + 이용통계 패널 삭제 + Prompt Mgmt·Products 재동기화 (2026-08-12, 완료)
+
+Backoffice Figma 재동기화 연속 작업. 상세: `session-log.md` `### 2026-08-12 (계속) — Figma Members/Performance 마무리 + 백오피스 이용통계 패널 삭제 + Prompt Mgmt·Products 전면 재동기화`.
+
+- [x] Figma `Backoffice / Members` — "가입일" 텍스트 HUG→FIXED 259px로 바꿔 "보기" 버튼이 행마다 들쭉날쭉하던 근본 원인 해결.
+- [x] Figma `Backoffice / Performance` — "시스템 상태" 카드 4개 fills(초록)·cornerRadius(999)를 흰 배경·radius 20으로 수정(높이만 고치고 색상은 놓쳤던 것 재수정).
+- [x] `site/index.html`/`site/js/main.js` — 이용통계 "카테고리별 인기 상품 TOP 5" 패널 삭제(웹만, Figma는 사용자가 직접 삭제).
+- [x] Figma `Backoffice / Prompt Mgmt` — AI은행원 설정(설명+전체 프롬프트+저장 footer 추가), AI 답변 피드백(총건수·스탯카드·이유분포 4개·표 5행 실측 반영), 프롬프트 A/B 비교(가짜 데이터 전부 걷어내고 실제 UI로 재제작), "버전 이력" 패널 신규 제작 — 4개 패널 전면 재구축.
+- [x] Figma `Backoffice / Products` — 상품 미리보기에 실제 은행 로고(PNG 업로드) 추가 + 8행 확장, 최신 공시일 날짜 4개 탭 일괄 수정, 인기 상품 통계 항목 텍스트 실측 대조 수정.
+- [ ] **미확인**: Products의 "서식·약관·설명서"/"특별상품 관리" 탭은 스크린샷 레벨로만 확인, 값 단위 실측은 안 함 — 다음에 문제 지적되면 상세 확인 필요.
+
 ## Backoffice/Transfers Figma 재동기화 + 맨 위로 버튼 겹침 버그 (2026-08-12, 완료)
 
 이체모니터링 Figma 화면을 웹 기준으로 재동기화(신규 섹션·간격·Focus 상태 분리)하고, 맨 위로 이동 버튼이 Backoffice 콘텐츠와 겹치던 버그를 수정. 상세: `session-log.md` `### 2026-08-12 (계속) — Backoffice/Transfers Figma 웹 기준 재동기화 + 맨 위로 버튼 겹침 버그`.
