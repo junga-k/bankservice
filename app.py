@@ -451,8 +451,19 @@ st.markdown("""<style>
     --dislike-ink: color-mix(in srgb, var(--text) 50%, var(--text-sub) 50%);
 }
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
+  [class*="st-key-dislike_box_"] [data-testid="stCaptionContainer"] {
+    /* Streamlit이 st.caption()에 기본으로 opacity:0.6을 걸어 흐리게 렌더링한다 — color를
+       선택지와 똑같이 맞춰도(둘 다 --dislike-ink) computed color 자체는 이미 동일했는데,
+       이 부모 opacity(자식 color 값과 무관하게 렌더링을 반투명 합성) 때문에 화면에는 계속
+       더 옅게 보였음. 원인은 색상이 아니라 opacity였으므로 여기서 1로 되돌림. */
+    opacity: 1 !important;
+}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
   [class*="st-key-dislike_box_"] [data-testid="stCaptionContainer"] p {
     color: var(--dislike-ink) !important;
+    /* 캡션 기본 폰트 크기가 11px로 선택지(15.5px)보다 훨씬 작아 같은 색이 더 흐리게 보이는
+       착시가 있었음 — 크기를 선택지에 가깝게 키워 착시를 제거. */
+    font-size: 15px !important;
 }
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
   [class*="st-key-dislike_box_"] [data-testid="stCheckbox"] label p {
