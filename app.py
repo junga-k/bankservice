@@ -440,16 +440,44 @@ st.markdown("""<style>
        버튼 줄이 상자 오른쪽 끝까지 못 닿고 여백만 남던 원인) — 상자 폭 안에서는 100% 그대로 채움. */
     max-width: 100% !important;
 }
-/* 질문("어떤 점이 아쉬웠나요?")과 선택지 텍스트를 다른 색으로 구분 — 기본값은 둘 다 --text라
-   구분이 안 됐음: 질문은 보조 안내문 느낌으로 옅게, 선택지는 실제 클릭 대상이라 진하게. */
+/* 질문("어떤 점이 아쉬웠나요?")과 선택지 텍스트를 다른 색으로 구분하려 했으나(기본값은 둘 다
+   --text), 진하기 차이를 두고 갈 때마다("체크박스는 너무 옅고 텍스트는 너무 진하다" →
+   "선택지 옅어지니 질문이 상대적으로 옅어 보인다") 반복 피드백을 받아 — 이번엔 아예 질문·
+   선택지·체크박스 테두리를 전부 같은 색으로 통일. 새 색상 토큰을 만드는 대신 기존
+   --text/--text-sub를 color-mix()로 절반씩 섞은 중간 톤 하나를 --dislike-ink로 선언해
+   세 군데(질문/선택지 텍스트/체크박스 테두리)에서 재사용(둘 다 이미 승인된 토큰이라
+   임의 색상 추가에 해당하지 않음). */
+[class*="st-key-dislike_box_"] {
+    --dislike-ink: color-mix(in srgb, var(--text) 50%, var(--text-sub) 50%);
+}
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
   [class*="st-key-dislike_box_"] [data-testid="stCaptionContainer"] p {
-    color: var(--text-sub) !important;
+    color: var(--dislike-ink) !important;
 }
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
   [class*="st-key-dislike_box_"] [data-testid="stCheckbox"] label p {
-    color: var(--text) !important;
-    font-weight: 500;
+    color: var(--dislike-ink) !important;
+}
+/* 체크박스 미체크 테두리가 기본값(rgba(60,64,67,.2))이라 너무 옅어 잘 안 보인다는 피드백 —
+   미체크 상태(aria-checked="false")만 :has()로 골라 테두리를 또렷하게, 질문·선택지 텍스트와
+   같은 색으로 통일. 체크된 상태는 Streamlit 기본(강조색) 그대로 두어 건드리지 않음. */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
+  [class*="st-key-dislike_box_"] [data-testid="stCheckbox"]
+  label[data-baseweb="checkbox"]:has(input[aria-checked="false"]) > span:first-child {
+    border-color: var(--dislike-ink) !important;
+    border-width: 1.5px !important;
+}
+/* "제출" 버튼에 연한 배경(팝오버 primary 버튼과 동일 레시피)을 넣어 "취소"와 구분되게 함. */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
+  [class*="st-key-dislike_submit_"] [data-testid="stButton"] > button {
+    background: var(--blue-soft) !important;
+    border-color: var(--blue-line) !important;
+    color: var(--blue-dark) !important;
+    font-weight: 600 !important;
+}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
+  [class*="st-key-dislike_submit_"] [data-testid="stButton"] > button:hover {
+    background: var(--blue-line) !important;
 }
 
 /* ── 입력창 ────────────────────────────────────────────────────── */
@@ -1086,8 +1114,8 @@ for i, msg in enumerate(conv["messages"]):
                     if "기타" in _selected:
                         _etc_text = st.text_input("기타 사유를 입력해주세요", key=f"etc_{i}")
                     _fc1, _fc2 = st.columns(2)
-                    _submitted = _fc1.button("제출", key=f"dislike_submit_{i}", use_container_width=True)
-                    _canceled = _fc2.button("취소", key=f"dislike_cancel_{i}", use_container_width=True)
+                    _canceled = _fc1.button("취소", key=f"dislike_cancel_{i}", use_container_width=True)
+                    _submitted = _fc2.button("제출", key=f"dislike_submit_{i}", use_container_width=True)
                 if _submitted:
                     _submit_chat_feedback(conv, msg, i, "down", reasons=_selected, comment=_etc_text)
                 if _submitted or _canceled:
