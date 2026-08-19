@@ -1629,6 +1629,17 @@ document.addEventListener("submit", (e) => {
   if (e.target.id === "resetpw-form") { e.preventDefault(); handleResetPw(); }
 });
 
+document.addEventListener("click", (e) => {
+  const socialBtn = e.target.closest("[data-social]");
+  if (!socialBtn) return;
+  const label = { kakao: "카카오", naver: "네이버", google: "Google" }[socialBtn.dataset.social];
+  const statusEl = document.getElementById("login-status");
+  if (statusEl) {
+    statusEl.className = "tf-status";
+    statusEl.textContent = `${label} 간편로그인은 준비 중입니다.`;
+  }
+});
+
 async function handleLogin() {
   const username = document.getElementById("login-username").value.trim();
   const password = document.getElementById("login-password").value;

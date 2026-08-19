@@ -1255,6 +1255,27 @@ body:has(#chat.active) .chat-guest {
 .auth-verify-row .btn { width: auto; margin-top: 0; flex-shrink: 0; white-space: nowrap; padding: 7px 12px; font-size: var(--text-sm); }
 .verify-badge.ok { color: #1E7E34; font-weight: 700; }
 
+/* 간편로그인 구분선 + 카카오/네이버/구글 버튼 */
+/* 로그인 상태 메시지(#login-status)가 비어있을 때는 여백을 좁혀 구분선과의 간격이
+   과하게 벌어지지 않게 함 — 메시지가 채워지면(:empty 해제) 원래 여백으로 복귀 */
+#login-status:empty { margin-top: var(--space-2); min-height: 0; }
+.auth-divider {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin: var(--space-4) 0 var(--space-4);
+  color: var(--text-sub); font-size: var(--text-xs);
+}
+.auth-divider::before, .auth-divider::after {
+  content: ""; flex: 1; height: 1px; background: var(--border);
+}
+.auth-social { display: flex; flex-direction: column; gap: var(--space-2); }
+.btn-social {
+  width: 100%; justify-content: center;
+  background: transparent; border: 1.5px solid var(--border); color: var(--text);
+}
+.btn-social:hover { background: var(--bg-soft); border-color: var(--text-sub); }
+.btn-social:active { transform: scale(0.98); }
+.btn-social img { display: block; }
+
 /* 로그인 ↔ 회원가입 전환 링크 */
 .auth-switch { margin: 16px 0 0; text-align: center; font-size: 14px; color: var(--text-sub); }
 .auth-switch a { color: var(--blue); font-weight: 600; cursor: pointer; }

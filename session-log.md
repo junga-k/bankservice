@@ -1217,3 +1217,23 @@
 - 이 페이지의 `main`은 `primaryAxisSizingMode:"FIXED"`(Performance/Prompt Mgmt의 AUTO와 다름) — 표가 커진 만큼 main/body/최상위 프레임을 전부 수동 resize 필요. **페이지마다 auto-layout 사이징 모드가 다르니 매번 먼저 확인할 것**(지금까지 3가지 패턴 확인: 전부 ABSOLUTE 수동배치 / main만 AUTO / main도 FIXED).
 
 **완료**: `site/index.html`, `site/js/main.js`(카테고리별 인기 상품 패널 삭제) 커밋 대상. Figma 변경(Members/Performance/Prompt Mgmt/Products)은 전부 파일에 직접 반영 완료 — 별도 커밋 대상 아님.
+
+### 2026-08-19 — 로그인 화면 간편로그인(카카오/네이버/구글) UI 추가
+
+**배경**: 매치뱅크 웹주소가 "사이트에 연결할 수 없음"으로 안 열린다는 문의로 시작 — 원인은 실제 도메인 문제가 아니라 백엔드(`uvicorn`, 8000)/챗봇(`streamlit`, 8501) 프로세스가 안 떠 있던 것뿐이었음, 둘 다 백그라운드로 기동해 해결. 이어서 로그인 화면의 "로그인" 버튼과 "아직 회원이 아니신가요?" 문구 사이에 카카오/네이버/구글 간편로그인 버튼(아이콘+텍스트, 배경 없음)을 추가해달라는 요청.
+
+**계획 모드로 진행**: Explore 에이전트로 로그인 화면 마크업(`site/index.html`), 관련 CSS, `docs/tokens.md` 토큰, 기존 소셜 로그인 코드 유무(백엔드에 전무 확인)를 먼저 조사한 뒤 AskUserQuestion으로 2가지 확정: ① 아이콘은 토큰에 없는 값이지만 카카오/네이버/구글 공식 브랜드 색상 그대로 사용(사용자 확인) ② 이번 작업은 UI만 — 클릭하면 실제 로그인 대신 "준비 중" 안내만 표시, 실제 OAuth 연동(개발자 콘솔 앱 등록·API 키 발급·백엔드 신규 구현)은 범위 밖으로 분리.
+
+**구현**:
+- `site/img/social/kakao.svg`/`naver.svg`/`google.svg` 신규 — 각 사 공식 브랜드 색상(카카오 #FEE500, 네이버 #03C75A, 구글 4색 G) 인라인 SVG. `site/img/banks/*.png` 파일 기반 로고 패턴을 따라 별도 디렉토리로 분리.
+- `site/index.html` — 로그인 폼 `</form>` 다음, "아직 회원이 아니신가요?" 앞에 `.auth-divider`("간편로그인" 텍스트 구분선) + `.auth-social`(버튼 3개, `data-social` 속성) 삽입.
+- `site/css/style.css` — `.btn-social`(배경 투명·테두리만, hover 시 `--bg-soft`)를 기존 `.btn` 베이스에 얹는 방식, `docs/tokens.md` 토큰만 사용.
+- `site/js/main.js` — `[data-social]` 클릭 시 기존 `#login-status`(`.tf-status`, 로그인 실패 메시지에 이미 쓰이던 요소) 재사용해 "OO 간편로그인은 준비 중입니다" 표시. 새 토스트 컴포넌트는 만들지 않음(범위 최소화).
+
+**검증**: `localhost:8000/#auth`를 실제 브라우저로 열어 확인(claude-in-chrome) — 디자인 렌더링, 클릭 시 안내 문구 표시, 로그인 실패 메시지와 레이아웃 충돌 없음까지 스크린샷으로 확인. 모바일 폭 확인 시 `resize_window`가 이 브라우저 환경에서 실제 뷰포트에 반영되지 않는 문제 발견 — 페이지에 390×844 iframe을 임시 주입해 우회 확인(아이콘·텍스트 잘림 없음, 반응형 정상).
+
+**후속 요청 2건**:
+1. "Google로 로그인" → "Google 로그인" 텍스트 수정(`site/index.html`).
+2. 로그인 버튼~구분선 간격이 넓어 보인다는 지적 — 실측해보니 60px(빈 `#login-status` 여백 16+20 + `.auth-divider` margin-top 24가 겹쳐서 발생)이었던 걸 16px로 좁힘. `.auth-divider` margin-top을 `--space-5`→`--space-4`로 줄이고, `#login-status:empty { margin-top: var(--space-2); min-height: 0; }`를 ID 스코프로 추가(메시지가 실제로 뜨면 `:empty` 해제되어 원래 여백으로 자동 복귀 — 공용 `.tf-status` 클래스 자체는 안 건드림). 재실측으로 로그인 버튼~구분선/구분선~버튼 그룹 둘 다 16px로 대칭 확인.
+
+**완료**: `site/index.html`, `site/css/style.css`, `site/js/main.js`, `site/img/social/*.svg` 커밋 대상. 실제 OAuth 연동(카카오/네이버/구글 API 키 발급·백엔드 콜백 엔드포인트·`users` 테이블 provider 컬럼)은 사용자가 각 플랫폼에서 키를 발급받은 뒤 별도 작업으로 진행 예정 — `backlog.md`에 등록.

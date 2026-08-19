@@ -2,6 +2,14 @@
 
 아직 처리 안 된 작업 체크리스트. 완료하면 체크하고, 상세 조사/시행착오 기록은 `session-log.md`에 남긴다(이 파일엔 "무엇을 해야 하는지"만 간결하게 유지).
 
+## 로그인 화면 간편로그인(카카오/네이버/구글) UI (2026-08-19, UI 완료 / 실연동 미착수)
+
+상세: `session-log.md` `### 2026-08-19 — 로그인 화면 간편로그인(카카오/네이버/구글) UI 추가`.
+
+- [x] `site/index.html`/`site/css/style.css`/`site/js/main.js`/`site/img/social/*.svg` — 아이콘+텍스트 버튼 3개(배경 없음), 클릭 시 "준비 중" 안내. 브라우저로 데스크톱·모바일(390px) 렌더링 확인.
+- [x] 로그인 버튼~"간편로그인" 구분선 간격 60px→16px로 조정(`#login-status:empty` 스코프 규칙 추가).
+- [ ] **다음은 여기부터.** 실제 OAuth 연동 — 카카오 developers/네이버 developers/Google Cloud Console에서 앱 등록 + Client ID·Secret 발급(사용자가 직접 해야 함) → `config.json`에 키 저장 → `backend/app.py`/`backend/auth.py`에 `/api/auth/{provider}/authorize`·`/callback` 엔드포인트 신규 구현 → `users` 테이블에 provider/provider_user_id 컬럼 추가(`db.init_db()` 멱등 마이그레이션 루프에 추가) → 프론트 버튼 클릭 핸들러를 "준비 중" 안내 대신 `location.href = "/api/auth/{provider}/authorize"`로 교체.
+
 ## Figma Members/Performance 마무리 + 이용통계 패널 삭제 + Prompt Mgmt·Products 재동기화 (2026-08-12, 완료)
 
 Backoffice Figma 재동기화 연속 작업. 상세: `session-log.md` `### 2026-08-12 (계속) — Figma Members/Performance 마무리 + 백오피스 이용통계 패널 삭제 + Prompt Mgmt·Products 전면 재동기화`.
