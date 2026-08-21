@@ -2,6 +2,16 @@
 
 아직 처리 안 된 작업 체크리스트. 완료하면 체크하고, 상세 조사/시행착오 기록은 `session-log.md`에 남긴다(이 파일엔 "무엇을 해야 하는지"만 간결하게 유지).
 
+## AI은행원 "싫어요 이유 선택" UI Figma 반영 + 화면 푸터 제거 (2026-08-21, 완료)
+
+상세: `session-log.md` `### 2026-08-21 — AI은행원 "싫어요 이유 선택" UI를 Figma 디자인시스템 컴포넌트로 반영 + AI은행원 화면 푸터 제거`.
+
+- [x] Figma `Foundations / Icons` — 아이콘 4종(thumbs-up/thumbs-down/retry/copy) 신규.
+- [x] Figma `Components / Button`(`8:41`) — `Style=Soft` variant 신규(제출 버튼 레시피).
+- [x] Figma 신규 페이지 `Components / Chat Feedback` — Message Action Bar / Dislike Reason Panel 컴포넌트셋 신규.
+- [x] Figma `Screens / AI Banker Chat`(`3:17`) — 예시 프레임 `AI Banker Chat — Feedback (Negative)` 추가.
+- [x] `site/css/style.css` — AI은행원(`#chat`) 화면에서 사이트 푸터 숨김, 관련 구식 flex 트릭 제거.
+
 ## 로그인 화면 간편로그인(카카오/네이버/구글) UI (2026-08-19, UI 완료 / 실연동 미착수)
 
 상세: `session-log.md` `### 2026-08-19 — 로그인 화면 간편로그인(카카오/네이버/구글) UI 추가`.

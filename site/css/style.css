@@ -1098,31 +1098,15 @@ main { min-height: calc(100vh - var(--header-h)); }
 }
 .chat-guest .btn { width: 100%; justify-content: center; margin-top: var(--space-2); }
 
-/* AI은행원 화면 전용: 대화창 높이를 "100vh - 헤더"로 고정해뒀던 탓에 사이트 푸터가
-   화면 한 번 스크롤 차이로 걸쳐 있어(보였다 안 보였다 하는) 혼란스럽다는 피드백(2026-08-08).
-   #chat이 활성 섹션일 때만 body를 flex column으로 바꿔 header/본문/footer가 정확히
-   한 화면(100vh) 안에 다 들어오도록 한다 — 푸터 실제 높이를 하드코딩하지 않고 flex가
-   자동으로 나눠 갖게 해서, 반응형으로 푸터 레이아웃이 바뀌어도(680px 이하 세로 스택 등)
-   깨지지 않는다. #chat이 활성일 때는 다른 section이 전부 display:none이라 이 규칙이
-   다른 화면에는 영향을 주지 않는다.*/
-body:has(#chat.active) {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-body:has(#chat.active) main {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-}
-body:has(#chat.active) #chat.section.active {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-body:has(#chat.active) #chat-frame-wrap,
-body:has(#chat.active) .chat-guest {
-  height: 100%;
-  min-height: 0;
+/* AI은행원 화면 전용: 이 화면에는 사이트 푸터를 노출하지 않는다(요청, 2026-08-21).
+   예전엔 푸터를 보여주되 "대화창 높이(100vh - 헤더)와 실제 페이지 높이가 어긋나 푸터가
+   스크롤 경계에 걸쳐 보였다 안 보였다 하는" 문제를 body flex column 트릭으로 100vh 안에
+   딱 맞춰 넣어 해결했었다(2026-08-08). 푸터 자체를 아예 숨기면 그 어긋남 문제 자체가
+   사라지므로 flex 트릭은 제거 — #chat-frame-wrap/.chat-guest의 calc(100vh - var(--header-h))
+   만으로 화면이 꽉 찬다. #chat이 활성일 때는 다른 section이 전부 display:none이라
+   이 규칙이 다른 화면에는 영향을 주지 않는다.*/
+body:has(#chat.active) .site-footer {
+  display: none;
 }
 
 /* ── 로그인/회원가입 헤더 링크 강조 ──────────────────────────────── */

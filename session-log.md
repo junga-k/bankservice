@@ -1262,3 +1262,26 @@
 **교훈**: "색상 코드는 같은데 화면은 다르게 보인다"는 신고를 두 차례나 폰트 크기 착시로 오판했음 — 실제로는 `opacity`처럼 `color` 자체와 무관하게 렌더링을 바꾸는 부모 스타일이 원인이었음. 이런 경우 `getComputedStyle().color`만 비교하지 말고 부모 체인의 `opacity`/`filter`/`mix-blend-mode`까지 같이 훑어야 함. 또한 프로브 앱(8503) 검증은 CSS 로직 자체를 빠르게 확인하는 데는 유효했지만, 실제 서비스 프로세스(8501)를 재시작하지 않으면 라이브에는 반영되지 않는다는 걸 두 번이나 놓쳤음 — 코드 수정 후에는 프로브 검증과 별개로 **실제 구동 중인 프로세스 재시작 여부를 항상 체크리스트로 확인**할 것.
 
 **완료**: `app.py` 3개 커밋(`e4e7618` 대비/순서/배경, 이후 색상 통일 포함, `e64f57b` opacity 근본원인 수정) — 전부 `main`에 푸시 완료.
+
+### 2026-08-21 — AI은행원 "싫어요 이유 선택" UI를 Figma 디자인시스템 컴포넌트로 반영 + AI은행원 화면 푸터 제거
+
+**배경**: 사용자가 AI은행원 부정적 피드백 UI(질문+체크박스 6개+취소/제출) 스크린샷과 함께 "이걸 전달하는 피그마페이지에 디자인시스템으로 만들어줘"라고 요청(node-id=3-17, `Screens / AI Banker Chat` 페이지). 확인 결과 이 UI(2026-08-19 3라운드에 걸쳐 `app.py`에 구현된 것)는 Figma에 전혀 반영돼 있지 않았음(페이지 전체 텍스트에 "싫어요"/"피드백"/"이유" 0건).
+
+**계획 모드로 진행**: `app.py` 실제 CSS(`.action-btn`/`dislike_box_` 관련 규칙, `_DISLIKE_REASONS` 목록)와 `docs/tokens.md`, 기존 Figma 컴포넌트(Button `8:41`/Checkbox `14:12`/Text Input `13:26`/Foundations Icons `54:2`) 구조를 먼저 조사한 뒤, AskUserQuestion으로 2가지 확정: ① "기타" 선택 시 나타나는 텍스트 입력 상태도 별도 variant로 포함(권장 선택) ② 채팅 화면 맥락(헤더+메시지 버블) 안에 배치한 예시 프레임도 `Screens / AI Banker Chat`에 추가(권장 선택).
+
+**실행 전 실측**: `localhost:8501`을 Playwright로 직접 열어(이미 로그인된 대화가 있어 로그인 절차 불필요) 실제 👎 패널을 열고 `getBoundingClientRect()`/`getComputedStyle()`로 카드 폭(420, max-width 고정)·padding(18/20)·radius(8)·체크박스 크기(16×16, radius4)·버튼 크기(165×40)·색상(제출: bg `#E3F6EC`/border `#A8E0C4`/text `#0B8457`)을 전부 실측 — CSS 소스와 거의 정확히 일치 확인.
+
+**Figma 반영**:
+- `Foundations / Icons`(`54:2`)에 아이콘 4종(`icon/thumbs-up`/`icon/thumbs-down`/`icon/retry`/`icon/copy`) 신규 — `app.py` 인라인 SVG 경로 데이터를 직접 벡터로 변환(24×24, stroke 2, round cap, 기존 feather 스타일 규칙 그대로). SVG의 타원호(`a`/`A`) 명령을 큐빅 베지어로 바꾸는 endpoint-to-center 변환 함수를 직접 작성해 반영.
+- `Components / Button`(`8:41`)에 `Style=Soft` variant 신규(Default/Hover) — "제출" 버튼 색상 레시피 등록.
+- 신규 페이지 `Components / Chat Feedback` — **Message Action Bar** 컴포넌트셋(State: Default/Like Active/Dislike Active) + **Dislike Reason Panel** 컴포넌트셋(State: Default/기타 선택됨, Checkbox·Text Input·Button 인스턴스 재사용) 제작.
+- `Screens / AI Banker Chat`(`3:17`)에 예시 프레임 `AI Banker Chat — Feedback (Negative)` 추가 — 기존 `즉시이체`/`지연이체` 같은 축약 컨텍스트 프레임 패턴을 따라 메시지 버블+액션바+패널을 조합.
+- `docs/tokens.md`에 없는 코드 고유값(`.action-btn` 테두리 `#DADCE0`·radius 6px, `--dislike-ink` color-mix 값 `≈#4E5256`)은 토큰화하지 않고 실측값 그대로 반영 + 컴포넌트 description에 갭 기록(`.trend-badge` 때와 동일 원칙).
+
+**겪은 버그 2건**:
+1. 아이콘 경로 파서에 소문자 `l`(상대좌표 lineto) case가 빠져 있어 좋아요/싫어요 아이콘이 깨진 도형으로 렌더 — 스크린샷 비교로 즉시 발견, case 추가 후 재생성해 해결.
+2. Text Input 컴포넌트 인스턴스의 hint 텍스트 노드에 `visible=false`를 걸면 Figma가 그 노드의 참조 id를 즉시 무효화해 다음 줄에서 "node does not exist" 에러가 남(원인 불명확한 Figma 쪽 제약으로 추정) — `.remove()`도 "인스턴스 구조 노드는 삭제 불가"로 막혀서, 대신 hint 텍스트를 빈 문자열로 비우는 방식으로 우회(라벨/placeholder 비우기는 동일 조작인데도 문제없이 동작).
+
+**AI은행원 화면 푸터 제거**: 별도 요청으로 `site/css/style.css` 수정 — `body:has(#chat.active) .site-footer { display:none; }` 추가. 기존에 있던 "대화창 높이(100vh-헤더)와 실제 페이지 높이가 어긋나 푸터가 스크롤 경계에 걸쳐 보였다 안 보였다 하는" 문제를 막던 body flex-column 트릭(2026-08-08 추가분)은, 푸터를 아예 숨기면 그 어긋남 문제 자체가 없어져 더 이상 필요 없어져서 같이 제거(`#chat-frame-wrap`/`.chat-guest`의 `calc(100vh - var(--header-h))`만으로 화면이 꽉 참). `localhost:8000`을 Playwright로 열어 `#chat` 활성 시 footer computed display가 `none`이고 문서 높이=뷰포트 높이(스크롤 여백 없음), `#home`에서는 footer가 정상적으로 `block`인 것까지 확인.
+
+**완료**: `site/css/style.css` 커밋 대상. Figma 변경(`Foundations / Icons`, `Components / Button`, `Components / Chat Feedback` 신규 페이지, `Screens / AI Banker Chat`)은 파일에 직접 반영 완료 — 별도 커밋 대상 아님.
