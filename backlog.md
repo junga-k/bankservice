@@ -22,6 +22,16 @@
   - 1차 실행은 실패했다: Streamlit Cloud는 앱을 **항상 `iframe[title="streamlitApp"]` 중첩 iframe**에 넣어 서빙해서(`?embed=true` 무관), page 레벨 `wait_for_selector`로는 마커 문구를 못 찾는다. 모든 프레임을 훑도록 고쳐 해결.
   - 토큰: 기존 classic PAT(`mind`)에 `workflow` 스코프를 추가해 푸시 가능해졌다. **만료 2026-10-23** — 그 후엔 푸시가 막히니 갱신 필요.
 
+## 공개 데모 운영 자동화 (2026-08-26, 완료)
+
+방문자가 공유 계정을 쓰면서 생기는 열화를 자동으로 되돌린다. 상세: `session-log.md` `### 2026-08-26 (계속 5)`.
+
+- [x] **잔액 리셋 자동화** — `seed_bank.reset_demo_data()` + `POST /api/maintenance/reset-demo`(토큰 보호) + `.github/workflows/reset-demo-data.yml`(매일 KST 03:00). 수동 실행으로 라이브 검증 완료: 신한 1,449,500→1,500,000원, 거래내역 시드 3건 복구, 이체 0건.
+- [x] **절전 방지** — `.github/workflows/keep-streamlit-awake.yml`(6시간 간격). run #2 성공.
+- [x] 백오피스 읽기전용(`DEMO_READONLY`) + 챗봇 남용 상한(`DEMO_PUBLIC`).
+- 운영 메모: `DEMO_RESET_TOKEN`은 **Vercel 환경변수와 GitHub 시크릿 양쪽에 같은 값**이 있어야 한다. 워크플로가 404(Vercel 미설정)와 403(값 불일치)을 구분해 알려준다.
+- [ ] **미해결(경미)**: 방문자가 직접 가입해 만든 계정·계좌는 리셋 대상이 아니라 계속 쌓인다(현재 로컬 기준 `9000-*` 등). 데이터가 늘면 회원관리 목록이 지저분해질 수 있으나 기능에는 지장 없음.
+
 ## Kafka·Elasticsearch·Redis 상시 호스팅 — 하지 않기로 종결 (2026-08-26)
 
 오래 이월돼 있던 항목. provisioning 전에 **프로덕션에서 해당 코드가 실제로 실행되는지** 확인한 결과, 세 개 모두 호스팅해도 방문자가 볼 수 있는 변화가 없어 **의도적으로 하지 않기로 종결**한다.
