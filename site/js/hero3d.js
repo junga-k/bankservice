@@ -32,6 +32,30 @@ if (container && isDesktopWidth && !prefersReducedMotion && hasWebGL) {
   initHero3D(container);
 }
 
+/* 컨테이너가 실제 크기를 가질 때까지 기다린다.
+   이 스크립트는 로드 직후 실행되는데, SPA 라 그 시점엔 #home 섹션이 아직 표시되기 전이라
+   clientWidth/clientHeight 가 0 이다. 그대로 renderer.setSize(0, 0) 을 하면 캔버스가
+   0x0 으로 생성돼, 사용자가 창을 리사이즈하기 전까지 3D 히어로가 아예 보이지 않는다
+   (2026-08-26 라이브 배포에서 확인 — 첫 화면 좌측이 빈 배경으로 보이던 원인). */
+function waitForSize(el, timeoutMs = 10000) {
+  return new Promise((resolve) => {
+    if (el.clientWidth > 0 && el.clientHeight > 0) { resolve(true); return; }
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      observer.disconnect();
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth > 0 && el.clientHeight > 0) finish(true);
+    });
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    observer.observe(el);
+  });
+}
+
 async function initHero3D(el) {
   let THREE;
   try {
@@ -39,6 +63,11 @@ async function initHero3D(el) {
   } catch (e) {
     console.warn("[hero3d] three.js CDN(unpkg.com) 로드 실패 — 광고차단기/네트워크 차단을 의심해보세요.", e);
     return; // CDN 로드 실패 — .hero::before 블롭이 자연스러운 대체
+  }
+
+  if (!(await waitForSize(el))) {
+    console.warn("[hero3d] 컨테이너 크기가 확정되지 않아 초기화를 건너뜁니다 — .hero::before 블롭으로 대체됩니다.");
+    return;
   }
 
   const heroEl = el.closest(".hero") || el;
