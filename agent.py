@@ -16,14 +16,25 @@ import os
 
 import requests
 
-# 배포 환경(Streamlit Cloud)에서는 원격 백엔드를 가리켜야 하므로 환경변수로 덮어쓸 수 있게 한다.
-BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
-_IS_LOCAL_BACKEND = BACKEND_URL.startswith(("http://localhost", "http://127.0.0.1"))
+# 배포 환경(Streamlit Cloud)에서는 원격 백엔드를 가리켜야 하므로 BACKEND_URL 환경변수로
+# 덮어쓸 수 있게 하되, import 시점이 아니라 호출 시점에 읽는다.
+# Streamlit Cloud 는 시크릿을 바꿔도 이미 import 된 모듈을 sys.modules 에서 재사용하기 때문에,
+# 모듈 레벨에서 os.environ 을 읽어두면 새 값이 영영 반영되지 않는다(앱을 완전히 리부트해야만
+# 갱신됨). 실제로 BACKEND_URL 을 추가했는데도 계속 localhost:8000 을 호출하던 원인이다.
+def _backend_url() -> str:
+    return os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
 
-# 원격 백엔드(Vercel + Turso)는 콜드 스타트와 DB 연결 비용 때문에 로컬보다 훨씬 느리다 —
-# 배포 실측상 이체 계열은 웜 상태에서도 ~9초가 걸린다. 로컬 기준 5초를 그대로 쓰면
-# 이체 제안(propose_transfer)이 반드시 타임아웃나므로 원격일 때는 기본값을 늘린다.
-_TIMEOUT = float(os.environ.get("BACKEND_TIMEOUT", "5" if _IS_LOCAL_BACKEND else "30"))
+
+def _timeout() -> float:
+    """원격 백엔드(Vercel + Turso)는 콜드 스타트와 DB 연결 비용 때문에 로컬보다 훨씬 느리다 —
+    배포 실측상 이체 계열은 웜 상태에서도 ~10초가 걸린다. 로컬 기준 5초를 그대로 쓰면
+    이체 제안(propose_transfer)이 반드시 타임아웃나므로 원격일 때는 기본값을 늘린다."""
+    env = os.environ.get("BACKEND_TIMEOUT")
+    if env:
+        return float(env)
+    is_local = _backend_url().startswith(("http://localhost", "http://127.0.0.1"))
+    return 5.0 if is_local else 30.0
+
 
 SYSTEM_PROMPT = (
     "당신은 매치뱅크의 은행업무 AI 상담원입니다. 사용자의 계좌 조회, 거래내역, 이체, "
@@ -53,17 +64,17 @@ def _auth_headers(token: str | None) -> dict:
 
 
 def _get(path: str, token: str | None = None, params: dict | None = None,
-         timeout: float = _TIMEOUT) -> dict:
-    r = requests.get(f"{BACKEND_URL}{path}", headers=_auth_headers(token),
-                     params=params, timeout=timeout)
+         timeout: float | None = None) -> dict:
+    r = requests.get(f"{_backend_url()}{path}", headers=_auth_headers(token),
+                     params=params, timeout=timeout if timeout is not None else _timeout())
     if not r.ok:
         return {"error": _detail(r)}
     return r.json()
 
 
 def _post(path: str, token: str | None, body: dict) -> dict:
-    r = requests.post(f"{BACKEND_URL}{path}", headers=_auth_headers(token),
-                      json=body, timeout=_TIMEOUT)
+    r = requests.post(f"{_backend_url()}{path}", headers=_auth_headers(token),
+                      json=body, timeout=_timeout())
     if not r.ok:
         return {"error": _detail(r)}
     return r.json()
