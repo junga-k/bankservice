@@ -1425,3 +1425,19 @@ Vercel Marketplace 스킬로 provisioning을 시작하려다, 그 전에 **프�
 **라이브 검증**: Vercel 환경변수 반영을 404→403 전환으로 먼저 확인한 뒤(토큰 없이 호출), GitHub Actions 수동 실행 → run #1 성공. API로 실제 데이터 확인: 신한 1,449,500→**1,500,000원**, 거래내역 5→**시드 3건**(급여·통신요금·카드대금), 백오피스 이체 내역 1→**0건**. 검증용으로 실행했던 김철수 5만원 이체와 수수료 기록이 정리됨.
 
 **남은 것(경미)**: 방문자가 직접 가입해 만든 계정·계좌는 리셋 대상이 아니라 계속 쌓인다. 기능에는 지장 없고, 회원관리 목록이 길어지는 정도.
+
+### 2026-08-26 (계속 6) — 리셋 범위를 방문자 가입 계정·런타임 누적까지 확장
+
+앞 항목에서 "경미한 미해결"로 남겼던 것(방문자 가입 계정이 계속 쌓임)을 사용자 요청으로 처리.
+
+**범위를 정하기 위해 먼저 조사한 것**: 사용자와 연결된 테이블을 스키마에서 전수 확인(`accounts`/`event_entries`/`favorites`/`inquiries`/`security_events`/`transactions`/`transfers`/`users`)하고, 각 테이블을 **어느 시드 스크립트가 만드는지** 대조했다. 결과: `seed_bank`는 users/accounts/transactions만, `seed_support`는 공지·FAQ·문서·특별상품·이벤트·배너, `seed_usage`는 usage_events. 즉 **`favorites`/`inquiries`/`event_entries`/`security_events`/`admin_access_log`/`chat_feedback`은 시드가 전혀 없는 순수 런타임 누적**이다.
+
+**판단**
+- 시드 계정(demo/admin/chulsoo/younghee/minsoo) 외 사용자 → 계좌·거래내역까지 삭제. `SEED_USERNAMES`를 `OTHER_ACCOUNTS`에서 파생시켜 시드 목록이 바뀌면 리셋 기준도 따라오게 했다.
+- `favorites`/`inquiries`/`event_entries`/`security_events` → **공유 계정(demo/admin)에 쌓인 것까지** 비운다. 안 비우면 이미 삭제된 계좌를 가리키는 항목이 화면에 남는다.
+- `admin_access_log` → **비우지 않고 최근 200건만 남긴다.** 감사 로그 성격이라 전부 지우면 백오피스 패널이 비어 보이고, 안 지우면 무한정 늘어난다(로컬에서 이미 2,280행). 양쪽을 피하는 선택.
+- `chat_feedback`/`usage_events` → 손대지 않는다. 백오피스 피드백 집계·이용통계 패널을 채워주는 표시용 데이터이고, 삭제된 계좌를 참조해 화면이 깨지는 성격이 아니다.
+
+**검증**: 로컬에서 방문자 계정+계좌+거래내역+즐겨찾기를 만들어 둔 뒤 리셋 → 사용자 12→5명, 계좌 15→8개, 런타임 4개 테이블 0, 접근로그 2,280→200, **시드 계좌 8개 잔액은 전부 정확히 유지**. pytest 14개 통과. 테스트로 바꾼 로컬 DB는 백업에서 원상복구.
+
+**프로덕션 검증**: 응답에 새 필드(`visitor_users_removed`)가 나오는지로 배포 반영을 판단한 뒤 실행 → Turso에서도 오류 없이 동작(파라미터 IN 절, `DELETE ... WHERE id NOT IN (SELECT ... ORDER BY ... LIMIT ?)` 포함). 보안이력 20건 삭제, 접근로그 248건 정리. 방문자 가입은 아직 0명이라 삭제 대상 없음.
