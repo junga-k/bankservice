@@ -46,6 +46,10 @@ import llm  # noqa: E402  (OTEL 등록 후 import 해야 계측 적용)
 SECRETS = Path(".streamlit/secrets.toml")
 RESULTS_FILE = Path("batch_test_results.json")
 MAX_WORKERS = 20     # 동시 요청 수 (OpenAI: 500 RPM 기준)
+# 채점(GRADE)이 켜지면 문항당 호출이 답변+채점 2회로 늘어 실질 요청량이 두 배가 된다.
+# 20 그대로 두면 999문항 기준 약 800 RPM 이 나와 429(Rate limit)를 맞는다 —
+# 2026-08-26 실행에서 응답 6건 실패 + 채점 183건 누락이 전부 이 원인이었다.
+GRADE_WORKER_DIVISOR = 2
 MAX_RETRIES = 4      # 429 재시도 횟수
 SYSTEM_PROMPT = "한 문장으로 간결하게 답하세요."
 
@@ -502,9 +506,14 @@ def main():
     ap = argparse.ArgumentParser(description="AI은행원 배치 테스트(응답 성공률·지연 + 정답 채점)")
     ap.add_argument("--no-grade", action="store_true", help="정답 채점 생략(응답 성공률·지연만)")
     ap.add_argument("--limit", type=int, default=0, help="질문 수 제한(빠른 검증용)")
+    ap.add_argument("--workers", type=int, default=0,
+                    help=f"동시 요청 수 직접 지정(기본: 채점 ON 이면 {MAX_WORKERS // GRADE_WORKER_DIVISOR}, OFF 면 {MAX_WORKERS})")
     args = ap.parse_args()
     if args.no_grade:
         GRADE = False
+
+    workers = args.workers if args.workers > 0 else (
+        MAX_WORKERS // GRADE_WORKER_DIVISOR if GRADE else MAX_WORKERS)
 
     provider, model, api_key = _load_provider()
     questions = _make_questions()
@@ -514,14 +523,14 @@ def main():
     print(f"\n{'='*60}")
     print(f"  배치 테스트 시작")
     print(f"  제공자: {provider} / 모델: {model}")
-    print(f"  질문 수: {len(questions)} / 동시 요청: {MAX_WORKERS} / 채점: {'ON' if GRADE else 'OFF'}")
+    print(f"  질문 수: {len(questions)} / 동시 요청: {workers} / 채점: {'ON' if GRADE else 'OFF'}")
     print(f"  Phoenix: http://localhost:6006  (프로젝트: batch-test-1000)")
     print(f"{'='*60}\n")
 
     started_at = datetime.now().isoformat()
     results: list[dict] = [None] * len(questions)
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(run_one, i, item, provider, model, api_key): i
             for i, item in enumerate(questions)

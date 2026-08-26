@@ -5,6 +5,9 @@
 pytest
 pytest-cov
 
+# 배치 테스트 진행률 표시 (batch_test.py)
+tqdm
+
 # 트레이싱(Phoenix) — tracing.py / batch_test.py 에서만 사용, 전부 lazy import
 arize-phoenix
 arize-phoenix-otel

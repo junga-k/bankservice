@@ -3,90 +3,90 @@
     "total": 999,
     "success": 999,
     "success_rate": 100.0,
-    "graded": 0,
-    "correct": 0,
-    "accuracy": null,
-    "avg_latency_ms": 1234,
+    "graded": 987,
+    "correct": 950,
+    "accuracy": 96.3,
+    "avg_latency_ms": 1038,
     "provider": "OpenAI",
     "model": "gpt-4o-mini",
-    "tested_at": "2026-06-30T10:05:02.040063",
+    "tested_at": "2026-08-26T22:30:50.672919",
     "categories": [
       {
-        "name": "상식",
+        "name": "논리",
         "count": 100,
-        "graded": 0,
-        "correct": 0,
-        "accuracy": null
+        "graded": 97,
+        "correct": 82,
+        "accuracy": 84.5
       },
       {
         "name": "세계지리",
         "count": 100,
-        "graded": 0,
-        "correct": 0,
-        "accuracy": null
-      },
-      {
-        "name": "수학",
-        "count": 100,
-        "graded": 0,
-        "correct": 0,
-        "accuracy": null
+        "graded": 99,
+        "correct": 96,
+        "accuracy": 97.0
       },
       {
         "name": "영어",
         "count": 100,
-        "graded": 0,
-        "correct": 0,
-        "accuracy": null
-      },
-      {
-        "name": "문화예술",
-        "count": 100,
-        "graded": 0,
-        "correct": 0,
-        "accuracy": null
-      },
-      {
-        "name": "한국역사",
-        "count": 100,
-        "graded": 0,
-        "correct": 0,
-        "accuracy": null
-      },
-      {
-        "name": "논리",
-        "count": 100,
-        "graded": 0,
-        "correct": 0,
-        "accuracy": null
+        "graded": 97,
+        "correct": 97,
+        "accuracy": 100.0
       },
       {
         "name": "경제",
         "count": 100,
-        "graded": 0,
-        "correct": 0,
-        "accuracy": null
+        "graded": 98,
+        "correct": 97,
+        "accuracy": 99.0
+      },
+      {
+        "name": "상식",
+        "count": 100,
+        "graded": 99,
+        "correct": 93,
+        "accuracy": 93.9
       },
       {
         "name": "파이썬코딩",
         "count": 100,
-        "graded": 0,
-        "correct": 0,
-        "accuracy": null
+        "graded": 100,
+        "correct": 100,
+        "accuracy": 100.0
+      },
+      {
+        "name": "문화예술",
+        "count": 100,
+        "graded": 100,
+        "correct": 93,
+        "accuracy": 93.0
+      },
+      {
+        "name": "수학",
+        "count": 100,
+        "graded": 100,
+        "correct": 100,
+        "accuracy": 100.0
+      },
+      {
+        "name": "한국역사",
+        "count": 100,
+        "graded": 99,
+        "correct": 94,
+        "accuracy": 94.9
       },
       {
         "name": "과학",
         "count": 99,
-        "graded": 0,
-        "correct": 0,
-        "accuracy": null
+        "graded": 98,
+        "correct": 98,
+        "accuracy": 100.0
       }
     ]
   },
   "recent_questions": [
-    "12개월 만기 적금 상품 중 가장 이자가 높은 순으로 …",
-    "6개월 만기 예금상품 보여줘",
-    "내 카카오뱅크의 잔액을 알려줘"
+    "우리은행 1002-333-444555 김철수에게 10만…",
+    "요즘 사람들이 맍이 보는 전세대출이 뭐야?",
+    "적금 상품 비교해줘"
   ],
   "conversation_count": 3
 }
