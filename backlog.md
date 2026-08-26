@@ -4,7 +4,7 @@
 
 ## 채용용 README 작성 + AI은행원 라이브 배포 완성 (2026-08-26, 완료)
 
-상세: `session-log.md` `### 2026-08-26 — 채용용 README 작성 + 그 과정에서 AI은행원 라이브 배포 완성(버그 4건 발견·수정)`.
+상세: `session-log.md`의 `### 2026-08-26 — 채용용 README 작성 + 그 과정에서 AI은행원 라이브 배포 완성(버그 4건 발견·수정)`, `### 2026-08-26 (계속) — 기획서 9절 정정 → 배치 테스트 채점 포함 재실행 (429 원인 발견·수정)`.
 
 - [x] `README.md` 신규 — 서비스 소개(무엇/왜/누구를 위해) → 라이브 데모+계정 → 스크린샷 → AI은행원 동작 → 아키텍처(mermaid) → 기술적 의사결정 → 로컬 실행 → 알려진 한계. GitHub 렌더링 확인 완료.
 - [x] `docs/screenshots/` 10장 + `docs/demo-ai-banker.gif` — 전부 라이브에서 촬영.
@@ -13,7 +13,10 @@
 - [x] 공개 데모 보호 — `DEMO_READONLY`(백오피스 쓰기 403) / `DEMO_PUBLIC`(세션 30턴·일일 300턴·직접 접근 차단).
 - [x] 버그 4건 수정: 원격 타임아웃(5초→30초), `embedded=1` 리다이렉트 루프, import 시점 환경변수 읽기, 홈 3D 히어로 0×0.
 - [x] `requirements.txt`/`requirements-dev.txt` 분리 — 누락된 `requests` 추가, 미사용 pillow/pandas/matplotlib/jupyter 제거.
-- [ ] **미완**: 배치 테스트를 채점 포함으로 재실행해 README에 실제 정확도 수치 넣기. 현재 `batch_test_results.json`은 `--no-grade` 실행분이라 `graded: 0`이고, `docs/기획서.md` 9절의 "1,000문항 자동채점" 서술과 어긋난다. 재실행 시 999문항 × 2회 호출(응답+채점)이라 대략 2~3천원 예상. 기획서 문구도 함께 정정 필요.
+- [x] `docs/기획서.md` 9절 정정 — "1,000문항을 AI가 채점해 자동 평가했다"가 저장 데이터(`graded: 0`)와 어긋나던 것. 캐시 히트율·A/B 서술은 대조 결과 사실이라 유지, 사용자 피드백 집계 항목 신규 추가.
+- [x] **배치 테스트 채점 포함 재실행 완료** — 999문항 응답 성공률 100%, **정확도 96.3%(950/987)**, 평균 1,038ms / p95 1,881ms. 카테고리별 최저는 논리 84.5%. README·기획서·`site/data/stats.json` 전부 반영.
+- [x] `batch_test.py` 429 버그 수정 — `MAX_WORKERS=20`이 "500 RPM 기준"인데 채점을 켜면 호출이 2배가 돼 약 800 RPM으로 레이트 리밋에 걸렸다(1차 실행에서 응답 6건 실패 + 채점 183건 누락). `GRADE_WORKER_DIVISOR`(채점 ON이면 동시 수 절반) + `--workers` 옵션 추가.
+- [x] `requirements-dev.txt`에 `tqdm` 추가 — `batch_test.py`가 import하는데 requirements 분리 때 누락돼 있었다.
 - [ ] **미확인**: Streamlit Community Cloud 12시간 절전 대응. 방문 시 자동 기상하지만 첫 접속에 30초쯤 걸린다(README에 고지함). GitHub Actions cron으로 주기적 ping을 넣는 방안은 **HTTP GET이 Streamlit의 트래픽 판정에 잡히는지 검증하지 않아** 보류.
 - [ ] **별도 인프라 결정 필요(기존 이월)**: Kafka 상시 호스팅 미해결 → 배포본은 `KAFKA_DISABLED` 동기 폴백. Elasticsearch·Redis 미배포 → 라이브에서 RAG·시맨틱 캐시 비활성.
 
