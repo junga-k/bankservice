@@ -184,5 +184,68 @@ def _ensure_admin(conn, now: float) -> None:
         print(f"'{ADMIN_USER}' 관리자 계좌 {len(ADMIN_ACCOUNTS)}개 시드 완료")
 
 
+# ── 공개 데모 잔액 리셋 ──────────────────────────────────────────────
+# 배포된 데모는 계정을 여럿이 공유하므로, 방문자가 이체할 때마다 잔액이 줄어들고
+# 언젠가 잔액 부족으로 이체가 실패한다. 아래 함수가 시드 직후 상태로 되돌린다.
+# 위의 시드 상수(MY_ACCOUNTS / ADMIN_ACCOUNTS / OTHER_ACCOUNTS / *_PAST_TX)를 그대로
+# 재사용하므로 시드 값을 바꾸면 리셋 기준도 자동으로 따라온다(값이 두 군데로 갈리지 않음).
+
+def _seeded_accounts():
+    """(계좌번호, 시드 잔액, 시드 거래내역) 목록."""
+    for account_no, _bank, balance in MY_ACCOUNTS:
+        yield account_no, balance, PAST_TX.get(account_no, [])
+    for account_no, _bank, balance in ADMIN_ACCOUNTS:
+        yield account_no, balance, ADMIN_PAST_TX.get(account_no, [])
+    for _username, _holder, account_no, _bank, balance in OTHER_ACCOUNTS:
+        yield account_no, balance, []
+
+
+def reset_demo_data() -> dict:
+    """시드된 계좌의 잔액·거래내역을 원래대로 되돌리고 이체 기록을 비운다.
+
+    거래내역을 지우고 다시 넣는 이유: 잔액만 되돌리면 기존 거래내역 행의
+    balance_after(거래 후 잔액)가 실제 잔액과 어긋나 화면에 이상하게 보인다.
+    """
+    now = time.time()
+    restored, tx_removed = [], 0
+
+    with db.get_conn() as conn:
+        for account_no, balance, past_tx in _seeded_accounts():
+            row = conn.execute(
+                "SELECT id, balance FROM accounts WHERE account_no = ?", (account_no,)
+            ).fetchone()
+            if row is None:
+                continue   # 아직 시드 전이면 건너뜀
+            acc_id, before = row["id"], row["balance"]
+
+            # rowcount 는 libsql 에서 신뢰할 수 없어 COUNT 로 센다
+            tx_removed += conn.execute(
+                "SELECT COUNT(*) AS n FROM transactions WHERE account_id = ?", (acc_id,)
+            ).fetchone()["n"]
+            conn.execute("DELETE FROM transactions WHERE account_id = ?", (acc_id,))
+
+            for typ, amount, counterparty, days_ago in past_tx:
+                conn.execute(
+                    "INSERT INTO transactions(account_id, type, amount, counterparty, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (acc_id, typ, amount, counterparty, now - days_ago * 86400),
+                )
+            conn.execute("UPDATE accounts SET balance = ? WHERE id = ?", (balance, acc_id))
+            if before != balance:
+                restored.append({"account_no": account_no, "before": before, "after": balance})
+
+        transfers_removed = conn.execute(
+            "SELECT COUNT(*) AS n FROM transfers"
+        ).fetchone()["n"]
+        conn.execute("DELETE FROM transfers")
+
+    return {
+        "ok": True,
+        "accounts_changed": restored,
+        "transactions_reseeded": tx_removed,
+        "transfers_removed": transfers_removed,
+    }
+
+
 if __name__ == "__main__":
     main()

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import csv
+import hmac
 import io
 import json
 import os
@@ -16,7 +17,7 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -1560,6 +1561,32 @@ def env_config_js():
         content=f"window.CHAT_BASE_URL = {json.dumps(chat_base_url)};",
         media_type="application/javascript",
     )
+
+
+# ── 공개 데모 데이터 리셋 ────────────────────────────────────────────
+# 데모는 계정을 여럿이 공유해서, 방문자가 이체할수록 잔액이 줄고 결국 잔액 부족으로
+# 이체가 실패한다. GitHub Actions 가 매일 이 엔드포인트를 호출해 시드 직후 상태로
+# 되돌린다. /api/admin/* 이 아니라 /api/maintenance/* 라서 DEMO_READONLY 가드에
+# 걸리지 않는다(가드는 백오피스 쓰기만 막는 것이 목적).
+#
+# 보호: DEMO_RESET_TOKEN 환경변수와 X-Reset-Token 헤더가 일치해야 한다.
+# 환경변수가 없으면 기능 자체를 비활성화한다(로컬에서는 그냥 seed_bank.py 를 쓰면 된다).
+@app.post("/api/maintenance/reset-demo")
+def reset_demo_data(x_reset_token: str = Header(default="")):
+    # 환경변수는 호출 시점에 읽는다 — 모듈 로드 시점에 읽어두면 배포 환경에서
+    # 값을 나중에 넣었을 때 반영되지 않는다.
+    expected = os.environ.get("DEMO_RESET_TOKEN", "").strip()
+    if not expected:
+        raise HTTPException(404, "Not Found")          # 미설정 = 기능 없음
+    if not hmac.compare_digest(x_reset_token.strip(), expected):
+        raise HTTPException(403, "리셋 토큰이 올바르지 않습니다.")
+
+    import seed_bank                                    # 시드 값의 단일 출처
+    result = seed_bank.reset_demo_data()
+    print(f"[reset-demo] 계좌 {len(result['accounts_changed'])}개 복구 · "
+          f"거래내역 {result['transactions_reseeded']}건 재시드 · "
+          f"이체 {result['transfers_removed']}건 삭제")
+    return result
 
 
 # ── 정적 사이트 서빙 (마지막에 마운트: /api 라우트가 우선) ───────────

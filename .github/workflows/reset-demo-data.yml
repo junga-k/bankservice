@@ -1,0 +1,48 @@
+# 공개 데모 계정의 잔액을 매일 시드 직후 상태로 되돌린다.
+#
+# 데모는 demo/admin 계정을 방문자 여럿이 공유하므로, 이체할 때마다 잔액이 줄고
+# 시드된 외부 수취인(김철수 등)에게 보낸 돈은 실제로 빠져나간다. 그대로 두면
+# 언젠가 잔액 부족으로 이체가 실패해 데모의 핵심 기능을 보여줄 수 없게 된다.
+#
+# 리셋 내용은 backend 의 /api/maintenance/reset-demo → seed_bank.reset_demo_data():
+# 시드 계좌의 잔액·거래내역 복구 + 이체 기록 삭제. 방문자가 직접 가입해 만든 계좌는
+# 건드리지 않는다.
+#
+# 사전 설정 (둘 다 필요):
+#   · Vercel  프로젝트 환경변수  DEMO_RESET_TOKEN
+#   · GitHub  저장소 시크릿      DEMO_RESET_TOKEN   (같은 값)
+name: Reset demo data
+
+on:
+  schedule:
+    - cron: "0 18 * * *"   # 매일 UTC 18:00 = KST 03:00 (트래픽이 가장 적은 시간)
+  workflow_dispatch:
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call reset endpoint
+        env:
+          RESET_TOKEN: ${{ secrets.DEMO_RESET_TOKEN }}
+          API_URL: https://bankservice-six.vercel.app/api/maintenance/reset-demo
+        run: |
+          if [ -z "$RESET_TOKEN" ]; then
+            echo "::error::DEMO_RESET_TOKEN 저장소 시크릿이 설정되지 않았습니다."
+            exit 1
+          fi
+
+          code=$(curl -sS -o response.json -w '%{http_code}' -X POST \
+                   -H "X-Reset-Token: $RESET_TOKEN" \
+                   --max-time 120 "$API_URL")
+
+          echo "HTTP $code"
+          cat response.json; echo
+
+          case "$code" in
+            200) echo "리셋 완료" ;;
+            404) echo "::error::Vercel 에 DEMO_RESET_TOKEN 환경변수가 없어 기능이 비활성 상태입니다."; exit 1 ;;
+            403) echo "::error::토큰 불일치 — Vercel 환경변수와 GitHub 시크릿 값이 같은지 확인하세요."; exit 1 ;;
+            *)   echo "::error::예상치 못한 응답($code)"; exit 1 ;;
+          esac
