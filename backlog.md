@@ -17,8 +17,10 @@
 - [x] **배치 테스트 채점 포함 재실행 완료** — 999문항 응답 성공률 100%, **정확도 96.3%(950/987)**, 평균 1,038ms / p95 1,881ms. 카테고리별 최저는 논리 84.5%. README·기획서·`site/data/stats.json` 전부 반영.
 - [x] `batch_test.py` 429 버그 수정 — `MAX_WORKERS=20`이 "500 RPM 기준"인데 채점을 켜면 호출이 2배가 돼 약 800 RPM으로 레이트 리밋에 걸렸다(1차 실행에서 응답 6건 실패 + 채점 183건 누락). `GRADE_WORKER_DIVISOR`(채점 ON이면 동시 수 절반) + `--workers` 옵션 추가.
 - [x] `requirements-dev.txt`에 `tqdm` 추가 — `batch_test.py`가 import하는데 requirements 분리 때 누락돼 있었다.
-- [ ] **보류(적용 안 됨)**: Streamlit 12시간 절전 방지 워크플로. 앞서 미검증으로 남겨뒀던 "HTTP GET이 트래픽으로 잡히는가"는 **아니오로 결론** — `curl`은 200을 받아도 앱이 계속 잔다. Streamlit은 websocket 세션이 맺어져야 트래픽으로 인정하므로 **Playwright로 실제 브라우저를 띄우고 렌더링까지 확인**해야 한다. 그 방식으로 `.github/workflows/keep-streamlit-awake.yml`을 작성했으나, **GitHub 토큰에 `workflow` 스코프가 없어 푸시가 거부**되어 적용하지 못하고 커밋을 되돌렸다. 재개하려면 토큰에 `workflow` 스코프를 추가하거나 GitHub 웹에서 파일을 직접 생성하면 된다. 미적용 상태에서도 방문 시 자동 기상하며, README에 30초 기동 안내가 있다.
-  - 참고: 무료 티어 앱을 인위적 트래픽으로 계속 깨워두는 것은 Streamlit이 절전을 두는 취지(공용 자원 절약)와 다소 상충한다 — 적용 여부는 그 점을 감안해 판단할 것.
+- [x] **Streamlit 12시간 절전 방지 워크플로 적용 완료** (`.github/workflows/keep-streamlit-awake.yml`, 6시간 간격). 수동 실행으로 성공 검증(run #2, 39초).
+  - 미검증으로 남겨뒀던 "HTTP GET이 트래픽으로 잡히는가"는 **아니오로 결론** — `curl`은 200을 받아도 앱이 계속 잔다. websocket 세션이 맺어져야 트래픽으로 인정되므로 Playwright로 실제 브라우저를 띄워야 한다.
+  - 1차 실행은 실패했다: Streamlit Cloud는 앱을 **항상 `iframe[title="streamlitApp"]` 중첩 iframe**에 넣어 서빙해서(`?embed=true` 무관), page 레벨 `wait_for_selector`로는 마커 문구를 못 찾는다. 모든 프레임을 훑도록 고쳐 해결.
+  - 토큰: 기존 classic PAT(`mind`)에 `workflow` 스코프를 추가해 푸시 가능해졌다. **만료 2026-10-23** — 그 후엔 푸시가 막히니 갱신 필요.
 
 ## Kafka·Elasticsearch·Redis 상시 호스팅 — 하지 않기로 종결 (2026-08-26)
 
