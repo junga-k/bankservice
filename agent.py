@@ -12,11 +12,18 @@ OpenAI function-calling으로 백엔드(:8000) 은행 API를 도구로 호출해
 from __future__ import annotations
 
 import json
+import os
 
 import requests
 
-BACKEND_URL = "http://localhost:8000"
-_TIMEOUT = 5
+# 배포 환경(Streamlit Cloud)에서는 원격 백엔드를 가리켜야 하므로 환경변수로 덮어쓸 수 있게 한다.
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
+_IS_LOCAL_BACKEND = BACKEND_URL.startswith(("http://localhost", "http://127.0.0.1"))
+
+# 원격 백엔드(Vercel + Turso)는 콜드 스타트와 DB 연결 비용 때문에 로컬보다 훨씬 느리다 —
+# 배포 실측상 이체 계열은 웜 상태에서도 ~9초가 걸린다. 로컬 기준 5초를 그대로 쓰면
+# 이체 제안(propose_transfer)이 반드시 타임아웃나므로 원격일 때는 기본값을 늘린다.
+_TIMEOUT = float(os.environ.get("BACKEND_TIMEOUT", "5" if _IS_LOCAL_BACKEND else "30"))
 
 SYSTEM_PROMPT = (
     "당신은 매치뱅크의 은행업무 AI 상담원입니다. 사용자의 계좌 조회, 거래내역, 이체, "

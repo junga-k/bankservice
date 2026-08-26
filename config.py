@@ -1,10 +1,15 @@
 """설정 읽기/쓰기 모듈.
 
 config.json 에 저장하며, 키가 없으면 DEFAULTS 값을 사용한다.
+
+config.json 은 .gitignore 대상이라 배포본(Vercel/Streamlit Cloud)에는 존재하지 않는다.
+그래서 API 키는 파일에 값이 없을 때 환경변수(_ENV_FALLBACK)에서 읽는다 — 파일 값이 항상
+우선이므로 로컬 동작은 그대로다.
 """
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 
 _CONFIG_PATH = pathlib.Path(__file__).parent / "config.json"
@@ -31,11 +36,22 @@ DEFAULTS: dict = {
 }
 
 
+# 파일에 값이 없을 때만 참조할 환경변수 (배포 환경용)
+_ENV_FALLBACK = {
+    "fss_api_key":    "FSS_API_KEY",
+    "openai_api_key": "OPENAI_API_KEY",
+}
+
+
 def load() -> dict:
+    cfg = dict(DEFAULTS)
     if _CONFIG_PATH.exists():
         with open(_CONFIG_PATH, encoding="utf-8") as f:
-            return {**DEFAULTS, **json.load(f)}
-    return dict(DEFAULTS)
+            cfg.update(json.load(f))
+    for key, env in _ENV_FALLBACK.items():
+        if not cfg.get(key):
+            cfg[key] = os.environ.get(env, "")
+    return cfg
 
 
 def save(cfg: dict) -> None:

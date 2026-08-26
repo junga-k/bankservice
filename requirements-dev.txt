@@ -1,0 +1,22 @@
+# 개발·분석 전용 — 서비스 실행에는 필요 없다.
+#   .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+
+# 테스트
+pytest
+pytest-cov
+
+# 트레이싱(Phoenix) — tracing.py / batch_test.py 에서만 사용, 전부 lazy import
+arize-phoenix
+arize-phoenix-otel
+arize-phoenix-client
+openinference-instrumentation-openai
+openinference-instrumentation-langchain
+openinference-semantic-conventions
+
+# 품질 배치 결과 분석 · 노트북 리포트
+jupyter
+matplotlib
+pandas
+
+# 비활성 제공자(llm._stream_gemini) — 현재 PROVIDERS 에서 빠져 있다
+google-genai

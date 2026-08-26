@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 import io
+import os
 import json as _json
 import time
 import re as _re
@@ -746,8 +747,13 @@ if "sel_provider" not in st.session_state:
         st.session_state.selected_model = _dm if _dm in _models else _models[0]
 
 
-# 사이트 백엔드(이용 통계) 주소
-_BACKEND_URL = "http://localhost:8000"
+# 사이트 백엔드(이용 통계) 주소 — 배포 시 BACKEND_URL 환경변수로 원격 주소를 지정한다.
+_BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
+
+# 원격 백엔드(Vercel + Turso)는 콜드 스타트·DB 연결 비용 때문에 로컬보다 훨씬 느리다.
+# 로컬 기준 3초를 그대로 쓰면 이체 확인 카드의 출금계좌 목록이 비는 등 조용히 실패한다.
+_IS_LOCAL_BACKEND = _BACKEND_URL.startswith(("http://localhost", "http://127.0.0.1"))
+_BACKEND_TIMEOUT = float(os.environ.get("BACKEND_TIMEOUT", "3" if _IS_LOCAL_BACKEND else "20"))
 
 # 은행 에이전트 인증 토큰: 사이트 iframe(?token=)이 있으면 그걸 단일 기준으로 매 실행 동기화
 # (로그인=토큰, 로그아웃=빈 토큰). token 파라미터가 아예 없을 때(:8501 직접 접속)만 사이드바 로그인 사용.
@@ -758,11 +764,66 @@ elif "auth_token" not in st.session_state:
     st.session_state.auth_token = None
 
 
+# ── 공개 데모 남용 방지 ───────────────────────────────────────────────
+# 배포본 챗봇 URL은 누구나 열 수 있어서, 자동화로 반복 호출하면 OpenAI 비용이 나가고 그 달
+# 데모가 죽는다. 정상 방문자는 체감하지 못할 선에서 상한만 둔다(세션 30턴 / 앱 전체 하루
+# 300턴 — 일 단위라 소진돼도 다음 날 자동 복구). 로컬 개발에는 DEMO_PUBLIC 이 없으므로
+# 아무 제한이 걸리지 않는다.
+_DEMO_PUBLIC = os.environ.get("DEMO_PUBLIC", "").strip().lower() in ("1", "true", "yes")
+_SITE_URL = os.environ.get("SITE_URL", "https://bankservice-six.vercel.app")
+_REPO_URL = "https://github.com/junga-k/bankservice"
+_SESSION_TURN_LIMIT = 30
+_DAILY_TURN_LIMIT = 300
+
+
+@st.cache_resource
+def _demo_daily_counter() -> dict:
+    """앱 인스턴스 전역 카운터(모든 세션이 공유). 날짜가 바뀌면 리셋한다."""
+    return {"date": "", "count": 0}
+
+
+def _demo_quota_check() -> tuple[bool, str]:
+    """(허용 여부, 소진 시 안내문)."""
+    if not _DEMO_PUBLIC:
+        return True, ""
+    if st.session_state.get("_demo_turns", 0) >= _SESSION_TURN_LIMIT:
+        return False, (f"이 세션의 체험 한도({_SESSION_TURN_LIMIT}턴)를 모두 사용했습니다. "
+                       f"페이지를 새로고침하면 다시 이용할 수 있습니다. 직접 실행해보시려면 "
+                       f"[GitHub README]({_REPO_URL})를 참고하세요.")
+    counter = _demo_daily_counter()
+    if counter["date"] == time.strftime("%Y-%m-%d") and counter["count"] >= _DAILY_TURN_LIMIT:
+        return False, ("오늘의 데모 체험 한도가 모두 사용되었습니다. 내일 다시 이용하시거나, "
+                       f"직접 실행해보시려면 [GitHub README]({_REPO_URL})를 참고하세요.")
+    return True, ""
+
+
+def _demo_quota_consume() -> None:
+    if not _DEMO_PUBLIC:
+        return
+    st.session_state["_demo_turns"] = st.session_state.get("_demo_turns", 0) + 1
+    counter = _demo_daily_counter()
+    today = time.strftime("%Y-%m-%d")
+    if counter["date"] != today:
+        counter["date"], counter["count"] = today, 0
+    counter["count"] += 1
+
+
+# 공개 배포본에서 챗봇 URL에 직접 접근한 경우 — 사이트를 통해서만 이용하도록 안내한다.
+# (로그인 없이 일반 LLM 대화만 반복하는 남용 경로를 막는 목적)
+if _DEMO_PUBLIC and not _SITE_EMBEDDED:
+    st.info(
+        "**AI 은행원은 매치뱅크 사이트 안에서 이용할 수 있습니다.**\n\n"
+        f"[매치뱅크 바로가기]({_SITE_URL}) → 로그인(`demo` / `demo1234`) → 상단 **AI은행원** 탭\n\n"
+        f"직접 실행해보시려면 [GitHub README]({_REPO_URL})의 로컬 실행 안내를 참고하세요."
+    )
+    st.stop()
+
+
 def _fetch_user_name(token: str) -> str | None:
     """토큰으로 로그인 사용자 이름 조회(홈 인사말용)."""
     try:
         r = requests.get(f"{_BACKEND_URL}/api/me",
-                         headers={"Authorization": f"Bearer {token}"}, timeout=3)
+                         headers={"Authorization": f"Bearer {token}"}, timeout=_BACKEND_TIMEOUT)
         if r.ok:
             return (r.json().get("name") or "").strip() or None
     except Exception:
@@ -1068,7 +1129,7 @@ def _submit_chat_feedback(conv: dict, msg: dict, msg_index: int, rating: str,
             "comment": comment,
             "question": question,
             "answer": msg["content"],
-        }, timeout=3)
+        }, timeout=_BACKEND_TIMEOUT)
     except Exception:
         pass  # 백엔드가 꺼져 있어도 채팅 자체는 계속 동작해야 함
     msg["feedback"] = {"rating": rating, "reasons": reasons or [], "comment": comment}
@@ -1155,7 +1216,7 @@ def _won_kor(n: int) -> str:
 def _my_accounts(token: str) -> list[dict]:
     try:
         r = requests.get(f"{_BACKEND_URL}/api/accounts",
-                         headers={"Authorization": f"Bearer {token}"}, timeout=3)
+                         headers={"Authorization": f"Bearer {token}"}, timeout=_BACKEND_TIMEOUT)
         if r.ok:
             return r.json().get("accounts", [])
     except Exception:
@@ -1173,7 +1234,7 @@ def _poll_transfer_status(transfer_id: int, token: str,
     while time.time() < deadline:
         try:
             r = requests.get(f"{_BACKEND_URL}/api/transfers/{transfer_id}",
-                             headers={"Authorization": f"Bearer {token}"}, timeout=3)
+                             headers={"Authorization": f"Bearer {token}"}, timeout=_BACKEND_TIMEOUT)
             if r.ok:
                 tr = r.json()
                 if tr.get("status") != "pending":
@@ -1481,6 +1542,11 @@ prompt = (_chat_input.text if _chat_input else None) or _retry_prompt or _chip_p
 uploaded_files = _chat_input.files if _chat_input else []
 
 if prompt:
+    _quota_ok, _quota_msg = _demo_quota_check()
+    if not _quota_ok:
+        st.warning(_quota_msg)
+        st.stop()
+    _demo_quota_consume()
     st.session_state.pop("_show_txn_link", None)  # 새 메시지 입력 시 이체내역 링크 정리
     if _chat_input or _chip_prompt:
         # _retry_prompt는 conv["messages"]에 이미 있는 메시지를 재사용하는 것뿐이라 여기서

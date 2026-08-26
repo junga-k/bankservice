@@ -29,3 +29,6 @@ site/img/banners/*
 시스템구성도.pptx
 .vercel
 .env*
+
+# 리디자인 작업 중 루트에 쌓인 스크린샷 — README용은 docs/screenshots/ 로 옮겨 커밋한다
+/*.png

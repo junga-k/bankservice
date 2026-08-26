@@ -1,30 +1,26 @@
-streamlit
+# 런타임 의존성 — 백엔드(Vercel)와 챗봇(Streamlit Cloud)이 이 파일 하나를 함께 쓴다.
+# 개발·분석 전용 패키지는 requirements-dev.txt 로 분리했다.
+
+# 백엔드 (FastAPI + 정적 사이트 서빙)
 fastapi
-python-multipart
 uvicorn
-libsql
+python-multipart
 bcrypt
 PyJWT
-kafka-python
-google-genai
-chromadb
-elasticsearch>=8.0.0
+libsql            # Turso(libSQL) 배포용 — 로컬은 표준 sqlite3 사용
+
+# 챗봇 / AI 에이전트
+streamlit
 openai
-ddgs
-pypdf
-pillow
-arize-phoenix
-arize-phoenix-otel
-arize-phoenix-client
-openinference-instrumentation-openai
-openinference-instrumentation-langchain
-openinference-semantic-conventions
 langgraph
 langchain-openai
 langchain-core
-redis
-jupyter
-pytest
-pytest-cov
-matplotlib
-pandas
+requests
+pypdf             # 첨부 PDF 텍스트 추출
+ddgs              # 웹 검색(선택 기능)
+
+# 선택 인프라 — 없으면 해당 기능만 비활성화된다(전부 lazy import + try/except)
+kafka-python      # 이체 이벤트 큐
+elasticsearch>=8.0.0   # RAG 색인
+redis             # 시맨틱 캐시 L1
+chromadb          # 시맨틱 캐시 L2

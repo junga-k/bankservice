@@ -18,6 +18,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -40,6 +41,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── 읽기전용 데모 모드 ────────────────────────────────────────────────
+# 공개 배포본은 README에 admin 계정을 공개하므로, 누구나 백오피스에 로그인해 공지·FAQ·배너
+# 같은 데모 데이터를 지울 수 있다. 그러면 다음 방문자가 빈 화면을 보게 되므로, 프로덕션에서만
+# DEMO_READONLY=1 로 /api/admin/* 의 쓰기 요청을 막는다(조회는 전부 허용 — 백오피스를 그대로
+# 둘러볼 수 있어야 데모의 의미가 있다). 로컬은 환경변수가 없으므로 아무 제한이 없다.
+DEMO_READONLY = os.environ.get("DEMO_READONLY", "").strip().lower() in ("1", "true", "yes")
+
+# 저장하지 않는 실험 기능이라 읽기전용 모드에서도 허용한다(프롬프트 A/B 비교).
+_READONLY_EXEMPT_PATHS = {"/api/admin/prompt-ab-test"}
+
+
+@app.middleware("http")
+async def _demo_readonly_guard(request, call_next):
+    if (DEMO_READONLY
+            and request.method not in ("GET", "HEAD", "OPTIONS")
+            and request.url.path.startswith("/api/admin/")
+            and request.url.path not in _READONLY_EXEMPT_PATHS):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "공개 데모 환경에서는 백오피스 데이터를 변경할 수 없습니다. "
+                               "직접 실행해보시려면 README의 로컬 실행 안내를 참고하세요."},
+        )
+    return await call_next(request)
 
 
 @app.middleware("http")

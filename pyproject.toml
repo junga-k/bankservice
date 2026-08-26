@@ -3,36 +3,27 @@ name = "bankservice"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "streamlit",
+    # 백엔드
     "fastapi",
-    "python-multipart",
     "uvicorn",
-    "libsql",
+    "python-multipart",
     "bcrypt",
     "PyJWT",
-    "kafka-python",
-    "google-genai",
-    "chromadb",
-    "elasticsearch>=8.0.0",
+    "libsql",
+    # 챗봇 / AI 에이전트
+    "streamlit",
     "openai",
-    "ddgs",
-    "pypdf",
-    "pillow",
-    "arize-phoenix",
-    "arize-phoenix-otel",
-    "arize-phoenix-client",
-    "openinference-instrumentation-openai",
-    "openinference-instrumentation-langchain",
-    "openinference-semantic-conventions",
     "langgraph",
     "langchain-openai",
     "langchain-core",
+    "requests",
+    "pypdf",
+    "ddgs",
+    # 선택 인프라 (없어도 동작 — 기능만 degrade)
+    "kafka-python",
+    "elasticsearch>=8.0.0",
     "redis",
-    "jupyter",
-    "pytest",
-    "pytest-cov",
-    "matplotlib",
-    "pandas",
+    "chromadb",
 ]
 
 [tool.vercel]
