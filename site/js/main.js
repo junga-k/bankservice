@@ -9,7 +9,10 @@
 // window.CHAT_BASE_URL로 미리 심어둔다(env-config.js가 아직 없거나 값이 비어있으면
 // 로컬 개발 기본값인 localhost:8501로 폴백).
 const CHAT_BASE_URL = window.CHAT_BASE_URL || "http://localhost:8501";
-const CHAT_URL = `${CHAT_BASE_URL}/?embed=true&embedded=1`;
+// embed=true 만 붙인다. 과거에 함께 넘기던 embedded=1 은 app.py 가 읽지도 않는데,
+// Streamlit Community Cloud 에 배포하면 이 파라미터가 뷰어 인증 플로우를 트리거해
+// iframe 안에서 share.streamlit.io 리다이렉트 루프(ERR_TOO_MANY_REDIRECTS)가 난다.
+const CHAT_URL = `${CHAT_BASE_URL}/?embed=true`;
 const SECTIONS = ["home", "account", "products", "chat", "support", "auth", "mypage", "backoffice"];
 
 // .faq-q 아코디언 공통 chevron 아이콘(사이트 아이콘 시스템과 동일한 feather 스타일 SVG, scroll-hint와 같은 path)
