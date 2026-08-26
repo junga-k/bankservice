@@ -97,7 +97,7 @@ Backoffice Figma 재동기화 연속 작업. 상세: `session-log.md` `### 2026-
 
 - [x] `app.py` — `gap: 16px`(최종), 진단 스크립트는 원인 확인 후 제거.
 - [x] `site/js/hero3d.js` — 히어로 3D 애니메이션(Three.js, unpkg CDN)이 조건 미충족/CDN 실패 시 조용히 실패하던 것에 진단 콘솔 로그 추가(`[hero3d] 초기화 조건: {...}`, CDN 실패 시 `console.warn`).
-- [ ] **미해결**: 사용자가 실제 브라우저 콘솔에서 `[hero3d]` 로그를 확인해 원인(reduced-motion/WebGL/CDN 차단 등)을 알려주기로 했는데 아직 회신 없음 — 다음에 이어서 확인.
+- [x] **원인 규명·수정 완료(2026-08-26)**: reduced-motion/WebGL/CDN 어느 것도 아니었다. 컨테이너 레이아웃이 잡히기 전에 렌더러가 크기를 계산해 **캔버스가 0×0으로 생성**되던 초기화 레이스(SPA라 스크립트 실행 시점엔 `#home`이 아직 표시 전). `ResizeObserver`로 크기 확정을 기다리도록 수정(커밋 `61e327b`).
 
 ## AI은행원 상품 추천 요청이 항상 타임아웃 나는 버그 (2026-08-10, 완료)
 
@@ -151,13 +151,13 @@ Figma 로고 아이콘(`site/img/logo-mark.svg`)만 있고 "매치뱅크" 워드
 
 ## Vercel/Turso 마이그레이션 후속 — 별도 인프라 결정 필요 (2026-07-31 추가, 우선순위 없음, 상세: `vercel-deploy-progress.md`)
 
-- [ ] **Kafka 브로커 + `transfer_consumer.py` 컨슈머를 상시 호스팅할 곳 마련** — 지금은 `KAFKA_DISABLED=true`로 `/api/transfer`가 Kafka 없이 동기 폴백(`process_transfer()` 직접 호출)으로만 동작. 데이터 정확성은 검증됐지만 원래 설계였던 비동기 처리(빠른 "pending" 응답 + 폴링)는 못 씀.
+- [x] ~~**Kafka 브로커 + `transfer_consumer.py` 컨슈머를 상시 호스팅할 곳 마련**~~ → **2026-08-26 "하지 않기로" 종결** (맨 위 `## Kafka·Elasticsearch·Redis 상시 호스팅` 섹션의 근거 참고). 아래는 당시 서술: — 지금은 `KAFKA_DISABLED=true`로 `/api/transfer`가 Kafka 없이 동기 폴백(`process_transfer()` 직접 호출)으로만 동작. 데이터 정확성은 검증됐지만 원래 설계였던 비동기 처리(빠른 "pending" 응답 + 폴링)는 못 씀.
   - Railway는 2026년 초부로 무료 티어 완전 폐지. Render 무료 티어는 15분 무활동 시 sleep이라 상시 TCP 연결이 필요한 Kafka 브로커엔 부적합. Fly.io도 무료 없어졌고, "상시 켜짐" 설정 시 카드 등록 + 월 ~$2.
   - Vercel은 서버리스라 `transfer_consumer.py`의 `while True` 루프를 못 돌림 — 브로커뿐 아니라 컨슈머가 상시 실행될 곳도 별도로 필요(Fly.io 등 한 곳에 브로커+컨슈머 같이 얹는 방안이 유력).
   - 대안(Confluent Cloud 등 관리형)은 SASL_SSL 인증 코드 추가가 필요하지만 큰 변경은 아님 — 어느 쪽이든 "상시 호스팅할 곳 마련"이 진짜 병목이라 오늘 범위 밖으로 미룸.
 - [ ] **`process_transfer()`의 쓰기 쿼리(UPDATE/INSERT) 배치·병합** — 읽기 쿼리 3개는 LEFT JOIN으로 병합 완료(2026-07-31, `backend/db.py`), 쓰기 5~7개(잔액차감 UPDATE, 거래내역 INSERT ×1~2, 잔액증액 UPDATE, 거래내역 INSERT, 상태갱신 UPDATE)는 서로 다른 행을 건드리는 개별 DML이라 JOIN 불가. libsql이 `executescript()`도 미구현이라 배치 실행도 안 됨 — 스키마 변경(예: 트리거로 잔액 자동갱신) 또는 더 큰 리팩토링이 필요해서 보류.
 - [ ] **리전 지연 완화(Turso/Vercel 리전 조정)** — Vercel 함수 리전(iad1, 미국 동부)과 Turso DB 리전(aws-ap-northeast-1, 아시아) 간 거리로 쿼리 1회당 300~650ms(로컬 실측치의 3~4배) 소요, `/api/transfer` 웜 상태 응답이 JOIN 병합 후에도 ~9초. 근본 해결은 Turso DB를 Vercel 함수와 같은 리전(또는 가까운 리전)으로 옮기거나, Vercel 함수 리전을 Turso 쪽(아시아)으로 맞추는 것 — 어느 쪽이든 기존 데이터/설정 재구성이 필요한 인프라 결정이라 오늘 범위 밖.
-- [ ] **⚠️ AI은행원(RAG 챗봇)이 프로덕션에서 완전히 작동 안 함 — 위 3건보다 영향도 큼, 우선 검토 권장.** `site/js/main.js`의 `CHAT_URL = "http://localhost:8501/..."`가 하드코딩돼 있어, iframe이 방문자 "자기 자신의" localhost:8501을 가리킴 — 실제 방문자 브라우저엔 아무것도 없어서 빈 화면. (2026-07-31 시딩 검증 중 발견: 화면이 정상으로 "보였던" 건 테스트에 쓴 로컬 머신에 우연히 Streamlit이 떠 있어서였고, `lsof -i :8501`로 로컬 프로세스 확인 후 착각임을 확인함 — 실제 방문자 재현 아님.) Vercel 배포(`[tool.vercel] entrypoint = backend.app:app`)엔 애초에 Streamlit이 포함되지 않음 — Kafka와 동일하게 "Streamlit을 상시 호스팅할 곳 마련" + `CHAT_URL`을 환경변수/상대경로로 교체하는 두 가지가 다 필요. `CHAT_BASE_URL` 환경변수 배선 자체는 코드로 완료해 커밋함(`backend/app.py`의 `/js/env-config.js`, 커밋 `5088995`, 2026-08-03). 환경변수 미설정 시 기존과 동일하게 localhost:8501 폴백이라 이 커밋만으로는 프로덕션 동작 변화 없음 — Streamlit 상시 호스팅처 결정(저장소 public 전환 여부 등)만 남음.
+- [x] ~~**⚠️ AI은행원이 프로덕션에서 완전히 작동 안 함**~~ → **2026-08-26 해결.** Streamlit Community Cloud에 배포하고 Vercel `CHAT_BASE_URL`을 연결해 사이트 iframe에서 정상 동작(대화·계좌조회·이체 제안·이체 실행까지 라이브 실측 검증). 과정에서 `embedded=1` 리다이렉트 루프·원격 타임아웃·import 시점 환경변수 3건을 함께 수정. 아래는 당시 서술: `site/js/main.js`의 `CHAT_URL = "http://localhost:8501/..."`가 하드코딩돼 있어, iframe이 방문자 "자기 자신의" localhost:8501을 가리킴 — 실제 방문자 브라우저엔 아무것도 없어서 빈 화면. (2026-07-31 시딩 검증 중 발견: 화면이 정상으로 "보였던" 건 테스트에 쓴 로컬 머신에 우연히 Streamlit이 떠 있어서였고, `lsof -i :8501`로 로컬 프로세스 확인 후 착각임을 확인함 — 실제 방문자 재현 아님.) Vercel 배포(`[tool.vercel] entrypoint = backend.app:app`)엔 애초에 Streamlit이 포함되지 않음 — Kafka와 동일하게 "Streamlit을 상시 호스팅할 곳 마련" + `CHAT_URL`을 환경변수/상대경로로 교체하는 두 가지가 다 필요. `CHAT_BASE_URL` 환경변수 배선 자체는 코드로 완료해 커밋함(`backend/app.py`의 `/js/env-config.js`, 커밋 `5088995`, 2026-08-03). 환경변수 미설정 시 기존과 동일하게 localhost:8501 폴백이라 이 커밋만으로는 프로덕션 동작 변화 없음 — Streamlit 상시 호스팅처 결정(저장소 public 전환 여부 등)만 남음.
 
 ## AI은행원 에이전트 개선 (2026-07-31 추가, 크래시/오답 아님 — 정확도 개선 항목)
 
