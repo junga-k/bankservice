@@ -17,8 +17,16 @@
 - [x] **배치 테스트 채점 포함 재실행 완료** — 999문항 응답 성공률 100%, **정확도 96.3%(950/987)**, 평균 1,038ms / p95 1,881ms. 카테고리별 최저는 논리 84.5%. README·기획서·`site/data/stats.json` 전부 반영.
 - [x] `batch_test.py` 429 버그 수정 — `MAX_WORKERS=20`이 "500 RPM 기준"인데 채점을 켜면 호출이 2배가 돼 약 800 RPM으로 레이트 리밋에 걸렸다(1차 실행에서 응답 6건 실패 + 채점 183건 누락). `GRADE_WORKER_DIVISOR`(채점 ON이면 동시 수 절반) + `--workers` 옵션 추가.
 - [x] `requirements-dev.txt`에 `tqdm` 추가 — `batch_test.py`가 import하는데 requirements 분리 때 누락돼 있었다.
-- [ ] **미확인**: Streamlit Community Cloud 12시간 절전 대응. 방문 시 자동 기상하지만 첫 접속에 30초쯤 걸린다(README에 고지함). GitHub Actions cron으로 주기적 ping을 넣는 방안은 **HTTP GET이 Streamlit의 트래픽 판정에 잡히는지 검증하지 않아** 보류.
-- [ ] **별도 인프라 결정 필요(기존 이월)**: Kafka 상시 호스팅 미해결 → 배포본은 `KAFKA_DISABLED` 동기 폴백. Elasticsearch·Redis 미배포 → 라이브에서 RAG·시맨틱 캐시 비활성.
+- [ ] **보류(적용 안 됨)**: Streamlit 12시간 절전 방지 워크플로. 앞서 미검증으로 남겨뒀던 "HTTP GET이 트래픽으로 잡히는가"는 **아니오로 결론** — `curl`은 200을 받아도 앱이 계속 잔다. Streamlit은 websocket 세션이 맺어져야 트래픽으로 인정하므로 **Playwright로 실제 브라우저를 띄우고 렌더링까지 확인**해야 한다. 그 방식으로 `.github/workflows/keep-streamlit-awake.yml`을 작성했으나, **GitHub 토큰에 `workflow` 스코프가 없어 푸시가 거부**되어 적용하지 못하고 커밋을 되돌렸다. 재개하려면 토큰에 `workflow` 스코프를 추가하거나 GitHub 웹에서 파일을 직접 생성하면 된다. 미적용 상태에서도 방문 시 자동 기상하며, README에 30초 기동 안내가 있다.
+  - 참고: 무료 티어 앱을 인위적 트래픽으로 계속 깨워두는 것은 Streamlit이 절전을 두는 취지(공용 자원 절약)와 다소 상충한다 — 적용 여부는 그 점을 감안해 판단할 것.
+
+## Kafka·Elasticsearch·Redis 상시 호스팅 — 하지 않기로 종결 (2026-08-26)
+
+오래 이월돼 있던 항목. provisioning 전에 **프로덕션에서 해당 코드가 실제로 실행되는지** 확인한 결과, 세 개 모두 호스팅해도 방문자가 볼 수 있는 변화가 없어 **의도적으로 하지 않기로 종결**한다.
+
+- **Elasticsearch(RAG)·Redis/ChromaDB(시맨틱 캐시) → 프로덕션에서 실행되지 않는 경로**. `app.py:1557`이 `agent_enabled`로 분기하는데 RAG·캐시는 `else` 쪽에 있다. 프로덕션은 `DEMO_PUBLIC=1`이 챗봇 직접 접근을 막아 반드시 사이트를 경유하고, 사이트는 로그인해야 iframe을 로드하므로(`main.js:146` `if (logged) ensureChatLoaded()`) **토큰이 항상 존재 → 에이전트 경로만 실행**된다. 에이전트 도구 `get_faqs`/`get_notices`/`get_documents`도 ES가 아니라 백엔드 REST(SQLite)를 호출한다(`agent.py:234-243`). `cache_enabled`도 기본값이 False.
+- **Kafka** → 동기 폴백(`KAFKA_DISABLED`)이 이미 정상 동작한다(2026-08-26 프로덕션에서 실제 이체 실행으로 검증: 잔액 차감 + 거래내역 2건 기록). 게다가 `transfer_consumer.py`는 **상시 실행 프로세스**를 요구하는데 Vercel·Streamlit Cloud 둘 다 제공하지 않아 별도 워커 호스팅이 추가로 필요하다.
+- **되살리려면 코드 변경이 선행돼야 한다** — 에이전트 경로에서도 FAQ·공지 검색을 ES RAG로 태우거나, 상품 추천 응답을 시맨틱 캐시에 태우는 식. 그건 인프라 결정이 아니라 별개 기능 작업이다.
 
 ## AI은행원 "싫어요 이유 선택" UI Figma 반영 + 화면 푸터 제거 (2026-08-21, 완료)
 

@@ -1357,3 +1357,26 @@
 *반영*: `build_stats.py` 재실행 → `site/data/stats.json`에 `accuracy: 96.3` 기록(백오피스 성능관리에서 조회). `site/data/banks.json`도 함께 재생성되며 토스뱅크 URL이 `app.py._BANK_URLS` 기준으로 최신화됨(의도치 않은 변경이 아니라 stale 했던 것). README 테스트 섹션과 기획서 9절을 실제 수치로 교체.
 
 **남은 것**: `backlog.md` 참고 — Streamlit Cloud 12시간 절전 대응(GitHub Actions ping이 트래픽으로 잡히는지 미검증), Kafka·Elasticsearch·Redis 상시 호스팅.
+
+### 2026-08-26 (계속 2) — 남은 미완 2건 처리: 절전 방지 워크플로(보류) + 인프라 호스팅(안 함으로 종결)
+
+**① Streamlit 절전 방지 — 미검증 항목을 검증했고, 결론은 "curl로는 안 된다"**
+
+앞서 "GitHub Actions cron의 HTTP GET이 Streamlit의 트래픽 판정에 잡히는지 모르겠다"며 보류해뒀던 것. 조사 결과 **아니오** — `curl`은 200을 받아도 앱이 계속 잔다. Streamlit은 websocket 세션이 맺어져야 트래픽으로 인정하므로 실제 브라우저가 필요하다. 그래서 Playwright로 앱을 열고 **렌더링 완료까지 확인**하는 워크플로를 작성했다(`DEMO_PUBLIC` 가드 안내 문구를 렌더 마커로 사용 — 이 문구가 보였다는 건 `app.py`를 끝까지 실행했다는 뜻이라 "깨어남"의 확실한 증거).
+
+그런데 **푸시가 거부됐다**: `refusing to allow a Personal Access Token to create or update workflow ... without 'workflow' scope`. 저장된 GitHub 토큰에 `workflow` 스코프가 없어 `.github/workflows/` 파일을 만들 수 없다. 사용자 판단으로 로컬 커밋을 되돌렸고, 워크플로 파일은 적용하지 않았다. 재개하려면 토큰에 `workflow` 스코프를 추가하거나 GitHub 웹에서 직접 파일을 만들면 된다.
+- 별도로 짚어둔 점: 무료 티어 앱을 인위적 트래픽으로 계속 깨워두는 것은 Streamlit이 절전을 두는 취지(공용 자원 절약)와 다소 상충한다. 6시간 간격이면 과하지 않고 널리 쓰이는 방식이지만, 적용 여부는 그 점을 알고 결정하는 게 맞다고 보고 사용자에게 알린 뒤 진행했다.
+
+**② Kafka·Elasticsearch·Redis 호스팅 — provisioning 직전에 코드 경로를 확인해 "안 함"으로 뒤집힘**
+
+Vercel Marketplace 스킬로 provisioning을 시작하려다, 그 전에 **프로덕션에서 이 코드가 실제로 실행되는지**부터 확인했다. 결과가 예상과 달랐다:
+- `app.py:1557`이 `agent_enabled`로 분기하는데 **RAG(`rag.search`)와 시맨틱 캐시(`cache.check`)는 `else` 쪽**에 있다.
+- 프로덕션은 `DEMO_PUBLIC=1`이 챗봇 직접 접근을 막아 반드시 사이트를 경유하고, 사이트는 `main.js:146` `if (logged) ensureChatLoaded()`로 **로그인해야 iframe을 로드**한다 → 토큰이 항상 존재 → `agent_enabled`가 항상 True → **RAG·캐시 분기에 도달하지 않는다.**
+- 에이전트의 고객지원 도구(`get_faqs`/`get_notices`/`get_documents`)도 ES가 아니라 백엔드 REST(SQLite)를 호출한다(`agent.py:234-243`). `cache_enabled`도 config 기본값이 False.
+- Kafka는 동기 폴백이 이미 검증됐고(실제 이체 실행 확인), 컨슈머가 상시 실행 프로세스를 요구하는데 Vercel·Streamlit Cloud 둘 다 제공하지 않아 워커 호스팅이 추가로 필요하다.
+
+→ 셋 다 **호스팅해도 방문자가 볼 수 있는 변화가 0**이고 비용·구성요소만 늘어난다. 사용자 결정으로 "안 함"으로 종결하고 근거를 `backlog.md`에 별도 섹션으로 남겼다. 되살리려면 에이전트 경로에 RAG·캐시를 태우는 **코드 변경이 선행**돼야 하며, 그건 인프라 결정이 아니라 별개 기능 작업이다.
+
+**교훈**: 외부 서비스를 붙이기 전에 "그 코드가 프로덕션에서 실제로 실행되는가"를 먼저 확인할 것. 이번엔 provisioning 직전에 확인해서 불필요한 비용·복잡도를 막았다.
+
+**README 갱신**: "알려진 한계"의 Kafka/RAG·캐시 항목을 "미해결"이 아니라 **의도적 판단**으로 읽히게 다시 썼다(그 이유까지 함께).
