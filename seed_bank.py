@@ -190,6 +190,13 @@ def _ensure_admin(conn, now: float) -> None:
 # 위의 시드 상수(MY_ACCOUNTS / ADMIN_ACCOUNTS / OTHER_ACCOUNTS / *_PAST_TX)를 그대로
 # 재사용하므로 시드 값을 바꾸면 리셋 기준도 자동으로 따라온다(값이 두 군데로 갈리지 않음).
 
+# 시드로 만들어지는 계정 = 리셋 후에도 남아야 하는 계정. 나머지는 방문자가 가입한 것.
+SEED_USERNAMES = (DEMO_USER, ADMIN_USER, *(u for u, *_ in OTHER_ACCOUNTS))
+
+# 개인신용정보 접근 로그는 전부 지우지 않고 최근 이만큼만 남긴다.
+ADMIN_LOG_KEEP = 200
+
+
 def _seeded_accounts():
     """(계좌번호, 시드 잔액, 시드 거래내역) 목록."""
     for account_no, _bank, balance in MY_ACCOUNTS:
@@ -239,11 +246,57 @@ def reset_demo_data() -> dict:
         ).fetchone()["n"]
         conn.execute("DELETE FROM transfers")
 
+        # ── 방문자가 직접 가입해 만든 계정 정리 ──
+        # 시드 계정 외에는 전부 방문자가 회원가입으로 만든 것이다. 그대로 두면
+        # 회원관리 목록에 계속 쌓이므로 계좌·거래내역까지 함께 지운다.
+        placeholders = ",".join("?" * len(SEED_USERNAMES))
+        visitors = conn.execute(
+            f"SELECT id, username FROM users WHERE username NOT IN ({placeholders})",
+            tuple(SEED_USERNAMES),
+        ).fetchall()
+        visitor_ids = [r["id"] for r in visitors]
+        if visitor_ids:
+            ids = ",".join("?" * len(visitor_ids))
+            conn.execute(
+                f"DELETE FROM transactions WHERE account_id IN "
+                f"(SELECT id FROM accounts WHERE user_id IN ({ids}))",
+                tuple(visitor_ids),
+            )
+            conn.execute(f"DELETE FROM accounts WHERE user_id IN ({ids})", tuple(visitor_ids))
+            conn.execute(f"DELETE FROM users WHERE id IN ({ids})", tuple(visitor_ids))
+
+        # ── 시드가 없는 런타임 누적 테이블 비우기 ──
+        # 셋 다 시드 스크립트가 만들지 않는다 = 전부 방문자 활동의 결과다.
+        # 공유 계정(demo/admin)에 쌓인 것까지 함께 지워야 "시드 직후"가 된다.
+        # (지우지 않으면 이미 삭제된 계좌를 가리키는 항목이 화면에 남는다)
+        runtime_cleared = {}
+        for table in ("favorites", "inquiries", "event_entries", "security_events"):
+            runtime_cleared[table] = conn.execute(
+                f"SELECT COUNT(*) AS n FROM {table}"
+            ).fetchone()["n"]
+            conn.execute(f"DELETE FROM {table}")
+
+        # 개인신용정보 접근 로그는 '감사 로그' 성격이라 비우기보다 최근분만 남긴다
+        # (전부 지우면 백오피스 패널이 비어 보이고, 안 지우면 무한정 늘어난다).
+        log_total = conn.execute(
+            "SELECT COUNT(*) AS n FROM admin_access_log"
+        ).fetchone()["n"]
+        log_trimmed = max(0, log_total - ADMIN_LOG_KEEP)
+        if log_trimmed:
+            conn.execute(
+                "DELETE FROM admin_access_log WHERE id NOT IN "
+                "(SELECT id FROM admin_access_log ORDER BY id DESC LIMIT ?)",
+                (ADMIN_LOG_KEEP,),
+            )
+
     return {
         "ok": True,
         "accounts_changed": restored,
         "transactions_reseeded": tx_removed,
         "transfers_removed": transfers_removed,
+        "visitor_users_removed": [r["username"] for r in visitors],
+        "runtime_rows_cleared": runtime_cleared,
+        "access_log_trimmed": log_trimmed,
     }
 
 
