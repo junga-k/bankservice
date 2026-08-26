@@ -1285,3 +1285,39 @@
 **AI은행원 화면 푸터 제거**: 별도 요청으로 `site/css/style.css` 수정 — `body:has(#chat.active) .site-footer { display:none; }` 추가. 기존에 있던 "대화창 높이(100vh-헤더)와 실제 페이지 높이가 어긋나 푸터가 스크롤 경계에 걸쳐 보였다 안 보였다 하는" 문제를 막던 body flex-column 트릭(2026-08-08 추가분)은, 푸터를 아예 숨기면 그 어긋남 문제 자체가 없어져 더 이상 필요 없어져서 같이 제거(`#chat-frame-wrap`/`.chat-guest`의 `calc(100vh - var(--header-h))`만으로 화면이 꽉 참). `localhost:8000`을 Playwright로 열어 `#chat` 활성 시 footer computed display가 `none`이고 문서 높이=뷰포트 높이(스크롤 여백 없음), `#home`에서는 footer가 정상적으로 `block`인 것까지 확인.
 
 **완료**: `site/css/style.css` 커밋 대상. Figma 변경(`Foundations / Icons`, `Components / Button`, `Components / Chat Feedback` 신규 페이지, `Screens / AI Banker Chat`)은 파일에 직접 반영 완료 — 별도 커밋 대상 아님.
+
+### 2026-08-26 — 채용용 README 작성 + 그 과정에서 AI은행원 라이브 배포 완성(버그 4건 발견·수정)
+
+**발단**: "GitHub README에 매치뱅크 소개와 채용담당자용 demo/admin 로그인 정보를 넣고 싶다"는 요청. 저장소에 README가 아예 없던 상태(커밋 88개, 첫 커밋 2026-07-02).
+
+**계획 단계에서 방향이 바뀐 이유**: README에 적을 내용을 검증하려고 라이브 배포(`https://bankservice-six.vercel.app`)를 직접 때려봤더니 **핵심 기능 두 개가 죽어 있었다**. ① `/api/products` → `503 FSS API 키가 설정되지 않았습니다` ② `js/env-config.js`의 `CHAT_BASE_URL`이 빈 값이라 `site/js/main.js:11`이 `localhost:8501`로 폴백 → AI은행원 iframe이 방문자 로컬을 가리켜 아무것도 안 뜸. AI은행원은 이 프로젝트의 핵심이라 "로컬에서만 됩니다"라고 적는 건 의미가 없다고 판단해, **README 작성 전에 라이브를 살리는 것**을 작업에 포함했다.
+
+**비용 실측(추정으로 결정하지 않기 위해)**: 사용자가 "여러 곳에 지원하면서 배포 주소를 전달하는데 많은 사람이 쓰면 비용이 부담될까" 우려. tiktoken(`o200k_base`)으로 직접 측정 — 도구 정의 9개 스키마 **714토큰**, SYSTEM_PROMPT **527토큰**(매 LLM 호출마다 전송), `search_products` 응답 12건 **5,113토큰**. `run_agent()`가 매 턴 그래프를 새로 만들고 `conv["messages"]`(user/assistant)만 넘기므로 **도구 응답이 다음 턴에 누적되지 않아** 턴당 비용이 거의 일정하다. gpt-4o-mini 기준 상품추천 턴 ≈2.0원 / 계좌조회 ≈0.9원 / 일반대화 ≈0.6원 → 담당자 1명 15턴 ≈30원, 100세션 ≈3,000원. 결론: 정상 사용은 부담 없고, 문제는 자동화 남용 시 **월 상한이 소진돼 그달 내내 데모가 죽는 것**. 그래서 월 상한이 아니라 **일 단위 상한**을 앱 레벨에 두는 방향으로 결정.
+
+**호스팅 선택**: Streamlit Community Cloud(무료·공개앱 무제한, 690MB~2.7GB 공유 풀, **12시간** 무트래픽 시 절전, requirements.txt는 저장소 루트, 시크릿은 대시보드 UI) vs HF Spaces(2 CPU/16GB, 48시간 절전). 같은 GitHub 저장소를 그대로 연결하고 push 시 자동 재배포되는 점 때문에 Community Cloud 채택.
+
+**코드 변경 (커밋 `ecd4ea0`)**
+- `config.py` — `load()`가 `config.json` 파일만 읽고 환경변수를 전혀 안 봤다. 파일은 `.gitignore` 대상이라 배포본에 없어 FSS/OpenAI 키가 항상 빈 값. 파일 우선 → 없으면 `FSS_API_KEY`/`OPENAI_API_KEY` 환경변수 폴백으로 변경(`save()`는 손대지 않음).
+- `agent.py`/`app.py` — 백엔드 주소를 `BACKEND_URL` 환경변수로 지정 가능하게(기본값 localhost 유지).
+- `backend/app.py` — `DEMO_READONLY=1`이면 `/api/admin/*`의 비 GET 요청을 403으로 막는 미들웨어. README에 admin 계정을 공개하므로 누구나 공지·FAQ·배너를 지울 수 있고, 그러면 다음 지원처 담당자가 빈 화면을 보게 되기 때문. 조회는 전부 허용하고, 저장하지 않는 `POST /api/admin/prompt-ab-test`만 예외.
+- `app.py` — `DEMO_PUBLIC=1`이면 세션당 30턴 + 앱 전체 일일 300턴(`@st.cache_resource` 카운터, 날짜 바뀌면 리셋) + 챗봇 URL 직접 접근 차단.
+- `requirements.txt` 분리 — 누락돼 있던 `requests` 추가(`agent.py`/`app.py`가 직접 import하는데 전이 의존성에 얹혀 있었음), 어느 `.py`에서도 안 쓰는 `pillow`/`pandas`/`matplotlib`/`jupyter` 제거, 개발 전용(pytest·arize-phoenix 3종·openinference 3종·google-genai)은 `requirements-dev.txt`로.
+
+**발견·수정한 버그 4건** (전부 배포하지 않았으면 몰랐을 것들)
+1. **타임아웃 5초/3초** (`ecd4ea0`) — 로컬 기준 값이라 원격 백엔드(Vercel+Turso, 실측 **10.3초**)에서 `propose_transfer`가 100% 타임아웃. 원격이면 30초/20초로 올림. `app.py`의 `_my_accounts()` 3초도 같은 문제(이체 확인 카드의 출금계좌 목록이 조용히 비었을 것).
+2. **`embedded=1`** (`b8f0d53`) — 사이트의 AI은행원 탭이 "share.streamlit.io에서 리디렉션한 횟수가 너무 많습니다"로 깨짐. iframe URL의 이 파라미터를 Streamlit Cloud 라우터가 뷰어 인증 트리거로 해석해 `/-/auth/app`으로 리다이렉트하는데 서드파티 iframe이라 쿠키가 막혀 무한 루프. **파라미터 3종을 나눠 실제 렌더링을 비교**해 특정: `?embed=true` 정상 / `+embedded=1` 루프 / `+token=<JWT>` 정상. 즉 token은 무죄. 이 값은 `app.py`가 읽지도 않는 잔재라 제거. (앱이 public인지 여부와 무관 — 중간에 "비공개라서 그렇다"고 잘못 진단했다가 사용자가 public 설정 화면을 보여줘 정정.)
+   - 초기에 `onload` 이벤트로 판정했다가 오진했다. **iframe의 `onload`는 에러 페이지가 떠도 발생**하므로 임베드 성공 여부 판정에 쓰면 안 된다 — 실제 렌더링을 스크린샷으로 봐야 한다.
+3. **import 시점 환경변수 읽기** (`efb8ef9`) — Streamlit 시크릿에 `BACKEND_URL`을 넣었는데도 계속 localhost 호출. Streamlit은 매 실행마다 메인 스크립트(`app.py`)는 재실행하지만 **import된 모듈은 `sys.modules`에서 재사용**하므로, `agent.py`가 모듈 레벨에서 읽은 값은 최초 import 때로 고정된다. 같은 시크릿의 `DEMO_PUBLIC`(app.py에서 읽음)은 정상 반영되는데 `BACKEND_URL`만 안 먹던 이유가 이것. `_backend_url()`/`_timeout()` 함수로 호출 시점에 읽도록 변경.
+4. **홈 3D 히어로 0×0** (`61e327b`) — 홈에 처음 들어가면 히어로 좌측이 빈 배경이고, 창을 리사이즈해야만 3D 구체가 나타남. `hero3d.js`는 로드 직후 실행되는데 SPA라 그 시점엔 `#home`이 아직 표시 전이라 컨테이너 `clientWidth/Height`가 0이고, 그대로 `renderer.setSize(0,0)`이 불려 캔버스가 0×0으로 생성. `window resize` 핸들러가 크기를 다시 계산해서 리사이즈하면 그제야 보였던 것. `ResizeObserver`로 컨테이너가 실제 크기를 가질 때까지 기다린 뒤 렌더러 생성(10초 타임아웃 시 기존대로 CSS 블롭 폴백).
+
+**배포 설정(사용자 직접)**: Streamlit Cloud 앱 생성 + Secrets 3줄(`OPENAI_API_KEY`/`BACKEND_URL`/`DEMO_PUBLIC`), Vercel env 3개(`FSS_API_KEY`/`DEMO_READONLY`/`CHAT_BASE_URL`) + Redeploy. 중간에 겪은 것들: ① Vercel 최신 UI는 사이드바에 "Environment Variables" 항목이 없고 **Environments → Production 행을 클릭해 들어가야** 나온다 ② 환경변수는 저장만으로 반영 안 되고 Redeploy 필요 — `CHAT_BASE_URL`을 마지막에 추가하는 바람에 첫 재배포에 안 들어가 한 번 더 돌렸다 ③ 로컬 OpenAI 키가 Streamlit에 붙여넣기되는 과정에서 401(로컬에선 같은 키로 호출 성공 확인) → 데모 전용 키를 새로 발급하는 쪽으로 전환. 키·시크릿 값은 화면에 출력하지 않고 `pbcopy`로 클립보드에 넘겨 붙여넣게 했다.
+
+**라이브 전체 검증(전부 실제 확인)**: 상품안내 예금 38건(1위 SC제일은행 e-그린세이브예금 3.85%) / 백오피스 조회 200·쓰기 403·공지 4건 온전 / 사이트↔챗봇 로그인 연동("홍길동님 안녕하세요") / **AI 대화로 계좌조회**(프로덕션 Turso의 실제 3계좌) / **이체 제안 확인 카드** / **이체 실행까지 완료** — 잔액 1,500,000 → 1,449,500원, 거래내역에 `김철수 -50,000`(잔액 1,450,000)과 `이체수수료 -500`(잔액 1,449,500) 2건이 분리 기록됨. `KAFKA_DISABLED` 동기 폴백 경로가 프로덕션에서 정상 동작함을 확인. 사용자 판단으로 잔액은 복구하지 않고 그대로 뒀다(거래 이력이 있는 편이 데모로 자연스럽고, 어차피 방문자들이 쓰면서 변할 값).
+
+**중요**: CLAUDE.md에 적혀 있던 "AI은행원 iframe은 브라우저 자동화 클릭/타이핑이 안 먹는다"는 제약은 **더 이상 해당되지 않는다**. Playwright의 중첩 frame 진입(`iframe[title="AI 금융상담 은행원"]` → `iframe[title="streamlitApp"]`)으로 채팅 입력·체크박스·PIN 입력·버튼 클릭이 전부 동작했다. 단 Streamlit 체크박스는 `<input>`을 직접 클릭하면 오버레이가 pointer event를 가로채므로 **라벨 텍스트를 클릭**해야 하고, `st.text_input`은 값 확정을 위해 **Enter를 눌러야** 한다.
+
+**산출물**: `docs/screenshots/` 10장(홈·상품안내·백오피스는 라이브에서 신규 촬영, 나머지는 루트에 방치돼 있던 리디자인 PNG를 옮겨 정리, 폭 1200px 통일) + `docs/demo-ai-banker.gif`(7프레임 267KB, PIL로 조립 — ffmpeg/ImageMagick 없음). GIF는 **이체 실행 완료가 아니라 확인 카드+PIN 입력 대기에서 끝냈다** — "AI는 제안만 하고 사람이 승인해야 실행된다"는 핵심 설계가 마지막 프레임에 남는 편이 낫다고 판단.
+
+**README(`7e34e6f`)**: "무엇인지 → 바로 써보기 → 어떻게 만들었는지" 순서. 사용자 지적으로 **서비스 소개(무엇/왜/누구를 위해)를 라이브 링크보다 앞으로** 옮겼다(그전 구성은 링크·스크린샷이 먼저라 뭔지 모른 채 링크부터 마주치는 구조였음). 수치는 실측값만 — 엔드포인트 88개, 테이블 18개, pytest 14개, 배치 999문항 100% 성공/평균 1,234ms/중앙값 954ms/p95 2,738ms.
+- **정정 사항**: `docs/기획서.md` 9절은 "1,000문항을 AI가 채점해 자동 평가했다"고 적고 있으나, 저장된 `batch_test_results.json`은 `graded: 0 / accuracy: null`이고 결과 항목에 `correct`/`graded_by` 키 자체가 없다 — **채점을 끄고(`--no-grade`) 실행된 결과**다. 채점 로직(수학은 exact, 나머지는 LLM-as-judge)은 `batch_test.py`에 구현돼 있다. README에는 이 사실을 명시했다. 문항도 은행 업무가 아니라 일반 지식 10개 카테고리(상식·세계지리·수학·영어·문화예술·한국역사·논리·경제·파이썬코딩·과학)다.
+- GitHub에서 렌더링 확인: mermaid가 `flowchart-v2` SVG로 정상 렌더, 배지 6 + 스크린샷 4 + GIF 전부 로드, 문서 링크 유효.

@@ -2,6 +2,21 @@
 
 아직 처리 안 된 작업 체크리스트. 완료하면 체크하고, 상세 조사/시행착오 기록은 `session-log.md`에 남긴다(이 파일엔 "무엇을 해야 하는지"만 간결하게 유지).
 
+## 채용용 README 작성 + AI은행원 라이브 배포 완성 (2026-08-26, 완료)
+
+상세: `session-log.md` `### 2026-08-26 — 채용용 README 작성 + 그 과정에서 AI은행원 라이브 배포 완성(버그 4건 발견·수정)`.
+
+- [x] `README.md` 신규 — 서비스 소개(무엇/왜/누구를 위해) → 라이브 데모+계정 → 스크린샷 → AI은행원 동작 → 아키텍처(mermaid) → 기술적 의사결정 → 로컬 실행 → 알려진 한계. GitHub 렌더링 확인 완료.
+- [x] `docs/screenshots/` 10장 + `docs/demo-ai-banker.gif` — 전부 라이브에서 촬영.
+- [x] **AI은행원 Streamlit Community Cloud 배포** — 사이트 iframe 연동까지 완료. 대화·계좌조회·이체 제안·이체 실행 전부 라이브 검증.
+- [x] **상품안내 라이브 복구** — `config.py` 환경변수 폴백 추가 + Vercel `FSS_API_KEY` 등록.
+- [x] 공개 데모 보호 — `DEMO_READONLY`(백오피스 쓰기 403) / `DEMO_PUBLIC`(세션 30턴·일일 300턴·직접 접근 차단).
+- [x] 버그 4건 수정: 원격 타임아웃(5초→30초), `embedded=1` 리다이렉트 루프, import 시점 환경변수 읽기, 홈 3D 히어로 0×0.
+- [x] `requirements.txt`/`requirements-dev.txt` 분리 — 누락된 `requests` 추가, 미사용 pillow/pandas/matplotlib/jupyter 제거.
+- [ ] **미완**: 배치 테스트를 채점 포함으로 재실행해 README에 실제 정확도 수치 넣기. 현재 `batch_test_results.json`은 `--no-grade` 실행분이라 `graded: 0`이고, `docs/기획서.md` 9절의 "1,000문항 자동채점" 서술과 어긋난다. 재실행 시 999문항 × 2회 호출(응답+채점)이라 대략 2~3천원 예상. 기획서 문구도 함께 정정 필요.
+- [ ] **미확인**: Streamlit Community Cloud 12시간 절전 대응. 방문 시 자동 기상하지만 첫 접속에 30초쯤 걸린다(README에 고지함). GitHub Actions cron으로 주기적 ping을 넣는 방안은 **HTTP GET이 Streamlit의 트래픽 판정에 잡히는지 검증하지 않아** 보류.
+- [ ] **별도 인프라 결정 필요(기존 이월)**: Kafka 상시 호스팅 미해결 → 배포본은 `KAFKA_DISABLED` 동기 폴백. Elasticsearch·Redis 미배포 → 라이브에서 RAG·시맨틱 캐시 비활성.
+
 ## AI은행원 "싫어요 이유 선택" UI Figma 반영 + 화면 푸터 제거 (2026-08-21, 완료)
 
 상세: `session-log.md` `### 2026-08-21 — AI은행원 "싫어요 이유 선택" UI를 Figma 디자인시스템 컴포넌트로 반영 + AI은행원 화면 푸터 제거`.
