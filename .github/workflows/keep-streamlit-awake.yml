@@ -3,9 +3,11 @@
 # Community Cloud 는 12시간 무트래픽이면 앱을 재운다. 방문하면 자동으로 깨어나지만
 # 첫 접속에 30초쯤 걸려서, 채용담당자가 링크를 눌렀을 때 로딩 화면을 먼저 보게 된다.
 #
-# 주의: 단순 `curl`(HTTP GET)로는 안 된다 — 200 을 받아도 앱은 계속 자고 있다.
-# Streamlit 은 websocket 세션이 맺어져야 트래픽으로 인정하므로 실제 브라우저가 필요하다.
-# 그래서 Playwright 로 열고 앱이 렌더링을 끝냈는지(가드 안내 문구 출현)까지 확인한다.
+# 주의 1: 단순 `curl`(HTTP GET)로는 안 된다 — 200 을 받아도 앱은 계속 자고 있다.
+#         Streamlit 은 websocket 세션이 맺어져야 트래픽으로 인정하므로 실제 브라우저가 필요하다.
+# 주의 2: Streamlit Cloud 는 앱을 항상 `iframe[title="streamlitApp"]` 안에 넣어 서빙한다
+#         (`?embed=true` 여부와 무관). 메인 문서에는 "Built with Streamlit" 정도만 있어서
+#         page 레벨에서 문구를 찾으면 영영 못 찾는다 — 반드시 프레임 안을 봐야 한다.
 name: Keep Streamlit app awake
 
 on:
@@ -18,10 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - name: Install Playwright
         run: |
           pip install --quiet playwright
@@ -29,29 +27,49 @@ jobs:
 
       - name: Open the app and confirm it rendered
         env:
-          APP_URL: https://bankservice-8zf4k9z6abddnbvhazbhpj.streamlit.app/?embed=true
+          APP_URL: https://bankservice-8zf4k9z6abddnbvhazbhpj.streamlit.app/
         run: |
-          python - <<'PY'
-          import os, sys
+          python3 - <<'PY'
+          import os, sys, time
           from playwright.sync_api import sync_playwright
 
           url = os.environ["APP_URL"]
           # DEMO_PUBLIC=1 이라 토큰 없이 열면 이 안내가 뜬다. 이 문구가 보였다는 건
           # 앱이 기동돼 app.py 를 끝까지 실행했다는 뜻이라 "깨어남"의 확실한 증거다.
           MARKER = "매치뱅크 사이트 안에서 이용할 수 있습니다"
+          TIMEOUT_S = 240   # 자고 있었다면 기동에 시간이 걸리므로 넉넉히
 
           with sync_playwright() as p:
               browser = p.chromium.launch()
               page = browser.new_page()
               page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-              try:
-                  # 자고 있었다면 기동에 시간이 걸리므로 넉넉히 기다린다.
-                  page.wait_for_selector(f"text={MARKER}", timeout=180_000)
-              except Exception:
-                  print("::error::앱이 렌더링되지 않았습니다. 화면 내용 일부:")
-                  print(page.content()[:1000])
+
+              # 앱은 중첩 iframe 안에서 렌더링된다. 프레임 이름에 의존하지 않도록
+              # 모든 프레임을 훑어 마커를 찾는다(Streamlit 이 래퍼 구조를 바꿔도 견딤).
+              deadline = time.time() + TIMEOUT_S
+              found = False
+              while time.time() < deadline and not found:
+                  for frame in page.frames:
+                      try:
+                          if frame.get_by_text(MARKER).count() > 0:
+                              found = True
+                              break
+                      except Exception:
+                          pass   # 프레임이 아직 로딩 중이거나 사라진 경우
+                  if not found:
+                      page.wait_for_timeout(3000)
+
+              if not found:
+                  print("::error::앱이 렌더링되지 않았습니다.")
+                  for i, frame in enumerate(page.frames):
+                      try:
+                          text = frame.locator("body").inner_text()[:300]
+                      except Exception as e:
+                          text = f"(읽기 실패: {e})"
+                      print(f"  [frame {i}] {frame.url}\n    {text}")
                   browser.close()
                   sys.exit(1)
+
               print(f"OK — 앱이 정상 렌더링됨: {url}")
               browser.close()
           PY
