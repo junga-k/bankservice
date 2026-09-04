@@ -323,16 +323,36 @@ function chatSrc() {
   return `${CHAT_URL}&token=${encodeURIComponent(token)}`;
 }
 
-function ensureChatLoaded() {
+/* 챗봇은 Streamlit Community Cloud 무료 티어에 있어 12시간 무트래픽이면 잠든다. 잠든 채로
+   iframe을 붙이면 방문자가 챗봇 대신 "Zzzz — 깨울까요?" 화면과 버튼을 보게 되므로, iframe을
+   붙이기 전에 서버(/api/chat/wake)가 대신 깨우고 그 동안 로딩 화면을 보여준다.
+   서버를 거치는 이유: Streamlit Cloud API에 CORS 헤더가 없어 브라우저에서 직접 못 부른다.
+   깨우기가 실패하거나 오래 걸려도 iframe은 그대로 붙인다(degrade — 최악이어도 기존과 동일). */
+async function ensureChatLoaded() {
   if (chatLoaded) return;
+  chatLoaded = true;   // 대기 중 재진입으로 iframe이 두 번 생기지 않게 먼저 잠근다
+
   const wrap = document.getElementById("chat-frame-wrap");
+  wrap.innerHTML =
+    '<div id="chat-wake">' +
+      '<div class="chat-wake-spinner"></div>' +
+      '<div><div class="chat-wake-title">AI 은행원을 깨우고 있습니다</div>' +
+      '처음 접속하면 최대 1분쯤 걸릴 수 있어요.</div>' +
+    '</div>';
+
+  try {
+    await fetch("/api/chat/wake", { method: "POST" });
+  } catch {
+    /* 깨우기 실패는 무시하고 그냥 붙인다 */
+  }
+
+  wrap.innerHTML = "";
   const iframe = document.createElement("iframe");
   iframe.id = "chat-frame";
   iframe.src = chatSrc();
   iframe.title = "AI 금융상담 은행원";
   iframe.allow = "clipboard-write";
   wrap.appendChild(iframe);
-  chatLoaded = true;
 }
 
 /* 로그인/로그아웃 시 은행원 iframe을 현재 토큰으로 재로딩 → 로그인 상태 연동 */

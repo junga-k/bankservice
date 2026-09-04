@@ -1,75 +1,74 @@
 # AI은행원(Streamlit Community Cloud)이 절전되지 않게 주기적으로 깨워둔다.
 #
-# Community Cloud 는 12시간 무트래픽이면 앱을 재운다. 방문하면 자동으로 깨어나지만
-# 첫 접속에 30초쯤 걸려서, 채용담당자가 링크를 눌렀을 때 로딩 화면을 먼저 보게 된다.
+# Community Cloud 무료 티어는 12시간 무트래픽이면 앱을 재운다. 잠들면 방문자에게
+# "Zzzz — 깨울까요?" 화면과 버튼이 뜬다(예전처럼 방문만으로 자동 기동되지 않는다).
 #
-# 주의 1: 단순 `curl`(HTTP GET)로는 안 된다 — 200 을 받아도 앱은 계속 자고 있다.
-#         Streamlit 은 websocket 세션이 맺어져야 트래픽으로 인정하므로 실제 브라우저가 필요하다.
-# 주의 2: Streamlit Cloud 는 앱을 항상 `iframe[title="streamlitApp"]` 안에 넣어 서빙한다
-#         (`?embed=true` 여부와 무관). 메인 문서에는 "Built with Streamlit" 정도만 있어서
-#         page 레벨에서 문구를 찾으면 영영 못 찾는다 — 반드시 프레임 안을 봐야 한다.
+# 이건 보조 장치다. 방문자 경험의 본진은 사이트가 iframe을 붙이기 전에 직접 깨우는
+# `POST /api/chat/wake`(backend/app.py)이고, 그쪽은 GitHub에 전혀 의존하지 않는다.
+# 여기서 미리 깨워두면 방문자가 그 로딩(~45초)조차 안 보게 된다.
+#
+# ⚠️ 공개 저장소에서 60일간 활동이 없으면 GitHub이 schedule 트리거를 자동 비활성화한다.
+#    (복구: 커밋 1회 또는 Actions 탭의 "Enable workflow". 저장소나 서비스가 죽는 건 아니다.)
+#
+# 깨우기 절차 — Streamlit Cloud 프런트엔드 번들(states-*.js / schemas-*.js)을 읽어 확인(2026-09-03):
+#   1) GET  /api/v2/app/status  → 본문 .status로 상태 판별(AppStatus: RUNNING=5, IS_SHUTDOWN=12)
+#                                  + 쿠키(_streamlit_csrf)와 응답 헤더 x-csrf-token을 여기서 함께 받는다
+#   2) POST /api/v2/app/resume  → 그 쿠키 + x-csrf-token 헤더 필요. 성공 시 204, 하나라도 빠지면 403.
+# 앱 루트(GET /)는 치지 않는다 — 뷰어 인증 리다이렉트 체인이라 느리고 불필요하다.
+#
+# 예전 이 파일에 있던 "curl로는 안 된다, 브라우저(Playwright)로 중첩 iframe을 봐야 한다"는
+# 주석은 더 이상 유효하지 않다. 그건 앱 *화면*을 확인하려 할 때 얘기고, 깨우는 것 자체는
+# 위 두 번의 HTTP 요청이 전부다. 그래서 Playwright 의존을 걷어냈다(실행시간 5분+ → 수 초).
 name: Keep Streamlit app awake
 
 on:
   schedule:
-    - cron: "0 */6 * * *"   # 6시간마다 (절전 기준 12시간의 절반)
+    - cron: "0 */4 * * *"   # 4시간마다 (절전 기준 12시간 대비 3배 여유 — 스케줄 지연 대비)
   workflow_dispatch:         # 수동 실행도 가능
 
 jobs:
   wake:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - name: Install Playwright
-        run: |
-          pip install --quiet playwright
-          playwright install --with-deps chromium
-
-      - name: Open the app and confirm it rendered
+      - name: Wake the app if it is asleep
         env:
-          APP_URL: https://bankservice-8zf4k9z6abddnbvhazbhpj.streamlit.app/
+          APP_URL: https://bankservice-8zf4k9z6abddnbvhazbhpj.streamlit.app
         run: |
-          python3 - <<'PY'
-          import os, sys, time
-          from playwright.sync_api import sync_playwright
+          set -euo pipefail
+          APP="${APP_URL%/}"
+          CJ="$(mktemp)"      # 쿠키 자
+          HDR="$(mktemp)"     # 응답 헤더(여기서 x-csrf-token을 꺼낸다)
 
-          url = os.environ["APP_URL"]
-          # DEMO_PUBLIC=1 이라 토큰 없이 열면 이 안내가 뜬다. 이 문구가 보였다는 건
-          # 앱이 기동돼 app.py 를 끝까지 실행했다는 뜻이라 "깨어남"의 확실한 증거다.
-          MARKER = "매치뱅크 사이트 안에서 이용할 수 있습니다"
-          TIMEOUT_S = 240   # 자고 있었다면 기동에 시간이 걸리므로 넉넉히
+          fetch_status() {
+            BODY="$(curl -sS -b "$CJ" -c "$CJ" -D "$HDR" "$APP/api/v2/app/status")"
+            STATUS="$(printf '%s' "$BODY" | jq -r '.status // -1')"
+            CSRF="$(grep -i '^x-csrf-token:' "$HDR" | tail -1 | sed 's/^[^:]*: *//' | tr -d '\r')"
+          }
 
-          with sync_playwright() as p:
-              browser = p.chromium.launch()
-              page = browser.new_page()
-              page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+          fetch_status        # 쿠키·CSRF도 이 호출에서 함께 받는다
+          echo "현재 상태: status=$STATUS"
 
-              # 앱은 중첩 iframe 안에서 렌더링된다. 프레임 이름에 의존하지 않도록
-              # 모든 프레임을 훑어 마커를 찾는다(Streamlit 이 래퍼 구조를 바꿔도 견딤).
-              deadline = time.time() + TIMEOUT_S
-              found = False
-              while time.time() < deadline and not found:
-                  for frame in page.frames:
-                      try:
-                          if frame.get_by_text(MARKER).count() > 0:
-                              found = True
-                              break
-                      except Exception:
-                          pass   # 프레임이 아직 로딩 중이거나 사라진 경우
-                  if not found:
-                      page.wait_for_timeout(3000)
+          if [ "$STATUS" = "5" ]; then
+            echo "이미 깨어 있음 — 할 일 없음."
+            exit 0
+          fi
 
-              if not found:
-                  print("::error::앱이 렌더링되지 않았습니다.")
-                  for i, frame in enumerate(page.frames):
-                      try:
-                          text = frame.locator("body").inner_text()[:300]
-                      except Exception as e:
-                          text = f"(읽기 실패: {e})"
-                      print(f"  [frame {i}] {frame.url}\n    {text}")
-                  browser.close()
-                  sys.exit(1)
+          echo "잠들어 있음. 깨우는 중..."
+          CODE="$(curl -sS -X POST -b "$CJ" -c "$CJ" \
+                    -H "x-csrf-token: $CSRF" \
+                    -o /dev/null -w '%{http_code}' "$APP/api/v2/app/resume")"
+          echo "resume 응답: HTTP $CODE"
 
-              print(f"OK — 앱이 정상 렌더링됨: {url}")
-              browser.close()
-          PY
+          for i in $(seq 1 9); do          # 10초 × 9 = 최대 90초 (실측 기동 ~45초)
+            sleep 10
+            fetch_status
+            echo "  [${i}] status=$STATUS"
+            if [ "$STATUS" = "5" ]; then
+              echo "OK — 앱이 깨어났습니다: $APP"
+              exit 0
+            fi
+          done
+
+          echo "::error::90초 안에 RUNNING(5)이 되지 않았습니다. 마지막 응답: $BODY"
+          exit 1

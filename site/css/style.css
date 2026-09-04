@@ -1088,6 +1088,43 @@ main { min-height: calc(100vh - var(--header-h)); }
   display: block;
 }
 
+/* AI은행원 깨우기 대기 화면.
+   챗봇은 Streamlit Community Cloud 무료 티어라 12시간 무트래픽이면 잠든다. 잠들었으면
+   iframe을 붙이기 전에 서버(/api/chat/wake)가 먼저 깨우는데, 그 동안 빈 화면 대신 이걸 보여준다.
+   토큰만 사용(신규 색상/간격 값 없음). #chat-wake 안으로만 스코프해 다른 화면에 새지 않게 한다. */
+#chat-wake {
+  min-height: calc(100vh - var(--header-h));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  background: var(--bg-soft);
+  color: var(--text-sub);
+  font-size: var(--text-sm);
+  text-align: center;
+  padding: var(--space-5);
+}
+#chat-wake .chat-wake-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--blue-line);
+  border-top-color: var(--blue);
+  border-radius: var(--radius-pill);
+  animation: chat-wake-spin 800ms linear infinite;
+}
+#chat-wake .chat-wake-title {
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+@keyframes chat-wake-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #chat-wake .chat-wake-spinner { animation-duration: 2400ms; }
+}
+
 /* AI은행원: 비로그인 안내(로그인해야 이용 가능) — #auth 카드와 동일한 톤 */
 .chat-guest {
   min-height: calc(100vh - var(--header-h));

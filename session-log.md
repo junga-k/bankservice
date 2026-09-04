@@ -1441,3 +1441,57 @@ Vercel Marketplace 스킬로 provisioning을 시작하려다, 그 전에 **프�
 **검증**: 로컬에서 방문자 계정+계좌+거래내역+즐겨찾기를 만들어 둔 뒤 리셋 → 사용자 12→5명, 계좌 15→8개, 런타임 4개 테이블 0, 접근로그 2,280→200, **시드 계좌 8개 잔액은 전부 정확히 유지**. pytest 14개 통과. 테스트로 바꾼 로컬 DB는 백업에서 원상복구.
 
 **프로덕션 검증**: 응답에 새 필드(`visitor_users_removed`)가 나오는지로 배포 반영을 판단한 뒤 실행 → Turso에서도 오류 없이 동작(파라미터 IN 절, `DELETE ... WHERE id NOT IN (SELECT ... ORDER BY ... LIMIT ?)` 포함). 보안이력 20건 삭제, 접근로그 248건 정리. 방문자 가입은 아직 0명이라 삭제 대상 없음.
+
+### 2026-09-03 — AI은행원 절전 대응 재구축 (실패 메일 원인 규명 → 방문자가 "깨우기 버튼"을 안 보게)
+
+**발단**: "Run failed: Keep Streamlit app awake" 실패 메일이 6시간마다 계속 온다는 문의. "AI은행원이 고장난 거냐"는 질문.
+
+**원인**: 앱 코드·배포는 멀쩡했다. 라이브 앱을 브라우저로 직접 열어보니 **잠들어 있었고**, "Zzzz — This app has gone to sleep due to inactivity" 화면과 `Yes, get this app back up!` 버튼이 떠 있었다. 그 버튼을 누르니 45초 만에 정상 기동. 즉 Streamlit이 **"방문하면 자동 기동" → "버튼을 눌러야 기동"** 으로 동작을 바꿨고, 8/26에 만든 워크플로는 버튼을 안 누르고 마커 문구만 기다리다 240초 타임아웃으로 실패하고 있었다(8/28부터). 앱이 자니 워크플로가 실패하고, 워크플로가 실패하니 앱을 못 깨우는 순환.
+
+**Streamlit Cloud 프런트엔드 번들 해부** — 깨우기에 브라우저가 정말 필요한지 확인하려고 `states-*.js`/`schemas-*.js`를 직접 받아 읽었다. 결과적으로 이게 이번 작업의 핵심 근거가 됐다:
+
+| 항목 | 값 |
+|---|---|
+| 깨우기 버튼이 하는 일 | `resumeAppFromSubdomain()` → **`POST /api/v2/app/resume`** (그게 전부) |
+| 상태 조회 | **`GET /api/v2/app/status`** → `{"status": 5, ...}` |
+| 상태 enum | `UNKNOWN:0 … RUNNING:5 … IS_SHUTDOWN:12`(절전) |
+| 인증 | 익명 가능. 단 **쿠키 + `x-csrf-token` 헤더** 둘 다 필요(하나라도 빠지면 403) |
+| CSRF 토큰 출처 | 쿠키가 아니라 **이전 API 응답의 `x-csrf-token` 응답 헤더** |
+| 핸드셰이크 | **불필요** — `GET /api/v2/app/status` 하나가 쿠키·CSRF·상태를 다 준다 |
+| CORS | 두 엔드포인트 모두 `Access-Control-Allow-Origin` 없음 → **브라우저에서 직접 호출 불가** |
+
+→ 깨우는 데 Playwright도 브라우저도 필요 없다. `GET /` → `GET /api/v2/app/status`(헤더에서 CSRF 추출) → `POST /api/v2/app/resume` 세 번의 HTTP 요청이면 된다. 실측으로 **204** 확인(깨어 있는 앱에 호출해도 204 — 멱등).
+
+**설계 판단 — 우선순위를 뒤집었다.** 처음엔 "워크플로 수정"을 1차, "사이트가 직접 깨우기"를 안전망으로 잡았는데, 사용자가 *"GitHub에서 60일간 커밋이 없으면 비활성화되는데 서비스에 영향 없냐"* 고 물어 재검토했다. GitHub Actions 크론은 외부 정책에 묶여 언제든 조용히 멈춘다(실제로 8/28에 멈췄고, 60일 규칙도 있다). 반면 사이트가 직접 깨우는 경로는 Vercel 함수라 방문자가 올 때마다 동작한다. **그래서 사이트 쪽이 본진, 크론이 보조**로 순서를 바꾸고 구현도 그 순서로 했다.
+(부연: 60일 규칙은 *저장소*가 아니라 *schedule 트리거*만 끈다. 사이트·API·DB·챗봇 앱은 Vercel/Turso/Streamlit Cloud에 있고 Actions에 의존하지 않으므로 서비스 자체는 계속 돌아간다.)
+
+**구현**
+- `backend/app.py` — `POST /api/chat/wake` 신규(`/js/env-config.js` 핸들러 옆, 같은 `CHAT_BASE_URL` 관심사). status가 RUNNING(5)이면 즉시 반환, 아니면 resume 후 3초 간격 최대 75초 폴링. `CHAT_BASE_URL` 미설정이면 `{"ready":true,"skipped":true}`로 즉시 반환해 **로컬 개발 동작은 무변화**. 외부 호출 실패가 사이트를 막지 않도록 try/except로 감싸 `ready:false`만 돌려준다.
+- `site/js/main.js` — `ensureChatLoaded()`를 async로 바꿔 iframe 생성 **전에** wake를 await. 대기 중 로딩 화면 표시. 재진입으로 iframe이 두 번 생기지 않게 `chatLoaded` 플래그를 **먼저** 세운다. wake가 실패/지연돼도 iframe은 그대로 붙인다(degrade).
+- `site/css/style.css` — `#chat-wake` 로딩 화면. 신규 색상/간격 값 없이 기존 토큰만 사용(`--bg-soft`/`--blue`/`--blue-line`/`--radius-pill`/`--space-*`), `#chat-wake` 안으로만 스코프.
+- `.github/workflows/keep-streamlit-awake.yml` — Playwright 전면 제거 → curl+jq. 6시간 → **4시간** 간격. 실행시간 5분+(실패) → 수 초. 파일 상단의 낡은 주석("curl로는 안 된다 / 중첩 iframe을 봐야 한다")도 정정.
+
+**검증** (전부 코드/API 직접 호출)
+- resume 인증: 쿠키만 → 403, 쿠키+CSRF 헤더 → **204**. CSRF가 응답 헤더로 온다는 걸 번들에서 찾아 해결.
+- `/api/chat/wake` 3케이스: 미설정 → `{ready:true,skipped:true}` 0.01초 / 실제 앱 → `{ready:true,status:5}` 2.3초 / 존재하지 않는 주소 → **500이 아니라** `{ready:false,error:...}` 2.1초.
+- 워크플로 스크립트를 로컬 bash로 실행: 정상 경로 exit 0, **조건을 뒤집어 resume+폴링 분기도 강제 실행** → `HTTP 204` → `status=5` → exit 0.
+- 로컬 사이트 실측: 로그인 → `#chat` → 로딩 화면 렌더(computed style로 토큰값 대조: 배경 `#F8FAFD`, 스피너 `#0FA968`/`#A8E0C4`, radius 999px) → 오버레이 제거 → iframe 부착 → **중첩 프레임 안에서 "홍길동님 안녕하세요" 챗봇 렌더 확인**. 콘솔 에러 6건은 전부 Streamlit Cloud 자체의 익명 뷰어 관련(`user/details` 404, `event/focus` 403)으로 우리 코드와 무관.
+- pytest 14개 통과.
+
+**영향범위 점검 중 자기 코드 결함 1건 발견·수정** — 처음엔 앱 루트(`GET /`)를 먼저 쳐서 세션 쿠키를 받는 구조로 짰는데, 실측해보니 그게 **뷰어 인증 리다이렉트 체인이라 17.6초가 걸리고 쿠키 자 없이는 리다이렉트 루프(curl exit 47)** 였다. 확인해보니 `GET /api/v2/app/status` 하나가 쿠키(`_streamlit_csrf`)·CSRF 헤더·상태를 전부 주므로 핸드셰이크 자체가 불필요했다. 제거 후 **흔한 경로(이미 깨어 있음) 2.3초 → 0.48초**. 백엔드·워크플로 양쪽에서 같이 걷어냈다.
+
+**영향범위 점검 결과(다른 기능 회귀 없음)**: `/api/chat-feedback`(하이픈)과 `/api/chat/wake`(슬래시)는 다른 경로라 충돌 없음. StaticFiles 마운트(1651행)가 라우트(1592행)보다 뒤라 가려지지 않음. `DEMO_READONLY` 가드는 `/api/admin/*`만 막으므로 무관. `chat-wake`/`chat-wake-spin` 이름은 기존 코드에 0건. `ensureChatLoaded()` 호출부는 1곳(fire-and-forget이라 async 전환 무해). 다만 `_db_request_scope` 미들웨어가 **모든** 요청에 db 연결을 미리 여는 기존 구조라(정적 파일 요청도 동일 — 계측으로 확인), wake도 db를 안 쓰면서 연결을 붙들고 있게 된다. 흔한 경로가 0.5초라 실질 영향은 작지만, 잠든 상태의 최대 75초 경로에서는 유휴 Turso 연결을 그만큼 붙든다 — 구조 변경이 필요해 이번 범위에서는 손대지 않고 기록만 남긴다.
+
+**다른 메뉴 회귀 전수 확인** — "AI은행원 말고 이체·Kafka·ES·Phoenix 등 다른 기능은 괜찮냐"는 질문을 받고, 정적 점검에 그치지 않고 인프라 4종(Kafka·ES·Redis·Phoenix)을 `./start_infra.sh`로 전부 띄운 뒤 실제로 돌렸다.
+
+- **변경이 구조적으로 격리됨**: `git diff -U0`로 확인 — `backend/app.py`·`site/css/style.css`는 **삭제·수정된 줄 0개(순수 추가만)**, `site/js/main.js`는 `ensureChatLoaded()` 내부 2줄만 교체. 다른 기능의 코드 경로는 아예 건드리지 않았다.
+- **이체(Kafka 전 구간)**: `POST /api/transfer` → Kafka 발행 → `transfer_consumer.py` 소비 → `completed`. 잔액 출금 -1,500(1,000+수수료 500)/입금 +1,000 정확히 반영, 워커 로그도 일치.
+- **RAG(Elasticsearch)**: `rag.search()` 직접 호출 → BM25+kNN 하이브리드 6.07초, 참고텍스트 3,784자 정상.
+- **캐시(Redis L1 + ChromaDB L2)**: `cache.check()`/`cache.stats()` 정상.
+- **Phoenix**: `tracing.init_tracing()` 예외 없음, 인프라 메트릭 `status: ok`.
+- **REST API 전 메뉴 스모크**: 인증·계좌·상품안내 5카테고리(FSS 외부 API)·인기상품·특판·공지/FAQ/서식·배너·이벤트·백오피스(회원/이체모니터/이용통계/인프라) 전부 200. 서버 로그 traceback 0건.
+- **에이전트 본체**: `agent.run_agent()`를 직접 호출 — "계좌 잔액"(도구: 계좌조회), "예금 상품 추천"(도구: search_products) 둘 다 정상 응답.
+- **예약이체 폴러**: 하트비트 "마지막 실행 7초 전 · 대기 0건" 정상.
+- 검증용 이체로 바뀐 로컬 `bank.db`는 백업에서 원상복구했다.
+
+**미검증(정직하게 남김)**: 앱을 인위적으로 재우는 수단이 없어 *실제 절전 상태에서 깨어나는 전체 경로*는 자연 절전이 일어나야 확인된다. resume 호출과 폴링 루프 자체는 위처럼 강제로 태워 확인했다.

@@ -17,6 +17,7 @@ import time
 import uuid
 from pathlib import Path
 
+import requests
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -1561,6 +1562,65 @@ def env_config_js():
         content=f"window.CHAT_BASE_URL = {json.dumps(chat_base_url)};",
         media_type="application/javascript",
     )
+
+
+# ── AI은행원 깨우기 ──────────────────────────────────────────────────
+# AI은행원은 Streamlit Community Cloud 무료 티어에 있고, 그 티어는 12시간 무트래픽이면
+# 앱을 재운다. 잠든 상태로 접속하면 챗봇 대신 "Zzzz — 깨울까요?" 화면과 버튼이 뜬다.
+# 방문자에게 그 버튼을 누르게 하지 않으려고, 사이트가 iframe을 붙이기 전에 여기로 먼저 깨운다.
+#
+# 왜 브라우저에서 Streamlit Cloud API를 직접 못 부르나: 그 API에는 Access-Control-Allow-Origin
+# 헤더가 없어서 cross-origin fetch가 CORS로 막힌다(2026-09-03 실측). 그래서 서버가 대신 부른다.
+#
+# 깨우기 절차 — Streamlit Cloud 프런트엔드 번들(states-*.js / schemas-*.js)을 읽어 확인:
+#   1) GET  /api/v2/app/status  → 본문 .status로 상태 판별 + 쿠키(_streamlit_csrf)와
+#                                 응답 헤더 x-csrf-token을 여기서 한 번에 받는다
+#   2) POST /api/v2/app/resume  → 그 쿠키 + x-csrf-token 헤더 필요. 성공 시 204(멱등).
+# 쿠키나 CSRF 헤더 중 하나라도 빠지면 403이 난다.
+#
+# 앱 루트(GET /)를 먼저 치지 않는다: 그건 뷰어 인증 리다이렉트 체인이라 느리고(실측 17초,
+# 쿠키 자 없이는 리다이렉트 루프), 어차피 status 호출이 쿠키·CSRF를 다 준다.
+_STREAMLIT_RUNNING = 5          # Streamlit Cloud AppStatus: RUNNING=5, IS_SHUTDOWN(절전)=12
+_WAKE_POLL_SECONDS = 3
+_WAKE_TIMEOUT_SECONDS = 75      # 실측 기동 시간 ~45초
+
+
+def _streamlit_status(sess: requests.Session, base: str) -> tuple[int, str]:
+    """(status, csrf_token)을 돌려준다. status는 위 enum 값."""
+    r = sess.get(f"{base}/api/v2/app/status", timeout=10)
+    r.raise_for_status()
+    return int(r.json().get("status", -1)), r.headers.get("x-csrf-token", "")
+
+
+@app.post("/api/chat/wake")
+def wake_chat_app():
+    # 환경변수는 호출 시점에 읽는다(reset-demo와 같은 이유 — 나중에 넣은 값도 반영되도록).
+    base = os.environ.get("CHAT_BASE_URL", "").strip().rstrip("/")
+    if not base:
+        # 로컬 개발: 챗봇을 localhost:8501에 직접 띄우므로 깨울 대상이 없다.
+        return {"ready": True, "skipped": True}
+
+    try:
+        sess = requests.Session()
+        status, csrf = _streamlit_status(sess, base)   # 쿠키·CSRF도 이 호출에서 함께 받는다
+        if status == _STREAMLIT_RUNNING:
+            return {"ready": True, "status": status}
+
+        sess.post(f"{base}/api/v2/app/resume", timeout=15,
+                  headers={"x-csrf-token": csrf})
+
+        deadline = time.time() + _WAKE_TIMEOUT_SECONDS
+        while time.time() < deadline:
+            time.sleep(_WAKE_POLL_SECONDS)
+            status, _ = _streamlit_status(sess, base)
+            if status == _STREAMLIT_RUNNING:
+                return {"ready": True, "status": status}
+        return {"ready": False, "status": status}
+    except Exception as e:
+        # 외부 서비스 실패가 사이트를 막지 않게 한다(이 저장소 공통 방침).
+        # 사이트는 ready=False여도 기존과 동일하게 iframe을 붙인다.
+        print(f"[wake_chat_app] AI은행원 깨우기 실패: {e}")
+        return {"ready": False, "error": str(e)[:200]}
 
 
 # ── 공개 데모 데이터 리셋 ────────────────────────────────────────────
