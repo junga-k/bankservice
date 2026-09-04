@@ -80,7 +80,18 @@ async def _db_request_scope(request, call_next):
 
 @app.on_event("startup")
 def _startup() -> None:
-    db.init_db()
+    # init_db()는 로컬(sqlite3)에서만 자동 실행한다. 이유는 비용 차이다 —
+    # 로컬은 같은 디스크의 파일이라 쿼리 1회가 사실상 0ms 라 41회(스키마 18 + ALTER 14 +
+    # balance_after 백필)를 돌려도 0.02초지만, 배포 환경은 Turso 원격이라 쿼리 1회당
+    # 300~650ms(vercel-deploy-progress.md 실측)여서 같은 41회가 약 16초가 된다.
+    # 서버리스는 콜드스타트마다 이 startup 이 다시 도는데, 테이블은 이미 다 있으므로
+    # 그 16초는 "혹시 없나" 확인에만 쓰이고 방문자는 그동안 백지 화면을 본다.
+    #
+    # 그래서 배포 환경에서는 건너뛰고, 스키마를 바꾼 뒤에는 POST /api/maintenance/init-db
+    # 를 한 번 호출해 반영한다(아래 참고). 분기 조건은 db.py 가 엔진 선택에 쓰는 것과
+    # 같은 TURSO_DATABASE_URL 이라 판단 기준이 한 곳에 모인다.
+    if not os.environ.get("TURSO_DATABASE_URL"):
+        db.init_db()
     _start_scheduled_poller()
 
 
@@ -1647,6 +1658,30 @@ def reset_demo_data(x_reset_token: str = Header(default="")):
           f"거래내역 {result['transactions_reseeded']}건 재시드 · "
           f"이체 {result['transfers_removed']}건 삭제")
     return result
+
+
+# ── 스키마 반영 (배포 환경 전용, 수동) ────────────────────────────────
+# _startup() 이 배포 환경에서 init_db() 를 건너뛰기 때문에(위 주석 참고), 스키마나
+# ALTER 마이그레이션을 추가한 뒤에는 배포 후 이 엔드포인트를 한 번 호출해야 반영된다.
+#
+#   curl -X POST https://<도메인>/api/maintenance/init-db -H "X-Reset-Token: <토큰>"
+#
+# init_db() 는 CREATE TABLE IF NOT EXISTS + "이미 있으면 무시하는" ALTER 루프라 여러 번
+# 호출해도 안전하다. 보호 방식은 위 reset-demo 와 같은 토큰을 그대로 쓴다(운영 토큰을
+# 하나로 유지 — 새 토큰을 늘리지 않는다).
+@app.post("/api/maintenance/init-db")
+def maintenance_init_db(x_reset_token: str = Header(default="")):
+    expected = os.environ.get("DEMO_RESET_TOKEN", "").strip()
+    if not expected:
+        raise HTTPException(404, "Not Found")          # 미설정 = 기능 없음
+    if not hmac.compare_digest(x_reset_token.strip(), expected):
+        raise HTTPException(403, "리셋 토큰이 올바르지 않습니다.")
+
+    started = time.time()
+    db.init_db()
+    elapsed = time.time() - started
+    print(f"[init-db] 스키마 반영 완료 · {elapsed:.1f}s")
+    return {"ok": True, "elapsed_seconds": round(elapsed, 1)}
 
 
 # ── 정적 사이트 서빙 (마지막에 마운트: /api 라우트가 우선) ───────────
