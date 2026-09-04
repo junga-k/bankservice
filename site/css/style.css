@@ -2847,4 +2847,3 @@ body:has(#chat.active) .site-footer {
   .footer-links { gap: var(--space-6); }
   .footer-bottom { flex-direction: column; gap: 4px; }
 }
-/* cdn-cache-invalidation-check: 1788520440 */
