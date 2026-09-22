@@ -2,6 +2,60 @@
 
 아직 처리 안 된 작업 체크리스트. 완료하면 체크하고, 상세 조사/시행착오 기록은 `session-log.md`에 남긴다(이 파일엔 "무엇을 해야 하는지"만 간결하게 유지).
 
+## ▶ 배포 전 필수 — 공개 계정 `reviewer` 도입분 (2026-09-23, 코드 완료 / 배포 미완)
+
+로컬에서 전부 검증했고 **아직 커밋·배포하지 않았다.** 순서가 중요하다.
+
+⚠️ **README를 먼저 푸시하면 안 된다.** README가 `reviewer` 로그인을 안내하는데 라이브에는 아직
+그 계정도, `DEMO_LOGIN`(자동 입력) 설정도 없다. 그 상태로 GitHub README를 보고 온 사람은
+아이디를 입력해도 로그인에 실패한다 — 고치려던 첫인상 문제가 더 나빠진다.
+환경변수 → 배포 → 계정 시드 → 확인까지 끝낸 뒤에 README가 공개되는 순서로 간다
+(문서와 코드를 같은 커밋에 담되, 푸시 전에 환경변수를 미리 넣어두면 배포와 동시에 맞는다).
+
+- [ ] Vercel 환경변수 추가
+      - `JWT_SECRET` — **가장 먼저.** 없으면 저장소의 폴백 상수(`demo-secret-change-me`)가 쓰이고,
+        공개 저장소이므로 누구나 `role:"admin"` 토큰을 위조할 수 있어 계정 분리 자체가 무의미해진다.
+      - `REVIEWER_PASSWORD` — 공개 계정 비밀번호
+      - `DEMO_LOGIN` — `reviewer:<위와 같은 값>` 형식. 로그인 화면 안내 카드와 자동 입력이 이 값으로 동작.
+        미설정이면 카드·자동입력이 아예 렌더되지 않는다(로컬 기본값과 동일).
+      - `DEMO_TRANSFER_PIN` — 이체 확인 단계에서 안내할 PIN(로그인 계정이 `DEMO_LOGIN` 계정일 때만 노출)
+      - `ADMIN_PASSWORD` — 공개하지 않을 값
+- [ ] 라이브 Turso에 `reviewer` 계정 생성 — **엔드포인트로는 안 된다.**
+      `POST /api/maintenance/init-db`는 스키마만 반영하고, `reset-demo`의 `reset_demo_data()`는
+      존재하지 않는 계좌를 `continue`로 건너뛰며 **사용자를 생성하지 않는다.**
+      → 로컬에서 Turso를 가리켜 시드 스크립트를 1회 실행한다:
+      ```bash
+      TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... REVIEWER_PASSWORD=... \
+        .venv/bin/python seed_bank.py
+      ```
+      라이브에는 이미 `demo`가 있으므로 `main()`이 조기 return 분기를 타고
+      `_ensure_admin` → `_ensure_reviewer` → `_seed_runtime_rows`만 돈다(기존 데이터 건드리지 않음).
+      → 그 뒤 `reviewer` 로그인이 되는지 확인
+- [ ] **`admin` 비밀번호 1회 수동 변경** — 마이페이지 > 보안.
+      ⚠️ `ADMIN_PASSWORD`를 넣어도 라이브 기존 행은 자동으로 안 바뀐다(`_ensure_admin()`은 신규 생성 시에만
+      INSERT하고, `reset_demo_data()`는 `users.password_hash`를 건드리지 않는다). 바꾼 값은 안전하게 보관.
+      되돌릴 방법이 없으니 신중히.
+- [ ] `JWT_SECRET` 적용 시 기존 발급 토큰이 전부 무효화된다 → 사용자는 로그인 화면으로 떨어진다(정상 동작)
+- [ ] 프리뷰/라이브에서 재확인: 안내 카드에 아이디만 노출(비밀번호·PIN 없음) / 자동 입력 / `reviewer` 백오피스 진입 /
+      계정 격리(`reviewer` 이체 후 `admin` 잔액 불변) / `GET /api/transfers/1` 401 / `reset-password` 시드 계정 403
+
+## ▶ 확인 못 한 것 — AI 은행원 이체 확인 모달 (2026-09-23)
+
+`@st.dialog`로 최종 확인(체크박스+PIN+실행)을 분리했다. **Streamlit `AppTest`로 로직은 전부 검증했지만
+브라우저 화면으로는 보지 못했다** — 채팅 입력이 브라우저 자동화로 제출되지 않아 AppTest로 전환했다.
+- [ ] 로컬에서 `streamlit run app.py` + 사이트 iframe으로 열어 모달이 시각적으로 어떻게 보이는지 확인
+      (모달은 중첩 iframe **안**에 뜨므로 화면 전체가 아니라 챗 영역만 덮는다 — 의도된 동작)
+- [ ] 실패 시 모달이 닫히지 않고 `이체 실패`가 안에 보이는지 화면으로도 확인
+
+## 이체 화면 — PIN을 서드파티 호스트에 두지 않기 (미착수, SPA 이관 결정과 묶임)
+
+현재 AI 은행원의 PIN 입력과 이체 실행은 Streamlit Community Cloud(서드파티) 프로세스를 지난다.
+사이트 쪽 모달로 받으면(`showModal()` 재사용) PIN과 실행이 1st-party origin에만 머문다 — 은행 데모로서 의미가 크다.
+**막히는 지점은 돌아오는 길**: Streamlit Cloud가 앱을 항상 중첩 iframe에 넣으므로 앱→top은
+`window.top.postMessage`로 되지만 top→앱은 내부 프레임이 cross-origin이라 참조를 얻을 수 없다.
+우회책(`&tf_result=<id>`로 iframe 재로드, `GET /api/me/transfers/latest` 신설)은 투박하거나 서버 변경이 필요하다.
+→ "AI은행원 네이티브 이식" 결정과 함께 판단할 사안(아래 항목 참조).
+
 ## ▶ 다음 작업 — 상품조회 19초 (원인 규명 완료, 미착수)
 
 **우리 코드 문제가 아니다. FSS 공개 API의 적금 엔드포인트가 원래 느리다** — 우리 서버를 거치지 않고
