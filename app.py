@@ -1441,7 +1441,11 @@ if _pending:
         # use_container_width=True로 버튼이 컬럼 폭을 정확히 채우게 해서, 버튼 사이 실제
         # 간격이 gap 값 그대로 나오게 한다(컬럼이 버튼보다 넓어서 남는 여백 때문에 간격이
         # 벌어져 보이던 문제를 CSS 폭 트릭 없이 해결 — 그 트릭이 버튼 줄바꿈 버그를 냈었음).
-        _c1, _c2, _ = st.columns([1, 1, 3], gap="small")
+        # 비율은 [1,1,3]이 아니라 [3,2,5] — 예전엔 "이체하기"(4자)가 1/5 칸에 들어갔지만
+        # 지금 라벨 "이체 확인"(공백 포함 5자)은 같은 폭에서 두 줄로 줄바꿈됐다
+        # (라이브에서 실제로 확인된 버그, 2026-09-23). "취소"(2자) 칸은 그대로 두고
+        # 첫 칸만 넓혔다.
+        _c1, _c2, _ = st.columns([3, 2, 5], gap="small")
         if _c1.button("이체 확인", type="primary", key="tf_open_modal",
                       use_container_width=True):
             st.session_state["tf_modal_open"] = True
