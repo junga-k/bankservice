@@ -1248,13 +1248,135 @@ def _poll_transfer_status(transfer_id: int, token: str,
 def _clear_transfer_widget_keys() -> None:
     """이체 플로우 위젯 상태를 정리 — 다음 번 새 이체에 이전 값(특히 비밀번호)이 새지 않도록."""
     for _k in ("tf_from_sel", "tf_when", "tf_delay", "tf_sched_d", "tf_sched_t",
-               "tf_confirm_chk", "tf_pw"):
+               "tf_confirm_chk", "tf_pw", "tf_modal_open"):
         st.session_state.pop(_k, None)
 
 
+# 공개 데모의 이체 비밀번호 힌트. 사이트 로그인 화면이 아니라 **이체 확인 모달에서만**
+# 노출한다 — 로그인 비밀번호와 PIN 을 한 화면에 나란히 두면 인증 수단을 구분하지 않는
+# 것으로 읽힌다. 값은 배포 환경변수로만 들어온다(미설정이면 힌트 없음).
+_DEMO_TRANSFER_PIN = os.environ.get("DEMO_TRANSFER_PIN", "").strip()
+
+
+def _fee_text(fee: int) -> str:
+    """수수료 표시. 현재 정책은 면제(0)라 '0원'이 아니라 '면제'로 쓴다."""
+    return f"{fee:,}원 (참고 · 실제 수수료는 처리 시 확정)" if fee else "면제"
+
+
+def _transfer_result_text(res: dict, pending: dict, from_account: str,
+                          amt: int, token: str) -> tuple[str | None, str | None]:
+    """execute_transfer 결과를 대화에 남길 문구로 바꾼다.
+
+    반환: (최종 문구, None) 또는 실패 시 (None, 사유). 실패를 예외가 아니라 값으로
+    돌려주는 이유: 호출측(이체 확인 모달)이 rerun 하지 않고 모달 안에서 에러를
+    보여줘야 사용자가 자리를 잃지 않고 재시도할 수 있다.
+    """
+    if "error" in res:
+        return None, res["error"]
+
+    status = res.get("status")
+
+    def _completed_text() -> str:
+        bal = next((a["balance"] for a in _my_accounts(token)
+                    if a["account_no"] == from_account), None)
+        tail = f" · 보내는 분 계좌({from_account[-4:]}) 잔액 {bal:,}원" if bal is not None else ""
+        st.session_state["_show_txn_link"] = {"account_no": from_account}
+        return f"✅ **이체 완료** — {pending['holder_name']}님에게 {amt:,}원을 보냈어요.{tail}"
+
+    if status == "scheduled":
+        import datetime as _dt2
+        when_txt = _dt2.datetime.fromtimestamp(res["scheduled_at"]).strftime("%Y-%m-%d %H:%M")
+        return (f"🗓️ **예약 완료** — {pending['holder_name']}님에게 {amt:,}원을 "
+                f"{when_txt}에 이체하도록 예약했어요. (거래번호 {res['transfer_id']}) "
+                f"실행 전까지 취소할 수 있어요."), None
+
+    if status == "delayed":
+        import datetime as _dt2
+        when_txt = _dt2.datetime.fromtimestamp(res["scheduled_at"]).strftime("%H:%M")
+        return (f"⏳ **지연 이체 접수** — {pending['holder_name']}님에게 {amt:,}원을 "
+                f"{when_txt}에 이체합니다. (거래번호 {res['transfer_id']}) "
+                f"그 전까지 내 계좌·관리자 화면에서 취소할 수 있어요."), None
+
+    if status == "pending":
+        # Kafka 비동기 처리 — 워커가 completed/failed로 바꿀 때까지 짧게 폴링
+        tr = _poll_transfer_status(res["transfer_id"], token)
+        final_status = tr.get("status")
+        if final_status == "completed":
+            return _completed_text(), None
+        if final_status == "failed":
+            return None, (tr.get("error") or "알 수 없는 오류")
+        return ("⏳ 처리가 지연되고 있어요. 완료되면 내 계좌 거래내역에서 "
+                f"확인해 주세요. (거래번호 {res['transfer_id']})"), None
+
+    # "completed" — Kafka 꺼진 동기 경로(이미 처리 끝난 상태)
+    return _completed_text(), None
+
+
+@st.dialog("이체 확인")
+def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, amt: int,
+                             conv: dict, token: str,
+                             sched_at: float | None, delay_min: int) -> None:
+    """최종 확인 모달 — 체크박스 + 이체 비밀번호 + 실행.
+
+    실패 시 st.rerun() 하지 않는다. 다이얼로그는 rerun 하면 닫히므로, 에러를 모달 안에서
+    st.error 로 보여주고 그대로 두어야 사용자가 입력을 고쳐 바로 재시도할 수 있다
+    (기존 인라인 카드의 "카드 유지 → 수정 후 재시도" 동작을 그대로 옮긴 것).
+    """
+    st.markdown(f"**{pending['holder_name']}**님에게 **{amt:,}원**을 이체합니다.")
+    st.markdown(
+        f"- **보내는 분 계좌**: {from_bank} {from_account}\n"
+        f"- **받는계좌**: {pending['bank_name']} {pending['to_account']} · "
+        f"예금주 **{pending['holder_name']}**\n"
+        f"- 수수료: {_fee_text(pending['fee'])}"
+    )
+    if pending.get("is_new_payee"):
+        st.warning("⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.")
+
+    _ok = st.checkbox("받는 분(예금주명)과 금액을 확인했습니다", key="tf_confirm_chk")
+    _pw = st.text_input("이체 비밀번호 (숫자 6자리)", type="password", key="tf_pw",
+                        max_chars=6, placeholder="이체 비밀번호 6자리를 입력하세요")
+    if _DEMO_TRANSFER_PIN:
+        st.caption(f"데모 이체 비밀번호: {_DEMO_TRANSFER_PIN}")
+
+    _c1, _c2 = st.columns(2, gap="small")
+    if _c1.button("이체하기", type="primary", key="tf_exec", use_container_width=True):
+        if not _ok:
+            st.warning("예금주명과 금액을 확인한 뒤 체크해 주세요.")
+            return
+        if not _pw:
+            st.warning("이체 비밀번호를 입력해 주세요.")
+            return
+        if sched_at and sched_at <= time.time() + 30:
+            st.warning("예약 시각을 현재보다 미래로 설정해 주세요.")
+            return
+
+        _exec = dict(pending, from_account=from_account)
+        with st.spinner("이체를 처리하고 있어요…"):
+            _res = agent.execute_transfer(_exec, token, _pw,
+                                          scheduled_at=sched_at, delay_minutes=delay_min)
+            _final_text, _err = _transfer_result_text(_res, pending, from_account, amt, token)
+
+        if _err:
+            st.error(f"이체 실패: {_err}")   # 모달 유지 → 수정 후 재시도
+            return
+
+        conv["messages"].append({"role": "assistant", "content": _final_text})
+        st.session_state.pop("pending_transfer", None)
+        _clear_transfer_widget_keys()
+        storage.save_conversation(conv)
+        st.rerun()
+
+    if _c2.button("닫기", key="tf_modal_close", use_container_width=True):
+        st.session_state.pop("tf_modal_open", None)
+        st.rerun()
+
+
 # ── 에이전트 이체 확인 카드 (사용자 확인 + 비밀번호 인증 후에만 실행) ──
-# 예금주·시점 선택·비밀번호를 한 화면에서 받고, "이체하기" 한 번으로 바로 실행한다
-# (중간에 "다음" 단계를 두는 2단계 플로우로 바꿨다가 사용자 요청으로 원래대로 되돌림 — 2026-08-10).
+# 카드에서는 예금주 확인·보내는 분 계좌·이체 시점까지 받고, 최종 확인(체크박스 + 이체
+# 비밀번호 + 실행)은 _transfer_confirm_dialog 모달에서 받는다.
+# 한때 카드 안에서 "다음" 단계를 두는 2단계 플로우로 바꿨다가 사용자 요청으로 되돌린
+# 적이 있다(2026-08-10). 지금은 단계를 늘린 게 아니라, 같은 한 번의 확인을 모달로
+# 꺼낸 것이다 — 카드가 iframe 안 챗 버블 안이라 세로로 너무 길었다.
 _pending = st.session_state.get("pending_transfer")
 if _pending:
     _accts = _my_accounts(auth_token)
@@ -1262,7 +1384,7 @@ if _pending:
     with st.chat_message("assistant"):
         st.markdown(f"**💸 {_pending['holder_name']}님에게 {_amt:,}원({_won_kor(_amt)}) 이체할까요?**")
 
-        # 출금 계좌 선택(계좌 2개 이상일 때)
+        # 보내는 분 계좌 선택(계좌 2개 이상일 때)
         _from = _pending["from_account"]
         if len(_accts) > 1:
             _opts = [a["account_no"] for a in _accts]
@@ -1272,14 +1394,14 @@ if _pending:
                 _def = _opts.index(_from)
             else:
                 _def = next((i for i, a in enumerate(_accts) if a.get("is_primary")), 0)
-            _from = st.selectbox("출금 계좌", _opts, index=_def,
+            _from = st.selectbox("보내는 분 계좌", _opts, index=_def,
                                  format_func=lambda x: _labels.get(x, x), key="tf_from_sel")
 
         _from_bank = next((a["bank_name"] for a in _accts if a["account_no"] == _from), "")
         st.markdown(
-            f"- **출금계좌**: {_from_bank} {_from}\n"
+            f"- **보내는 분 계좌**: {_from_bank} {_from}\n"
             f"- **받는계좌**: {_pending['bank_name']} {_pending['to_account']} · 예금주 **{_pending['holder_name']}**\n"
-            f"- 수수료: {_pending['fee']:,}원 (참고 · 실제 수수료는 처리 시 확정)"
+            f"- 수수료: {_fee_text(_pending['fee'])}"
         )
         if _pending.get("is_new_payee"):
             st.warning("⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.")
@@ -1310,84 +1432,31 @@ if _pending:
             else:
                 st.caption(f"🗓️ {_sched_dt.strftime('%Y-%m-%d %H:%M')}에 실행 예약됩니다.")
 
-        _ok = st.checkbox("받는 분(예금주명)과 금액을 확인했습니다", key="tf_confirm_chk")
-        _pw = st.text_input("이체 비밀번호 (숫자 6자리)", type="password", key="tf_pw",
-                            max_chars=6, placeholder="이체 비밀번호 6자리를 입력하세요")
-
-        # 이체하기/취소 버튼을 화면 양끝으로 벌리지 않고 나란히 붙여 배치한다
+        # 최종 확인(체크박스 + 이체 비밀번호 + 실행)은 모달로 옮겼다.
+        # 이유: 이 카드가 챗 버블 안(그리고 그 버블은 iframe 안)이라 세로로 길어서
+        # 스크롤이 깊었고, PIN 이 "폼 필드 하나"로 묻혔다. 모달로 분리하면 PIN 입력이
+        # 차단성 인증 이벤트로 읽혀, 이체 실행 권한을 LLM 에서 분리한 설계가 화면에 드러난다.
+        # 두 버튼을 화면 양끝으로 벌리지 않고 나란히 붙여 배치한다
         # (동일폭 st.columns(2)는 두 버튼을 컨테이너 좌우 끝으로 밀어놓는 문제가 있었음).
         # use_container_width=True로 버튼이 컬럼 폭을 정확히 채우게 해서, 버튼 사이 실제
         # 간격이 gap 값 그대로 나오게 한다(컬럼이 버튼보다 넓어서 남는 여백 때문에 간격이
         # 벌어져 보이던 문제를 CSS 폭 트릭 없이 해결 — 그 트릭이 버튼 줄바꿈 버그를 냈었음).
         _c1, _c2, _ = st.columns([1, 1, 3], gap="small")
-        if _c1.button("이체하기", type="primary", key="tf_exec", use_container_width=True):
-            if not _ok:
-                st.warning("예금주명과 금액을 확인한 뒤 체크해 주세요.")
-            elif not _pw:
-                st.warning("이체 비밀번호를 입력해 주세요.")
-            elif _when == "예약 이체 (지정 시각)" and (not _sched_at or _sched_at <= time.time() + 30):
-                st.warning("예약 시각을 현재보다 미래로 설정해 주세요.")
-            else:
-                _thinking_ph = st.empty()
-                _thinking_ph.markdown(_thinking_indicator_html("이체를 처리하고 있어요…"),
-                                      unsafe_allow_html=True)
-                _exec = dict(_pending, from_account=_from)
-                _res = agent.execute_transfer(_exec, auth_token, _pw,
-                                              scheduled_at=_sched_at, delay_minutes=_delay_min)
-                if "error" in _res:
-                    _thinking_ph.empty()
-                    st.error(f"이체 실패: {_res['error']}")   # 카드 유지 → 수정 후 재시도
-                else:
-                    _status = _res.get("status")
-                    if _status == "scheduled":
-                        import datetime as _dt2
-                        _when_txt = _dt2.datetime.fromtimestamp(_res["scheduled_at"]).strftime("%Y-%m-%d %H:%M")
-                        _final_text = (
-                            f"🗓️ **예약 완료** — {_pending['holder_name']}님에게 {_amt:,}원을 "
-                            f"{_when_txt}에 이체하도록 예약했어요. (거래번호 {_res['transfer_id']}) "
-                            f"실행 전까지 취소할 수 있어요.")
-                    elif _status == "delayed":
-                        import datetime as _dt2
-                        _when_txt = _dt2.datetime.fromtimestamp(_res["scheduled_at"]).strftime("%H:%M")
-                        _final_text = (
-                            f"⏳ **지연 이체 접수** — {_pending['holder_name']}님에게 {_amt:,}원을 "
-                            f"{_when_txt}에 이체합니다. (거래번호 {_res['transfer_id']}) "
-                            f"그 전까지 내 계좌·관리자 화면에서 취소할 수 있어요.")
-                    elif _status == "pending":
-                        # Kafka 비동기 처리 — 워커가 completed/failed로 바꿀 때까지 짧게 폴링
-                        _tr = _poll_transfer_status(_res["transfer_id"], auth_token)
-                        _final_status = _tr.get("status")
-                        if _final_status == "completed":
-                            _bal = next((a["balance"] for a in _my_accounts(auth_token)
-                                         if a["account_no"] == _from), None)
-                            _tail = f" · 출금계좌({_from[-4:]}) 잔액 {_bal:,}원" if _bal is not None else ""
-                            _final_text = f"✅ **이체 완료** — {_pending['holder_name']}님에게 {_amt:,}원을 보냈어요.{_tail}"
-                            st.session_state["_show_txn_link"] = {"account_no": _from}
-                        elif _final_status == "failed":
-                            _reason = _tr.get("error") or "알 수 없는 오류"
-                            _final_text = f"❌ **이체 실패** — {_reason}"
-                        else:
-                            _final_text = ("⏳ 처리가 지연되고 있어요. 완료되면 내 계좌 거래내역에서 "
-                                          f"확인해 주세요. (거래번호 {_res['transfer_id']})")
-                    else:  # "completed" (Kafka 꺼진 동기 경로 — 이미 처리 끝난 상태)
-                        _bal = next((a["balance"] for a in _my_accounts(auth_token)
-                                     if a["account_no"] == _from), None)
-                        _tail = f" · 출금계좌({_from[-4:]}) 잔액 {_bal:,}원" if _bal is not None else ""
-                        _final_text = f"✅ **이체 완료** — {_pending['holder_name']}님에게 {_amt:,}원을 보냈어요.{_tail}"
-                        st.session_state["_show_txn_link"] = {"account_no": _from}
-
-                    _thinking_ph.empty()
-                    conv["messages"].append({"role": "assistant", "content": _final_text})
-                    st.session_state.pop("pending_transfer", None)
-                    _clear_transfer_widget_keys()
-                    storage.save_conversation(conv)
-                    st.rerun()
+        if _c1.button("이체 확인", type="primary", key="tf_open_modal",
+                      use_container_width=True):
+            st.session_state["tf_modal_open"] = True
         if _c2.button("취소", key="tf_cancel_confirm", use_container_width=True):
             st.session_state.pop("pending_transfer", None)
             _clear_transfer_widget_keys()
             conv["messages"].append({"role": "assistant", "content": "이체를 취소했습니다."})
             storage.save_conversation(conv)
             st.rerun()
+
+    # 모달은 chat_message 컨테이너 밖에서 연다(다이얼로그는 화면 최상위에 렌더된다).
+    if st.session_state.get("tf_modal_open"):
+        _transfer_confirm_dialog(_pending, _from, _from_bank, _amt, conv, auth_token,
+                                 _sched_at, _delay_min)
+
 
 # ── 이체 완료 후: 내 계좌 거래내역으로 이동하는 액션(부모 SPA에 postMessage) ──
 _txn_link = st.session_state.get("_show_txn_link")

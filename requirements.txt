@@ -10,7 +10,7 @@ PyJWT
 libsql            # Turso(libSQL) 배포용 — 로컬은 표준 sqlite3 사용
 
 # 챗봇 / AI 에이전트
-streamlit
+streamlit==1.58.0   # st.dialog(이체 확인 모달)를 쓰므로 버전을 고정한다
 openai
 langgraph
 langchain-openai

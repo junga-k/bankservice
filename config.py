@@ -32,7 +32,7 @@ DEFAULTS: dict = {
     # 이체 정책(관리자 조정 가능) — 상수 fallback 은 backend/app.py 참조
     "transfer_limit":        5_000_000,   # 1회 한도
     "daily_transfer_limit": 10_000_000,   # 1일 누적 한도
-    "transfer_fee":                500,   # 타행 이체 수수료
+    "transfer_fee":                0,     # 이체 수수료 — 현재 정책은 면제(백오피스에서 조정 가능)
 }
 
 

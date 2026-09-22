@@ -469,6 +469,7 @@ function accountGoTab(name) {
   ACCOUNT_TABS.forEach((t) => {
     document.getElementById(`account-panel-${t}`).style.display = t === name ? "block" : "none";
   });
+  if (name === "transfer") loadTransferNotice();
 }
 
 document.addEventListener("click", (e) => {
@@ -565,7 +566,9 @@ let tfVerified = null;      // 예금주 확인된 받는 계좌 {account_no, ba
 function fillTransferFrom(accounts) {
   tfAccounts = accounts;
   document.getElementById("tf-from").innerHTML = accounts
-    .map((a) => `<option value="${a.account_no}">${escapeHtml(a.bank_name)} ${escapeHtml(a.account_no)} · 잔액 ${won(a.balance)}</option>`)
+    // 숨겨진 네이티브 select 는 값 저장 전용이라 표시 문자열을 꾸미지 않는다.
+    // 사용자에게 보이는 것은 아래 커스텀 셀렉트(csRender)가 그린다.
+    .map((a) => `<option value="${a.account_no}">${escapeHtml(a.bank_name)} ${escapeHtml(a.account_no)}</option>`)
     .join("");
   const toBank = document.getElementById("tf-to-bank");
   if (toBank && !toBank.dataset.filled) {
@@ -575,6 +578,12 @@ function fillTransferFrom(accounts) {
     toBank.dataset.filled = "1";
   }
   updateFromBalance();
+  // 옵션을 새로 채웠으므로 커스텀 셀렉트 표시도 다시 그린다(받는 분 은행 트리거 포함 —
+  // 이걸 빼먹으면 열어보기 전까지 트리거가 비어 있다).
+  csRenderAll();
+  // 브라우저가 폼 상태를 복원하는 시점이 이 함수보다 늦을 수 있다(복원 시 change 가
+  // 발생하지 않아 잔액 칸만 이전 계좌 값으로 남는다). 한 틱 뒤에 한 번 더 맞춘다.
+  requestAnimationFrame(() => { updateFromBalance(); csRenderAll(); });
   renderTfQuickAccounts();
 }
 
@@ -614,10 +623,126 @@ function tfAmountValue() {
   return raw ? parseInt(raw, 10) : 0;
 }
 
+/* ── 커스텀 셀렉트 ──────────────────────────────────────────────────
+ * 네이티브 <select> 의 옵션 목록은 OS 가 그리는 메뉴라 CSS 로 크기·폰트·위치를 바꿀 수
+ * 없다(macOS 에서 화면 가운데에 아주 크게 떠 사이트 톤과 어긋났다). 그래서 목록 UI 만
+ * 직접 그린다. 값은 계속 숨겨진 <select> 가 들고 있어서, 기존 코드의 .value 읽기/쓰기와
+ * change 이벤트가 그대로 동작한다(이체 폼 여러 곳이 tf-from/tf-to-bank 를 그렇게 쓴다).
+ *
+ * 마크업 규칙: .cs > select.cs-native + button.cs-trigger + ul.cs-menu
+ * 행 구성을 다르게 하고 싶은 select 만 CS_RENDERERS 에 등록하고, 나머지는 옵션 텍스트를 쓴다.
+ */
+const CS_RENDERERS = {
+  // 보내는 분 계좌: 은행 · 계좌번호 + 잔액(행 오른쪽 정렬 — 네이티브 <option> 으로는 불가능)
+  "tf-from": {
+    trigger() {
+      const a = currentFromAccount();
+      if (!a) return "";
+      return `<span class="cs-strong">${escapeHtml(a.bank_name)}</span>` +
+             `<span class="cs-sub">${escapeHtml(a.account_no)}</span>`;
+    },
+    rows() {
+      const v = document.getElementById("tf-from").value;
+      return tfAccounts.map((a) => ({
+        value: a.account_no,
+        on: a.account_no === v,
+        html: `<span class="cs-strong">${escapeHtml(a.bank_name)}</span>` +
+              `<span class="cs-sub">${escapeHtml(a.account_no)}</span>` +
+              `<span class="cs-right">${won(a.balance)}</span>`,
+      }));
+    },
+  },
+};
+
+function csRender(wrap) {
+  const sel = wrap.querySelector(".cs-native");
+  const btn = wrap.querySelector(".cs-trigger");
+  const menu = wrap.querySelector(".cs-menu");
+  if (!sel || !btn || !menu) return;
+  const r = CS_RENDERERS[sel.id];
+
+  if (r) {
+    btn.innerHTML = r.trigger() + CHEV_SVG;
+    menu.innerHTML = r.rows().map(csItemHtml).join("");
+    return;
+  }
+  // 기본: 옵션 텍스트를 그대로 쓴다
+  const picked = sel.selectedOptions[0];
+  btn.innerHTML = `<span class="cs-strong">${escapeHtml(picked ? picked.textContent : "")}</span>` + CHEV_SVG;
+  menu.innerHTML = [...sel.options]
+    // 비활성 옵션(예: "은행 선택" 플레이스홀더)은 목록에서 뺀다 — 눌러도 아무 일이
+    // 없어서 자리만 차지한다. 트리거에는 현재 값으로 계속 표시된다.
+    .filter((o) => !o.disabled)
+    .map((o) => csItemHtml({
+      value: o.value,
+      on: o.value === sel.value,
+      disabled: o.disabled,
+      html: `<span class="cs-strong">${escapeHtml(o.textContent)}</span>`,
+    }))
+    .join("");
+}
+
+function csItemHtml(row) {
+  const cls = "cs-item" + (row.on ? " on" : "") + (row.disabled ? " off" : "");
+  return `<li role="option" class="${cls}" aria-selected="${!!row.on}"
+              data-cs-value="${escapeHtml(row.value)}">${row.html}</li>`;
+}
+
+function csRenderAll() {
+  document.querySelectorAll(".cs").forEach(csRender);
+}
+
+function csSetOpen(wrap, open) {
+  const menu = wrap.querySelector(".cs-menu");
+  const btn = wrap.querySelector(".cs-trigger");
+  if (!menu || !btn) return;
+  if (open) csRender(wrap);           // 열 때마다 최신 값으로 다시 그린다
+  menu.hidden = !open;
+  btn.setAttribute("aria-expanded", String(open));
+}
+
+function csCloseAll(except) {
+  document.querySelectorAll(".cs").forEach((w) => {
+    if (w !== except) csSetOpen(w, false);
+  });
+}
+
+document.addEventListener("click", (e) => {
+  const trigger = e.target.closest(".cs-trigger");
+  if (trigger) {
+    const wrap = trigger.closest(".cs");
+    const willOpen = wrap.querySelector(".cs-menu").hidden;
+    csCloseAll(wrap);                 // 다른 셀렉트는 닫는다
+    csSetOpen(wrap, willOpen);
+    return;
+  }
+  const item = e.target.closest(".cs-item");
+  if (item) {
+    if (item.classList.contains("off")) return;   // disabled 옵션(예: "은행 선택")
+    const wrap = item.closest(".cs");
+    const sel = wrap.querySelector(".cs-native");
+    sel.value = item.dataset.csValue;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));  // 기존 핸들러 재사용
+    csSetOpen(wrap, false);
+    csRender(wrap);
+    return;
+  }
+  if (!e.target.closest(".cs")) csCloseAll();      // 바깥 클릭 → 전부 닫기
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") csCloseAll();
+});
+
 function updateFromBalance() {
   const acc = currentFromAccount();
-  document.getElementById("tf-from-balance").textContent =
-    acc ? `출금가능 금액 ${won(acc.balance)}` : "";
+  // 잔액 전용 칸(select 오른쪽). 선택이 바뀔 때마다 같이 갱신된다.
+  // 예전엔 이 아래에 '출금가능 금액'을 한 줄 더 찍었는데, 잔액 칸을 분리한 뒤로 완전히
+  // 같은 값이 두 번 나와서 없앴다.
+  document.getElementById("tf-from-bal").textContent = acc ? won(acc.balance) : "";
+  // 보이는 계좌 표시(커스텀 셀렉트 트리거)도 같은 시점에 맞춘다
+  const csWrap = document.getElementById("tf-from")?.closest(".cs");
+  if (csWrap) csRender(csWrap);
   updateAfterBalance();
 }
 
@@ -626,7 +751,10 @@ function updateAfterBalance() {
   const amt = tfAmountValue();
   const el = document.getElementById("tf-after");
   if (!acc || !amt) { el.textContent = ""; return; }
-  const fee = tfVerified ? tfVerified.fee : (acc.bank_name === document.getElementById("tf-to-bank").value ? 0 : 500);
+  // 수취인 확인 전에는 정책 수수료로 추정한다(같은 은행이면 면제).
+  // tfVerified 가 있으면 서버가 확정한 값을 그대로 쓴다.
+  const sameBank = acc.bank_name === document.getElementById("tf-to-bank").value;
+  const fee = tfVerified ? tfVerified.fee : (sameBank ? 0 : tfPolicyFee);
   const after = acc.balance - amt - fee;
   el.className = "tf-hint" + (after < 0 ? " err" : "");
   el.textContent = after < 0
@@ -676,6 +804,7 @@ async function showTransactions(accountId, accountNo, page = 1) {
     box.style.display = "block";
     // 이체 출금계좌를 클릭한 계좌로 맞춤
     document.getElementById("tf-from").value = accountNo;
+    updateFromBalance();   // 표시(계좌명·잔액)도 함께 갱신 — 예전엔 값만 바뀌어 어긋났다
   } catch (err) {
     console.error("거래내역 로드 실패:", err);
   }
@@ -713,8 +842,27 @@ document.addEventListener("click", (e) => {
   showTransactions(id, card.dataset.acctNo);
 });
 
+/* 이체 확인 단계의 PIN 힌트.
+ * 공개 데모 계정(DEMO_LOGIN.username)으로 로그인한 경우에만 노출한다 —
+ * 다른 계정으로 들어왔다면 그 계정의 PIN 이 아니므로 안내하면 틀린 정보가 된다.
+ * PIN 을 로그인 화면이 아니라 여기서만 보여주는 이유: 로그인 비밀번호와 PIN 을
+ * 한 화면에 나란히 두면 인증 수단을 구분하지 않는 것으로 읽힌다. */
+function renderTransferPinHint() {
+  const el = document.getElementById("tf-pin-hint");
+  if (!el) return;
+  const pin = DEMO_LOGIN?.transferPin;
+  const isDemoAccount = pin && getAuth()?.username === DEMO_LOGIN.username;
+  if (!isDemoAccount) {
+    el.hidden = true;
+    return;
+  }
+  el.textContent = `데모 이체 비밀번호: ${pin}`;
+  el.hidden = false;
+}
+
 /* ── 이체 마법사 ─────────────────────────────────────────────────── */
 function tfGoStep(n) {
+  if (n === 2) renderTransferPinHint();   // 확인 단계에 들어올 때마다 갱신
   [1, 2, 3].forEach((i) => {
     document.getElementById(`tf-step-${i}`).style.display = i === n ? "block" : "none";
   });
@@ -830,7 +978,7 @@ document.addEventListener("click", (e) => {
   const statusEl = document.getElementById("tf-status");
   statusEl.className = "tf-status";
 
-  if (!acc) { statusEl.className = "tf-status err"; statusEl.textContent = "출금 계좌를 선택하세요."; return; }
+  if (!acc) { statusEl.className = "tf-status err"; statusEl.textContent = "보내는 분 계좌를 선택하세요."; return; }
   if (!tfVerified) { statusEl.className = "tf-status err"; statusEl.textContent = "받는 분 예금주 확인을 먼저 해주세요."; return; }
   if (!amount) { statusEl.className = "tf-status err"; statusEl.textContent = "이체 금액을 입력하세요."; return; }
   const fee = tfVerified.fee;
@@ -839,7 +987,7 @@ document.addEventListener("click", (e) => {
   const memo = document.getElementById("tf-memo").value.trim() || acc.holder_name;
   const senderMemo = document.getElementById("tf-sender-memo").value.trim() || tfVerified.holder_name;
   document.getElementById("tf-confirm-box").innerHTML = `
-    <div class="cf-row"><span>출금 계좌</span><b>${escapeHtml(acc.bank_name)} ${escapeHtml(acc.account_no)}</b></div>
+    <div class="cf-row"><span>보내는 분 계좌</span><b>${escapeHtml(acc.bank_name)} ${escapeHtml(acc.account_no)}</b></div>
     <div class="cf-row"><span>받는 분</span><b>${escapeHtml(tfVerified.holder_name)} (${escapeHtml(tfVerified.bank_name)})</b></div>
     <div class="cf-row"><span>받는 계좌</span><b>${escapeHtml(tfVerified.account_no)}</b></div>
     <div class="cf-row"><span>받는 분 통장 표시</span><b>${escapeHtml(memo)}</b></div>
@@ -954,7 +1102,7 @@ function renderReceipt(tr) {
     <div class="rc-list">
       <div class="cf-row"><span>받는 분</span><b>${escapeHtml(tr.to_holder)} (${escapeHtml(tr.to_bank)})</b></div>
       <div class="cf-row"><span>받는 계좌</span><b>${escapeHtml(tr.to_account)}</b></div>
-      <div class="cf-row"><span>출금 계좌</span><b>${escapeHtml(tr.from_account)}</b></div>
+      <div class="cf-row"><span>보내는 분 계좌</span><b>${escapeHtml(tr.from_account)}</b></div>
       <div class="cf-row"><span>수수료</span><b>${tr.fee ? won(tr.fee) : "면제"}</b></div>
       <div class="cf-row"><span>이체 일시</span><b>${dt}</b></div>
       <div class="cf-row"><span>거래번호</span><b>${txno}</b></div>
@@ -1663,6 +1811,59 @@ document.addEventListener("click", (e) => {
   }
 });
 
+/* ── 공개 데모 로그인 안내 + 비밀번호 자동 채우기 ──────────────────
+ * window.DEMO_LOGIN 은 /js/env-config.js 가 심는다(= 배포 환경변수 DEMO_LOGIN).
+ * 비밀번호를 이 파일에 하드코딩하지 않는 이유: main.js 는 공개 정적 파일이라
+ * view-source 에 그대로 노출되고 저장소에도 영구히 남는다.
+ * 미설정(null)이면 카드도 자동 채우기도 동작하지 않는다 → 로컬 clone 동작 변화 없음.
+ *
+ * 화면에 인쇄하는 것은 아이디뿐이다. 비밀번호는 그 아이디를 입력하면 채워지고,
+ * 이체 비밀번호는 아예 여기서 다루지 않는다(이체 확인 단계에서 안내).
+ */
+const DEMO_LOGIN = window.DEMO_LOGIN || null;
+
+// 자동으로 채워 넣은 비밀번호인지 추적한다. 사용자가 직접 입력한 값은 절대 지우지 않는다.
+let demoPwAutofilled = false;
+
+function renderDemoLoginHint() {
+  // 홈 히어로의 안내 배지도 같은 조건(DEMO_LOGIN 존재)으로만 노출한다
+  const badge = document.getElementById("hero-demo-badge");
+  if (badge && DEMO_LOGIN) badge.hidden = false;
+
+  const box = document.getElementById("demo-login-hint");
+  if (!box || !DEMO_LOGIN) return;          // 미설정이면 hidden 그대로 둔다
+  box.innerHTML = `
+    <p class="demo-hint-title">포트폴리오 데모</p>
+    <p class="demo-hint-body">아이디에
+      <button type="button" class="demo-hint-chip" id="demo-login-chip">${DEMO_LOGIN.username}</button>
+      을 입력하시면 비밀번호가 자동으로 채워집니다.</p>
+    <p class="demo-hint-body">계좌조회 · 이체 · AI 은행원 · 마이페이지와
+      백오피스 9개 메뉴를 모두 보실 수 있습니다.</p>
+    <p class="demo-hint-note">이체 비밀번호는 이체 확인 단계에서 안내합니다.</p>`;
+  box.hidden = false;
+}
+
+/* 아이디 입력값에 따라 비밀번호를 채우거나 (우리가 채운 경우에만) 되돌린다.
+ * 입력란이 비어 있을 때만 채운다 — 브라우저 비밀번호 관리자가 이미 넣어둔 값을
+ * 덮어쓰지 않기 위함이다(#login-password 는 autocomplete="current-password"). */
+function syncDemoPassword() {
+  if (!DEMO_LOGIN) return;
+  const userEl = document.getElementById("login-username");
+  const pwEl = document.getElementById("login-password");
+  if (!userEl || !pwEl) return;
+
+  const match = userEl.value.trim() === DEMO_LOGIN.username;
+  if (match) {
+    if (!pwEl.value) {
+      pwEl.value = DEMO_LOGIN.password;
+      demoPwAutofilled = true;
+    }
+  } else if (demoPwAutofilled) {
+    pwEl.value = "";
+    demoPwAutofilled = false;
+  }
+}
+
 async function handleLogin() {
   const username = document.getElementById("login-username").value.trim();
   const password = document.getElementById("login-password").value;
@@ -2169,6 +2370,39 @@ async function saveMyConsents() {
   } catch (err) { mpStatus("mp-consent-status", err.message); }
 }
 
+/* 이체 화면 상단 안내(한도·수수료) — 백오피스에서 정책이 바뀌어도 따라오도록
+ * 하드코딩하지 않고 /api/me/limits 로 채운다. 실패 시 마크업의 기본 문구를 그대로 둔다. */
+/* 이체 정책 수수료 캐시. updateAfterBalance()의 '이체 후 잔액' 미리보기가 쓴다.
+ * 예전에는 500 을 하드코딩했는데, 수수료 정책이 면제(0)로 바뀐 뒤로는 수취인 확인 전에
+ * "수수료 500원 별도"가 떠서 바로 위 면제 안내와 모순됐다. 백오피스에서 정책을 바꿔도
+ * 따라오도록 /api/me/limits 값을 쓴다(아직 못 받았으면 0 = 면제 기본값). */
+let tfPolicyFee = 0;
+
+async function loadTransferNotice() {
+  const box = document.getElementById("tf-notice");
+  const main = document.getElementById("tf-policy-main");
+  const sub = document.getElementById("tf-policy-sub");
+  if (!box || !main || !sub || !isLoggedIn()) return;
+  try {
+    const res = await apiFetch("/api/me/limits");
+    if (!res.ok) return;
+    const l = await res.json();
+    tfPolicyFee = l.transfer_fee || 0;
+    updateAfterBalance();          // 캐시가 갱신됐으니 미리보기도 다시 계산
+    const limits = `1회 한도 ${won(l.transfer_limit)}, 1일 한도 ${won(l.daily_transfer_limit)}`;
+    if (l.transfer_fee) {
+      // 백오피스에서 수수료를 올린 경우 — 면제라고 말하면 안 된다
+      box.classList.remove("free");
+      main.textContent = `이체 수수료 ${won(l.transfer_fee)}`;
+      sub.textContent = limits;
+    } else {
+      box.classList.add("free");
+      main.textContent = "이체 수수료 면제";
+      sub.textContent = `타행으로 보낼 때도 수수료가 없습니다 (${limits})`;
+    }
+  } catch { /* 기본 문구 유지 */ }
+}
+
 /* 내 이체 한도(읽기전용) */
 async function loadMyLimits() {
   const box = document.getElementById("mp-limits");
@@ -2179,7 +2413,7 @@ async function loadMyLimits() {
     box.innerHTML =
       `<div class="cf-row"><span>1회 한도</span><b>${won(l.transfer_limit)}</b></div>` +
       `<div class="cf-row"><span>1일 한도</span><b>${won(l.daily_transfer_limit)}</b></div>` +
-      `<div class="cf-row"><span>타행 수수료</span><b>${won(l.transfer_fee)}</b></div>` +
+      `<div class="cf-row"><span>이체 수수료</span><b>${l.transfer_fee ? won(l.transfer_fee) : "면제"}</b></div>` +
       `<div class="cf-row"><span>오늘 사용액</span><b>${won(l.used_today)}</b></div>` +
       `<div class="cf-row"><span>오늘 잔여 한도</span><b>${won(l.remaining_today)}</b></div>`;
   } catch (err) { box.innerHTML = `<p class="tf-hint">${escapeHtml(err.message)}</p>`; }
@@ -3894,7 +4128,7 @@ document.addEventListener("submit", async (e) => {
     "이체 정책을 이 값으로 저장할까요?\n\n" +
     `· 1회 한도: ${won(once)}\n` +
     `· 1일 한도: ${won(daily)}\n` +
-    `· 타행 이체 수수료: ${won(fee)}\n\n` +
+    `· 이체 수수료: ${fee ? won(fee) : "면제"}\n\n` +
     "저장하면 이후 이체에 즉시 반영되고, AI은행원 유의사항 안내에도 새 한도가 반영됩니다."
   );
   if (!confirmed) {
@@ -5357,6 +5591,23 @@ window.addEventListener("message", (e) => {
     }
   };
   open();
+});
+
+/* ── 공개 데모 안내 카드 + 자동 채우기 리스너 ───────────────────── */
+renderDemoLoginHint();
+document.getElementById("login-username")?.addEventListener("input", syncDemoPassword);
+// 아이디 칩 클릭 → 타이핑 없이도 같은 경로를 태운다(카드는 렌더 후에 생기므로 위임으로 받는다)
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#demo-login-chip")) return;
+  const userEl = document.getElementById("login-username");
+  if (!userEl) return;
+  userEl.value = DEMO_LOGIN.username;
+  syncDemoPassword();
+  document.getElementById("login-password")?.focus();
+});
+// 로그인 폼이 reset 되면(로그인 성공) 자동 채움 추적도 초기화한다
+document.getElementById("login-form")?.addEventListener("reset", () => {
+  demoPwAutofilled = false;
 });
 
 /* ── 초기 진입 (해시 기반) ───────────────────────────────────────── */

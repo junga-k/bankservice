@@ -1,11 +1,15 @@
 """인증 유틸: bcrypt 비밀번호 해싱 + JWT 발급/검증.
 
-⚠️ 데모: SECRET은 상수. 실제 서비스면 환경변수/시크릿으로 분리해야 한다.
+SECRET은 환경변수 JWT_SECRET에서 읽는다. 저장소가 공개되어 있으므로 상수로 두면
+누구나 role:"admin" 토큰을 위조할 수 있다(= 관리자 비밀번호를 비공개로 돌려도 무의미).
+미설정 시에는 로컬 개발용 폴백 상수를 쓴다 — 배포 환경에서는 반드시 넣어야 한다.
+
 토큰은 프런트 localStorage에 저장(데모 편의). httpOnly 쿠키가 아니라 XSS에
 노출될 수 있으므로 실서비스에서는 개선 대상이다.
 """
 from __future__ import annotations
 
+import os
 import time
 
 import bcrypt
@@ -14,7 +18,9 @@ from fastapi import Header, HTTPException
 
 from backend import db
 
-_SECRET = "demo-secret-change-me"   # 데모용. 실서비스: 환경변수로.
+# 배포: Vercel 환경변수 JWT_SECRET. 미설정 시 폴백(로컬 개발 전용).
+# 값을 바꾸면 기존 발급 토큰이 전부 무효화되어 사용자는 로그인 화면으로 떨어진다.
+_SECRET = os.environ.get("JWT_SECRET", "").strip() or "demo-secret-change-me"
 _ALGO = "HS256"
 _TTL = 60 * 60 * 24  # 24시간
 

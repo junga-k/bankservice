@@ -147,8 +147,11 @@ def _get_producer():
 
 
 # ── 요청 모델 ────────────────────────────────────────────────────────
-# 타행 이체 수수료(원). 같은 은행이면 면제.
-TRANSFER_FEE = 500
+# 이체 수수료(원). 현재 정책은 전액 면제(0) — 신규 서비스가 건당 수수료를 받으면
+# 재방문 이유가 약해지고, 국내에서는 수수료 면제가 이미 시장 표준이다.
+# 수수료 로직 자체는 남겨둔다(잔액검사 amount+fee, 별도 '이체수수료' 거래내역,
+# 백오피스 이체정책 편집). 정책만 0이고, 백오피스에서 언제든 올릴 수 있다.
+TRANSFER_FEE = 0
 # 이체 한도(원) — 비밀번호(간편) 인증 수준에 맞춘 한도
 TRANSFER_LIMIT = 5_000_000        # 1회 500만원
 DAILY_TRANSFER_LIMIT = 10_000_000  # 1일 누적 1,000만원
@@ -496,10 +499,25 @@ def find_username(req: FindIdReq):
 
 @app.post("/api/reset-password")
 def reset_password(req: ResetPwReq):
-    """데모: 아이디+이름+전화 일치 시 비밀번호 재설정(실제 서비스는 이메일/SMS 인증 필요)."""
+    """데모: 아이디+이름+전화 일치 시 비밀번호 재설정(실제 서비스는 이메일/SMS 인증 필요).
+
+    시드 계정(demo/admin/reviewer 등)은 여기서 바꿀 수 없다. 이 엔드포인트는 OTP가
+    프런트 목업이고 rate limit도 없는데, 로그인 화면이 공개 계정 아이디를 안내하고
+    README에 이름·전화가 적혀 있어 표적이 명시된 상태다. 게다가 리셋(reset_demo_data)은
+    users.password_hash를 되돌리지 않으므로, 한 번 바뀌면 복구되지 않고 데모 전체가 잠긴다.
+    (로그인 비밀번호는 이체 PIN 미설정 시 PIN 대체값이기도 하다 — /api/transfer 참조.)
+    """
+    import seed_bank                                    # 시드 계정 목록의 단일 출처
+
     found = db.find_user_by_identity(req.name.strip(), req.phone)
     if found is None or found["username"] != req.username.strip():
         raise HTTPException(status_code=404, detail="회원 정보가 일치하지 않습니다.")
+    if found["username"] in seed_bank.SEED_USERNAMES:
+        raise HTTPException(
+            status_code=403,
+            detail="공개 데모의 기본 계정은 비밀번호를 변경할 수 없습니다. "
+                   "직접 실행해보시려면 README의 로컬 실행 안내를 참고하세요.",
+        )
     if len(req.new_password) < 4:
         raise HTTPException(status_code=400, detail="새 비밀번호는 4자 이상 입력하세요.")
     db.set_password_hash(found["id"], auth.hash_password(req.new_password))
@@ -1047,10 +1065,20 @@ def cancel_transfer(transfer_id: int, user: dict = Depends(auth.get_current_user
 
 
 @app.get("/api/transfers/{transfer_id}")
-def transfer_status(transfer_id: int):
+def transfer_status(transfer_id: int, user: dict = Depends(auth.get_current_user)):
+    """이체 처리 상태 조회. 본인이 보낸 이체만 볼 수 있다.
+
+    예전에는 무인증·소유권 미검사였다. db.get_transfer()가 user_id를 받지 않으므로
+    id를 1부터 순회하면 남의 이체 건(받는분 실명·계좌·금액)이 전부 나왔다(IDOR).
+    호출자는 둘뿐이고 양쪽 다 토큰을 갖고 있다 — site/js/main.js 의 폴링(apiFetch가
+    Authorization 헤더를 자동 부착)과 app.py 의 _poll_transfer_status.
+    """
     tr = db.get_transfer(transfer_id)
     if tr is None:
         raise HTTPException(status_code=404, detail="이체 내역을 찾을 수 없습니다.")
+    my_account_nos = {a["account_no"] for a in db.list_accounts(user["id"])}
+    if tr["from_account"] not in my_account_nos:
+        raise HTTPException(status_code=403, detail="조회 권한이 없습니다.")
     return tr
 
 
@@ -1566,11 +1594,34 @@ def admin_delete_event(event_id: int, user: dict = Depends(auth.require_admin)):
 # 주소를 배포 환경마다 다르게 넣을 수 있도록, main.js가 로드되기 전에 이 작은 동적 스크립트로
 # window.CHAT_BASE_URL을 먼저 심어둔다. CHAT_BASE_URL 환경변수 미설정 시 빈 문자열 반환 →
 # main.js가 기존과 동일하게 http://localhost:8501로 폴백(로컬 개발 동작 변화 없음).
+#
+# window.DEMO_LOGIN도 같은 방식으로 심는다 — 공개 데모의 안내 계정이다.
+# 왜 여기서 주는가: site/js/main.js는 공개 정적 파일이라 비밀번호를 거기 박으면
+# view-source에 그대로 노출되고 저장소에도 영구히 남는다("유출된 자격증명"으로 읽힌다).
+# 배포 환경변수로만 흘리면 저장소 코드와 정적 번들에는 남지 않는다.
+# 형식: DEMO_LOGIN="reviewer:<비밀번호>". 미설정 시 null → 프런트가 안내 카드도,
+# 아이디 입력 시 비밀번호 자동 채우기도 렌더하지 않는다(로컬 clone 동작 변화 없음).
 @app.get("/js/env-config.js")
 def env_config_js():
     chat_base_url = os.environ.get("CHAT_BASE_URL", "")
+
+    demo_username, _, demo_password = os.environ.get("DEMO_LOGIN", "").strip().partition(":")
+    demo_login = (
+        {
+            "username": demo_username,
+            "password": demo_password,
+            # 이체 비밀번호는 로그인 화면에 쓰지 않는다 — 이체 확인 단계에서만 안내한다.
+            # 프런트는 로그인한 계정이 이 공개 계정일 때만 힌트를 렌더한다(main.js).
+            "transferPin": os.environ.get("DEMO_TRANSFER_PIN", "").strip(),
+        }
+        if demo_username and demo_password else None
+    )
+
     return Response(
-        content=f"window.CHAT_BASE_URL = {json.dumps(chat_base_url)};",
+        content=(
+            f"window.CHAT_BASE_URL = {json.dumps(chat_base_url)};\n"
+            f"window.DEMO_LOGIN = {json.dumps(demo_login, ensure_ascii=False)};"
+        ),
         media_type="application/javascript",
     )
 
