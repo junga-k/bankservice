@@ -2,42 +2,39 @@
 
 아직 처리 안 된 작업 체크리스트. 완료하면 체크하고, 상세 조사/시행착오 기록은 `session-log.md`에 남긴다(이 파일엔 "무엇을 해야 하는지"만 간결하게 유지).
 
-## ▶ 배포 전 필수 — 공개 계정 `reviewer` 도입분 (2026-09-23, 코드 완료 / 배포 미완)
+## 공개 계정 `reviewer` 도입 — 배포 완료 (2026-09-23)
 
-로컬에서 전부 검증했고 **아직 커밋·배포하지 않았다.** 순서가 중요하다.
+커밋 `fcde97f`(feat) + `48b5fb5`(docs) → `main` 푸시 → GitHub 연동 자동 배포.
+라이브에서 로그인·이체 화면·백오피스까지 실제로 확인했다.
 
-⚠️ **README를 먼저 푸시하면 안 된다.** README가 `reviewer` 로그인을 안내하는데 라이브에는 아직
-그 계정도, `DEMO_LOGIN`(자동 입력) 설정도 없다. 그 상태로 GitHub README를 보고 온 사람은
-아이디를 입력해도 로그인에 실패한다 — 고치려던 첫인상 문제가 더 나빠진다.
-환경변수 → 배포 → 계정 시드 → 확인까지 끝낸 뒤에 README가 공개되는 순서로 간다
-(문서와 코드를 같은 커밋에 담되, 푸시 전에 환경변수를 미리 넣어두면 배포와 동시에 맞는다).
+- [x] Vercel Production 환경변수 — `JWT_SECRET`, `DEMO_LOGIN`, `DEMO_TRANSFER_PIN` **3개만**.
+      `ADMIN_PASSWORD`·`REVIEWER_PASSWORD`는 Vercel에서 읽는 코드가 없다(`seed_bank.py`만 읽으므로
+      시드를 실행하는 로컬에만 필요). 처음엔 5개로 계획했다가 변수별로 어느 프로세스가 읽는지
+      추적해 정정했다.
+- [x] 라이브 Turso(`matchbank`)에 `reviewer` 시드 — `turso auth login` 후 CLI로 URL·토큰을 받아
+      로컬에서 `seed_bank.py` 1회 실행. `demo`가 이미 있어 조기 return 분기를 타서 삭제 없이 추가만 됐다.
+      부수 효과로 **라이브에서도 비어 있던 런타임 테이블 5개가 채워졌다**
+      (transfers 0→13, security_events 0→5, inquiries 0→4, favorites 0→4, event_entries 0→5).
+      ※ 로컬 venv에 `libsql`이 빠져 있어 설치가 선행됐다(requirements에는 있었다).
+- [x] 커밋·푸시 — 원격에 사용자의 README 웹 편집(`6d0a291`)이 있어 rebase로 얹었다.
+- [x] 라이브 검증 — `reviewer` 로그인(김서연/admin), 백오피스 메뉴 노출, 커스텀 셀렉트 2개,
+      `보내는 분 계좌` 라벨, `transfer_fee: 0`, 수수료 면제 안내.
 
-- [ ] Vercel 환경변수 추가
-      - `JWT_SECRET` — **가장 먼저.** 없으면 저장소의 폴백 상수(`demo-secret-change-me`)가 쓰이고,
-        공개 저장소이므로 누구나 `role:"admin"` 토큰을 위조할 수 있어 계정 분리 자체가 무의미해진다.
-      - `REVIEWER_PASSWORD` — 공개 계정 비밀번호
-      - `DEMO_LOGIN` — `reviewer:<위와 같은 값>` 형식. 로그인 화면 안내 카드와 자동 입력이 이 값으로 동작.
-        미설정이면 카드·자동입력이 아예 렌더되지 않는다(로컬 기본값과 동일).
-      - `DEMO_TRANSFER_PIN` — 이체 확인 단계에서 안내할 PIN(로그인 계정이 `DEMO_LOGIN` 계정일 때만 노출)
-      - `ADMIN_PASSWORD` — 공개하지 않을 값
-- [ ] 라이브 Turso에 `reviewer` 계정 생성 — **엔드포인트로는 안 된다.**
-      `POST /api/maintenance/init-db`는 스키마만 반영하고, `reset-demo`의 `reset_demo_data()`는
-      존재하지 않는 계좌를 `continue`로 건너뛰며 **사용자를 생성하지 않는다.**
-      → 로컬에서 Turso를 가리켜 시드 스크립트를 1회 실행한다:
-      ```bash
-      TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... REVIEWER_PASSWORD=... \
-        .venv/bin/python seed_bank.py
-      ```
-      라이브에는 이미 `demo`가 있으므로 `main()`이 조기 return 분기를 타고
-      `_ensure_admin` → `_ensure_reviewer` → `_seed_runtime_rows`만 돈다(기존 데이터 건드리지 않음).
-      → 그 뒤 `reviewer` 로그인이 되는지 확인
-- [ ] **`admin` 비밀번호 1회 수동 변경** — 마이페이지 > 보안.
-      ⚠️ `ADMIN_PASSWORD`를 넣어도 라이브 기존 행은 자동으로 안 바뀐다(`_ensure_admin()`은 신규 생성 시에만
-      INSERT하고, `reset_demo_data()`는 `users.password_hash`를 건드리지 않는다). 바꾼 값은 안전하게 보관.
-      되돌릴 방법이 없으니 신중히.
-- [ ] `JWT_SECRET` 적용 시 기존 발급 토큰이 전부 무효화된다 → 사용자는 로그인 화면으로 떨어진다(정상 동작)
-- [ ] 프리뷰/라이브에서 재확인: 안내 카드에 아이디만 노출(비밀번호·PIN 없음) / 자동 입력 / `reviewer` 백오피스 진입 /
-      계정 격리(`reviewer` 이체 후 `admin` 잔액 불변) / `GET /api/transfers/1` 401 / `reset-password` 시드 계정 403
+### 남은 것
+
+- [ ] **Streamlit Cloud Secrets에 `DEMO_TRANSFER_PIN = "802413"` 추가.**
+      AI 은행원 모달의 PIN 힌트는 `app.py:1258`이 읽는데 그 프로세스는 Streamlit에서 돈다.
+      지금은 사이트 이체에는 힌트가 뜨고 AI 은행원에는 안 뜨는 상태다.
+- [ ] **`admin` 라이브 비밀번호 교체 — 사용자 판단으로 보류(2026-09-23).** 필요할 때 한다.
+      현재 라이브 비밀번호는 저장소의 폴백 기본값 `admin1234`(`seed_bank.py:26`)이다.
+      기능적 위험은 없다 — `reviewer`도 `role=admin`이고 `DEMO_READONLY`가 쓰기를 막는다.
+      다만 `admin`으로 로그인하면 개발자/방문자 데이터 분리가 무너진다(잔액·일일한도 공유).
+      하려면: `.env.deploy-values`의 값으로 라이브 마이페이지>보안에서 1회 변경.
+      ⚠️ 리셋이 `password_hash`를 복원하지 않아 **되돌릴 수 없다.** 값을 먼저 보관할 것.
+      README 문구는 이 상태에 맞춰 낮춰뒀다(교체하면 다시 올려도 된다).
+- [ ] 수수료 안내가 첫 렌더에 회색으로 보인다 — `/api/me/limits`가 라이브에서 2.1초 걸려
+      그 사이 마크업 기본값(문구는 맞고 초록 강조만 없음)이 보인다. 응답 후 정상 전환.
+      급하지 않지만 신경 쓰이면 낙관적 렌더(`.free`를 기본으로 두고 유료일 때만 해제)로 바꿀 수 있다.
 
 ## ▶ 확인 못 한 것 — AI 은행원 이체 확인 모달 (2026-09-23)
 
