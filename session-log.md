@@ -1821,3 +1821,26 @@ localhost:6006으로 **동기 전송**하고 실패 시 1+2+4초를 재시도한
 
 **아직 안 한 것**: 배포(브랜치 병합 + Streamlit Cloud 재배포), 프로덕션에서 `window.top.postMessage`
 실측, 비로그인 상한 실소진(로컬에 `DEMO_PUBLIC`이 없음 — 로직은 같은 조건으로 따로 돌려 확인).
+
+**배포 (2026-10-04, 같은 날)** — `feat/login-gate-relax` → `main` fast-forward 병합 후 푸시.
+원격에 새 변경이 없어 충돌 없이 올라갔고, Vercel(사이트)과 Streamlit Cloud(챗봇)가 각각
+자동 배포했다. 새 환경변수는 없다.
+
+라이브 확인:
+- **중첩 iframe postMessage가 닿는다** — 이번 작업의 유일한 미검증 리스크였다. 사이트 →
+  streamlit.app 호스트 → 앱 → components.html 3겹을 넘어 `[로그인하기]`가 사이트를 `#auth`로
+  보냈다. 폴백(“상단 메뉴의 로그인을 눌러주세요”)으로 내려갈 필요가 없었다.
+- 비로그인 AI은행원 즉시 열림 → 이체 요청 → 안내 박스 → `reviewer` 로그인(아이디 입력 시
+  비밀번호 자동 채움) → `#chat` 복귀 + **대화 그대로 복원**까지 한 번에 확인.
+- 안내문 정렬 다섯 요소 전부 633px 일치(정렬 수정 반영 확인).
+- 챗봇은 푸시 시점에 절전(status 12)이었는데 `POST /api/chat/wake`로 28초 만에 기동(status 5)
+  되면서 새 코드로 올라왔다 — 사이드바 새 문구로 확인.
+
+**덤으로 오래 미뤄둔 항목 하나가 해소됐다 — CDN 캐시가 재배포에 갇히지 않는다.**
+2026-09-04 콜드스타트 작업에서 "`s-maxage=86400`을 걸었는데 재배포 시 반영되는지 확인 필요,
+안 되면 TTL을 낮춘다"로 남겨뒀던 것. 이번에 실측: 배포 후 `/js/main.js`가 새 내용으로
+`x-vercel-cache: HIT`를 받았다. 전파에 1~2분 걸리고 그 사이 홈 HTML은 `STALE`로 구버전을
+잠깐 내려준다(`stale-while-revalidate` 의도대로). TTL은 그대로 둔다.
+
+라이브 콘솔 오류는 전부 Streamlit Cloud 호스트 자체의 텔레메트리(`/api/v2/user/details` 403,
+`/api/v1/app/event/focus` 404, Heap) — 우리 도메인에서 난 건 0건이다.
