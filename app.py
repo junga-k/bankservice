@@ -727,8 +727,14 @@ def _thinking_indicator_html(label: str = "답변을 준비하고 있어요…")
 _phoenix = tracing.init_tracing()
 
 # ── 세션: 대화 ──────────────────────────────────────────────────────
+# 사이트가 ?conv=<id> 를 붙여 보내면 그 대화를 이어서 연다.
+# 쓰이는 경우: 비로그인으로 대화하다 이체를 요청 → 로그인 → 사이트가 iframe을 새 토큰으로
+# 다시 로드(= Streamlit 세션 재시작)하면서 아까 대화의 id를 같이 넘긴다. 그게 없으면
+# 로그인한 순간 하던 대화가 사라진다.
 if "conversation" not in st.session_state:
-    st.session_state.conversation = storage.new_conversation()
+    _resume_id = (st.query_params.get("conv") or "").strip()
+    _resumed = storage.load_conversation(_resume_id) if _resume_id else None
+    st.session_state.conversation = _resumed or storage.new_conversation()
 
 # ── 세션: 설정 (config에서 한 번만 로드) ─────────────────────────────
 if "sel_provider" not in st.session_state:
@@ -756,43 +762,69 @@ _IS_LOCAL_BACKEND = _BACKEND_URL.startswith(("http://localhost", "http://127.0.0
 _BACKEND_TIMEOUT = float(os.environ.get("BACKEND_TIMEOUT", "3" if _IS_LOCAL_BACKEND else "20"))
 
 # 은행 에이전트 인증 토큰: 사이트 iframe(?token=)이 있으면 그걸 단일 기준으로 매 실행 동기화
-# (로그인=토큰, 로그아웃=빈 토큰). token 파라미터가 아예 없을 때(:8501 직접 접속)만 사이드바 로그인 사용.
+# (로그인=토큰, 로그아웃=빈 토큰). 판정이 값이 아니라 '키의 존재'라서, 사이트가 로그아웃
+# 상태로 붙여 보내는 빈 토큰(&token=)도 "사이트 안의 비로그인 방문자"로 구분된다.
 _SITE_EMBEDDED = "token" in st.query_params
 if _SITE_EMBEDDED:
     st.session_state.auth_token = (st.query_params.get("token") or "").strip() or None
 elif "auth_token" not in st.session_state:
     st.session_state.auth_token = None
 
+# 비로그인 방문자의 대화에 표식을 남긴다 → 사이드바 '이전 대화' 목록에서 제외된다
+# (storage.list_conversations). 대화 파일에 사용자 식별이 없어서, 익명 대화가 목록에
+# 섞이면 다음 방문자에게 제목과 본문이 그대로 보인다.
+# 매 실행 다시 찍으므로 로그인 상태가 바뀌면 표식도 따라 바뀐다.
+if "conversation" in st.session_state:
+    st.session_state.conversation["guest"] = not st.session_state.auth_token
+
 
 # ── 공개 데모 남용 방지 ───────────────────────────────────────────────
 # 배포본 챗봇 URL은 누구나 열 수 있어서, 자동화로 반복 호출하면 OpenAI 비용이 나가고 그 달
-# 데모가 죽는다. 정상 방문자는 체감하지 못할 선에서 상한만 둔다(세션 30턴 / 앱 전체 하루
-# 300턴 — 일 단위라 소진돼도 다음 날 자동 복구). 로컬 개발에는 DEMO_PUBLIC 이 없으므로
-# 아무 제한이 걸리지 않는다.
+# 데모가 죽는다. 정상 방문자는 체감하지 못할 선에서 상한만 둔다(일 단위라 소진돼도 다음 날
+# 자동 복구). 로컬 개발에는 DEMO_PUBLIC 이 없으므로 아무 제한이 걸리지 않는다.
+#
+# 비로그인(익명)은 별도 풀을 더 낮게 쓴다. 로그인 없이도 쓸 수 있게 열었으므로, 익명
+# 트래픽이 공용 하루치를 다 태우면 reviewer 로 로그인해 둘러보는 채용담당자까지 함께
+# 막힌다 — 두 풀을 독립시켜 그 전파를 끊는다.
 _DEMO_PUBLIC = os.environ.get("DEMO_PUBLIC", "").strip().lower() in ("1", "true", "yes")
 _SITE_URL = os.environ.get("SITE_URL", "https://bankservice-six.vercel.app")
 _REPO_URL = "https://github.com/junga-k/bankservice"
 _SESSION_TURN_LIMIT = 30
 _DAILY_TURN_LIMIT = 300
+_GUEST_SESSION_TURN_LIMIT = 10
+_GUEST_DAILY_TURN_LIMIT = 150
 
 
 @st.cache_resource
 def _demo_daily_counter() -> dict:
-    """앱 인스턴스 전역 카운터(모든 세션이 공유). 날짜가 바뀌면 리셋한다."""
-    return {"date": "", "count": 0}
+    """앱 인스턴스 전역 카운터(모든 세션이 공유). 날짜가 바뀌면 리셋한다.
+    로그인/비로그인을 별도 칸으로 센다."""
+    return {"date": "", "count": 0, "guest_count": 0}
+
+
+def _demo_quota_limits() -> tuple[bool, int, int, str]:
+    """(비로그인인가, 세션 상한, 일일 상한, 일일 카운터 키)."""
+    guest = not st.session_state.get("auth_token")
+    if guest:
+        return True, _GUEST_SESSION_TURN_LIMIT, _GUEST_DAILY_TURN_LIMIT, "guest_count"
+    return False, _SESSION_TURN_LIMIT, _DAILY_TURN_LIMIT, "count"
 
 
 def _demo_quota_check() -> tuple[bool, str]:
     """(허용 여부, 소진 시 안내문)."""
     if not _DEMO_PUBLIC:
         return True, ""
-    if st.session_state.get("_demo_turns", 0) >= _SESSION_TURN_LIMIT:
-        return False, (f"이 세션의 체험 한도({_SESSION_TURN_LIMIT}턴)를 모두 사용했습니다. "
-                       f"페이지를 새로고침하면 다시 이용할 수 있습니다. 직접 실행해보시려면 "
-                       f"[GitHub README]({_REPO_URL})를 참고하세요.")
+    guest, sess_limit, daily_limit, daily_key = _demo_quota_limits()
+    _login_hint = "로그인하시면 더 많이 이용하실 수 있습니다. " if guest else ""
+    if st.session_state.get("_demo_turns", 0) >= sess_limit:
+        return False, (f"이 세션의 체험 한도({sess_limit}턴)를 모두 사용했습니다. "
+                       f"{_login_hint}페이지를 새로고침하면 다시 이용할 수 있습니다. "
+                       f"직접 실행해보시려면 [GitHub README]({_REPO_URL})를 참고하세요.")
     counter = _demo_daily_counter()
-    if counter["date"] == time.strftime("%Y-%m-%d") and counter["count"] >= _DAILY_TURN_LIMIT:
-        return False, ("오늘의 데모 체험 한도가 모두 사용되었습니다. 내일 다시 이용하시거나, "
+    if (counter.get("date") == time.strftime("%Y-%m-%d")
+            and counter.get(daily_key, 0) >= daily_limit):
+        return False, ("오늘의 데모 체험 한도가 모두 사용되었습니다. "
+                       f"{_login_hint}내일 다시 이용하시거나, "
                        f"직접 실행해보시려면 [GitHub README]({_REPO_URL})를 참고하세요.")
     return True, ""
 
@@ -800,20 +832,26 @@ def _demo_quota_check() -> tuple[bool, str]:
 def _demo_quota_consume() -> None:
     if not _DEMO_PUBLIC:
         return
+    _, _, _, daily_key = _demo_quota_limits()
     st.session_state["_demo_turns"] = st.session_state.get("_demo_turns", 0) + 1
     counter = _demo_daily_counter()
     today = time.strftime("%Y-%m-%d")
-    if counter["date"] != today:
-        counter["date"], counter["count"] = today, 0
-    counter["count"] += 1
+    if counter.get("date") != today:
+        counter["date"], counter["count"], counter["guest_count"] = today, 0, 0
+    counter[daily_key] = counter.get(daily_key, 0) + 1
 
 
 # 공개 배포본에서 챗봇 URL에 직접 접근한 경우 — 사이트를 통해서만 이용하도록 안내한다.
-# (로그인 없이 일반 LLM 대화만 반복하는 남용 경로를 막는 목적)
+# 예전 목적은 "로그인 없이 일반 LLM 대화만 반복하는 남용 경로 차단"이었는데, 이제 비로그인
+# 이용 자체가 정상 경로다. 그래도 이 가드는 남겨둔다 — 사이트를 거치지 않으면 위 상한과
+# 안내가 걸린 경로를 벗어나고, 여기가 유일한 입구라야 상한이 의미를 갖는다.
+# (완전한 차단은 아니다: URL에 빈 token= 만 붙이면 _SITE_EMBEDDED 가 참이 돼 통과한다.
+#  남용 억제는 어디까지나 위의 턴 상한이 담당한다.)
 if _DEMO_PUBLIC and not _SITE_EMBEDDED:
     st.info(
         "**AI 은행원은 매치뱅크 사이트 안에서 이용할 수 있습니다.**\n\n"
-        f"[매치뱅크 바로가기]({_SITE_URL}) → 로그인(`demo` / `demo1234`) → 상단 **AI은행원** 탭\n\n"
+        f"[매치뱅크 바로가기]({_SITE_URL}/#chat) → 상단 **AI은행원** 탭 "
+        "(상담·상품안내는 로그인 없이 바로 이용하실 수 있습니다)\n\n"
         f"직접 실행해보시려면 [GitHub README]({_REPO_URL})의 로컬 실행 안내를 참고하세요."
     )
     st.stop()
@@ -925,43 +963,50 @@ with st.sidebar:
         st.session_state.conversation = storage.new_conversation()
         st.rerun()
 
-    st.text_input(
-        "채팅 검색", icon=":material/search:", placeholder="채팅 검색",
-        label_visibility="collapsed", key="sidebar_search",
-    )
+    # 대화 검색과 '이전 대화' 목록은 로그인 사용자에게만 보여준다.
+    # 목록은 conversations/ 디렉터리 전체를 훑고(제목뿐 아니라 본문까지 검색된다) 대화
+    # 파일에는 사용자 식별 정보가 없다 — 익명 방문자에게 열어주면 남의 대화가 그대로 보인다.
+    if not _tok:
+        st.caption("이전 대화")
+        st.caption("로그인하면 대화 내역을 보관하고 이어서 볼 수 있습니다.")
+    else:
+        st.text_input(
+            "채팅 검색", icon=":material/search:", placeholder="채팅 검색",
+            label_visibility="collapsed", key="sidebar_search",
+        )
 
-    st.caption("이전 대화")
-    current_id = st.session_state.conversation["id"]
-    _query = (st.session_state.get("sidebar_search") or "").strip()
-    _convos = storage.list_conversations(query=_query)
-    # 대화가 많으면 독립 스크롤 영역으로 → 목록이 늘어나도 더 많이 탐색 가능.
-    # (적을 때는 자연 높이로 두어 빈 상자가 생기지 않게 함)
-    if _query and not _convos:
-        st.caption("검색 결과가 없습니다")
-    _list_box = (
-        st.container(height=340, key="conv_list_scroll") if len(_convos) > 7 else st.container()
-    )
-    with _list_box:
-        for meta in _convos:
-            is_current = meta["id"] == current_id
-            cols = st.columns([0.82, 0.18])
-            # 말풍선 아이콘 없이 제목만. 현재 대화는 primary 타입으로 구분.
-            if cols[0].button(
-                meta["title"],
-                key=f"open_{meta['id']}",
-                use_container_width=True,
-                type="primary" if is_current else "secondary",
-            ):
-                storage.save_conversation(st.session_state.conversation)
-                loaded = storage.load_conversation(meta["id"])
-                if loaded:
-                    st.session_state.conversation = loaded
+        st.caption("이전 대화")
+        current_id = st.session_state.conversation["id"]
+        _query = (st.session_state.get("sidebar_search") or "").strip()
+        _convos = storage.list_conversations(query=_query)
+        # 대화가 많으면 독립 스크롤 영역으로 → 목록이 늘어나도 더 많이 탐색 가능.
+        # (적을 때는 자연 높이로 두어 빈 상자가 생기지 않게 함)
+        if _query and not _convos:
+            st.caption("검색 결과가 없습니다")
+        _list_box = (
+            st.container(height=340, key="conv_list_scroll") if len(_convos) > 7 else st.container()
+        )
+        with _list_box:
+            for meta in _convos:
+                is_current = meta["id"] == current_id
+                cols = st.columns([0.82, 0.18])
+                # 말풍선 아이콘 없이 제목만. 현재 대화는 primary 타입으로 구분.
+                if cols[0].button(
+                    meta["title"],
+                    key=f"open_{meta['id']}",
+                    use_container_width=True,
+                    type="primary" if is_current else "secondary",
+                ):
+                    storage.save_conversation(st.session_state.conversation)
+                    loaded = storage.load_conversation(meta["id"])
+                    if loaded:
+                        st.session_state.conversation = loaded
+                        st.rerun()
+                if cols[1].button("", icon=":material/delete:", key=f"del_{meta['id']}", use_container_width=True):
+                    storage.delete_conversation(meta["id"])
+                    if is_current:
+                        st.session_state.conversation = storage.new_conversation()
                     st.rerun()
-            if cols[1].button("", icon=":material/delete:", key=f"del_{meta['id']}", use_container_width=True):
-                storage.delete_conversation(meta["id"])
-                if is_current:
-                    st.session_state.conversation = storage.new_conversation()
-                st.rerun()
 
     # 파일 첨부는 입력창의 "+" 버튼(st.chat_input accept_file)으로 이동했다.
 
@@ -1004,9 +1049,17 @@ cache_enabled = st.session_state.sel_cache_enabled
 openai_key = get_api_key("OpenAI")
 rag_enabled = bool(openai_key)
 
-# 은행 에이전트: 로그인 토큰(iframe ?token= 또는 사이드바 로그인)이 있고 OpenAI면 활성화
+# 은행 에이전트: OpenAI면 로그인 여부와 무관하게 활성화한다.
+#
+# 예전에는 조건에 bool(auth_token)이 들어 있어서 비로그인이면 에이전트가 통째로 꺼졌고,
+# 그러면 아래 일반 LLM 경로로 빠져 "상품 추천"을 물어도 FSS 실데이터 없이 모델이 아는 대로
+# 답했다. 로그인 없이도 상담·상품안내는 되게 하는 게 이 데모의 요점이라 토큰 조건을 뺐다.
+#
+# 토큰이 없어도 안전한 이유: 상품·공지·FAQ·서식 도구는 애초에 토큰을 보내지 않고(agent.py),
+# 계좌·이체 도구는 토큰 없이 호출하면 백엔드가 401을 내서 에이전트가 "로그인이 필요합니다"로
+# 안내한다. 즉 권한 판정은 백엔드가 하고 여기서는 막지 않는다.
 auth_token = st.session_state.get("auth_token")
-agent_enabled = bool(auth_token) and provider == "OpenAI" and bool(openai_key)
+agent_enabled = provider == "OpenAI" and bool(openai_key)
 
 # ── API 키 확인 ─────────────────────────────────────────────────────
 api_key = get_api_key(provider)
@@ -1049,16 +1102,10 @@ if not conv["messages"] and not _pending_input:
     # 그래서 대화 상태와 무관하게 항상 존재해야 하는 CSS라 전역 블록으로 옮겼다.
     st.markdown("<div style='height:16vh'></div>", unsafe_allow_html=True)
 
-    if not auth_token:
-        st.markdown("""
-<div class='chat-hero-greeting' style='text-align:center; padding:1.5rem 2rem;'>
-  <p style='font-size:2rem; font-weight:400; color:#3C4043;
-            letter-spacing:-0.3px; line-height:1.35; margin:0;'>
-    로그인하고 AI은행원과 대화를 나눠보세요.
-  </p>
-</div>""", unsafe_allow_html=True)
-    else:
-        st.markdown(f"""
+    # 인사말은 로그인 여부와 무관하게 보여준다 — 비로그인에게도 바로 대화를 시작할 수
+    # 있으므로, 예전 문구("로그인하고 … 대화를 나눠보세요")는 사실과 맞지 않게 됐다.
+    # (_greet 은 이름을 못 받았을 때 "안녕하세요, 무엇을 도와드릴까요?"로 떨어진다.)
+    st.markdown(f"""
 <div class='chat-hero-greeting' style='text-align:center; padding:1.5rem 2rem;'>
   <p style='font-size:2rem; font-weight:400; color:#3C4043;
             letter-spacing:-0.3px; line-height:1.35; margin:0;'>
@@ -1066,7 +1113,10 @@ if not conv["messages"] and not _pending_input:
   </p>
 </div>""", unsafe_allow_html=True)
 
-        # 대화 제안(추천 프롬프트) — 클릭 시 해당 질문 전송 (로그인 후에만 노출)
+    # 대화 제안(추천 프롬프트) — 클릭 시 해당 질문 전송.
+    # 비로그인에는 계좌·이체 질문을 넣지 않는다. 눌러도 "로그인이 필요합니다"만 돌아와서
+    # 첫 화면의 추천이 전부 막힌 길이 돼버린다 — 로그인 없이도 실제로 답이 나오는 것만 둔다.
+    if auth_token:
         _SUGGESTIONS = [
             "💰 내 계좌 잔액 알려줘",
             "📄 최근 거래내역 보여줘",
@@ -1075,15 +1125,24 @@ if not conv["messages"] and not _pending_input:
             "💸 오늘 이체 한도 얼마 남았어?",
             "🙋 공지사항 알려줘",
         ]
-        # 문장 길이에 맞는 칩 형태: 한 줄에 나열해 가로 스크롤 리본으로(컨테이너 폭 안 채움)
-        _scols = st.columns(len(_SUGGESTIONS))
-        for _i, _sugg in enumerate(_SUGGESTIONS):
-            if _scols[_i].button(_sugg, key=f"sugg_{_i}", use_container_width=False):
-                # _retry_prompt와 별개 키를 쓴다 — _retry_prompt는 "이미 conv에 있는 메시지를
-                # 다시 보낸다"는 의미라 재추가를 건너뛰는데, 칩은 이번이 처음 보내는 새 메시지라
-                # conv에 추가돼야 사이드바 제목(첫 사용자 메시지 기준)이 "새 대화"로 안 남는다.
-                st.session_state["_chip_prompt"] = _sugg.split(" ", 1)[1]  # 이모지 제거
-                st.rerun()
+    else:
+        _SUGGESTIONS = [
+            "📈 금리 높은 정기예금 추천해줘",
+            "🐷 적금 상품 비교해줘",
+            "🏠 전세자금대출 금리 비교해줘",
+            "💳 신용대출 금리 알려줘",
+            "🙋 공지사항 알려줘",
+            "❓ 이체 수수료가 얼마야?",
+        ]
+    # 문장 길이에 맞는 칩 형태: 한 줄에 나열해 가로 스크롤 리본으로(컨테이너 폭 안 채움)
+    _scols = st.columns(len(_SUGGESTIONS))
+    for _i, _sugg in enumerate(_SUGGESTIONS):
+        if _scols[_i].button(_sugg, key=f"sugg_{_i}", use_container_width=False):
+            # _retry_prompt와 별개 키를 쓴다 — _retry_prompt는 "이미 conv에 있는 메시지를
+            # 다시 보낸다"는 의미라 재추가를 건너뛰는데, 칩은 이번이 처음 보내는 새 메시지라
+            # conv에 추가돼야 사이드바 제목(첫 사용자 메시지 기준)이 "새 대화"로 안 남는다.
+            st.session_state["_chip_prompt"] = _sugg.split(" ", 1)[1]  # 이모지 제거
+            st.rerun()
 
     # 입력창을 누르면(포커스) 추천 키워드 노출 (iframe → 부모 DOM)
     _components.html("""<script>
@@ -1371,6 +1430,42 @@ def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, a
         st.rerun()
 
 
+# ── 로그인이 필요한 업무를 요청한 경우: 답변 아래 로그인 안내 ────────────
+# 이체·계좌 조회는 본인 확인이 필요하다. 상담·상품안내는 로그인 없이 계속 쓸 수 있으므로
+# 화면을 막지 않고, 요청이 막힌 그 자리에만 안내를 붙인다.
+#
+# 이동은 챗봇이 못 하고 사이트가 한다 — Streamlit Cloud 가 앱 프레임을
+# sandbox="allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox
+# allow-same-origin allow-scripts allow-downloads" 로 띄우는데 여기에
+# allow-top-navigation 이 없어서, 링크(target=_top)나 location 대입으로는 상위 창을
+#움직일 수 없다(2026-10-04 호스트 번들에서 확인). postMessage 는 sandbox 와 무관해
+# 그걸로 사이트에 알리고, 사이트가 로그인 화면으로 보낸 뒤 이 대화로 되돌린다.
+if auth_token:
+    st.session_state.pop("_login_prompt", None)
+elif st.session_state.get("_login_prompt"):
+    _components.html(f"""
+    <div style="padding:2px 0 8px;font-family:'IBM Plex Sans KR',system-ui,sans-serif">
+      <div style="border:1px solid #A8E0C4;background:#E3F6EC;border-radius:12px;padding:16px 18px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B8457"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          <span style="font-size:13.5px;font-weight:600;color:#0B8457">로그인이 필요합니다</span>
+        </div>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#5F6368">
+          로그인하시면 지금 이 대화에서 이어서 처리해 드립니다.
+          상품 비교와 상담은 로그인 없이 계속 이용하실 수 있습니다.
+        </p>
+        <button onclick="window.top.postMessage({{type:'goto-login', conv:'{conv['id']}'}}, '*')"
+          style="border:0;background:#0FA968;color:#fff;border-radius:12px;padding:11px 22px;
+                 font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">
+          로그인하기
+        </button>
+      </div>
+    </div>""", height=190)
+
+
 # ── 에이전트 이체 확인 카드 (사용자 확인 + 비밀번호 인증 후에만 실행) ──
 # 카드에서는 예금주 확인·보내는 분 계좌·이체 시점까지 받고, 최종 확인(체크박스 + 이체
 # 비밀번호 + 실행)은 _transfer_confirm_dialog 모달에서 받는다.
@@ -1378,6 +1473,12 @@ def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, a
 # 적이 있다(2026-08-10). 지금은 단계를 늘린 게 아니라, 같은 한 번의 확인을 모달로
 # 꺼낸 것이다 — 카드가 iframe 안 챗 버블 안이라 세로로 너무 길었다.
 _pending = st.session_state.get("pending_transfer")
+# 비로그인에서는 애초에 propose_transfer 가 제안을 만들지 않으므로 여기 들어올 일이 없지만,
+# 로그인 상태에서 만든 제안이 세션에 남은 채 로그아웃되는 경우를 대비해 방어로 둔다 —
+# 카드는 _my_accounts(auth_token) 을 전제로 그려지므로 토큰이 없으면 빈 카드가 된다.
+if _pending and not auth_token:
+    st.session_state.pop("pending_transfer", None)
+    _pending = None
 if _pending:
     _accts = _my_accounts(auth_token)
     _amt = _pending["amount"]
@@ -1462,12 +1563,16 @@ if _pending:
                                  _sched_at, _delay_min)
 
 
-# ── 이체 완료 후: 내 계좌 거래내역으로 이동하는 액션(부모 SPA에 postMessage) ──
+# ── 이체 완료 후: 내 계좌 거래내역으로 이동하는 액션(사이트에 postMessage) ──
+# window.parent 가 아니라 window.top 이어야 한다 — 프레임이
+# 사이트 → (배포 시) streamlit.app 호스트 → 앱 → components.html 로 겹쳐 있어서
+# parent 는 사이트가 아니다. 로컬에서도 components.html 자체가 iframe이라 한 단계 모자랐다.
+# 그래서 이 버튼은 그동안 아무 동작도 하지 않았다(2026-10-04 발견).
 _txn_link = st.session_state.get("_show_txn_link")
 if _txn_link:
     _components.html(f"""
     <div style="padding:2px 0 8px">
-      <button onclick="window.parent.postMessage({{type:'goto-account', account_no:'{_txn_link['account_no']}'}}, '*')"
+      <button onclick="window.top.postMessage({{type:'goto-account', account_no:'{_txn_link['account_no']}'}}, '*')"
         style="border:1px solid #A8E0C4;background:#E3F6EC;color:#0B8457;border-radius:20px;
                padding:8px 16px;font-size:14px;font-weight:600;cursor:pointer;">
         📄 이체내역 조회하기
@@ -1626,7 +1731,7 @@ if prompt:
         # 또 추가하면 중복된다 — _chat_input(직접 입력)과 _chip_prompt(추천 칩)만 새로 추가.
         conv["messages"].append({"role": "user", "content": prompt})
 
-    # ── 은행업무 에이전트 경로 (로그인 + OpenAI) ──────────────────────
+    # ── 은행업무 에이전트 경로 (OpenAI) ──────────────────────────────
     if agent_enabled:
         if not _retry_prompt:
             with st.chat_message("user"):
@@ -1644,6 +1749,9 @@ if prompt:
             _thinking_ph.empty()
             st.markdown(result["text"])
         conv["messages"].append({"role": "assistant", "content": result["text"]})
+        # 로그인이 필요한 업무가 막혔으면 답변 아래에 로그인 버튼을 띄운다(아래 로그인 안내 블록).
+        if result.get("login_required"):
+            st.session_state["_login_prompt"] = True
         if result["kind"] == "transfer_proposal":
             st.session_state.pending_transfer = result["proposal"]
         storage.save_conversation(conv)

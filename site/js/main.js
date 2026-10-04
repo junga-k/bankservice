@@ -63,7 +63,21 @@ function refreshAuthUI() {
   document.getElementById("nav-backoffice-sep").style.display = isAdmin ? "" : "none";
   document.getElementById("nav-backoffice-link").style.display = isAdmin ? "" : "none";
   updateAuthSectionView();
+  refreshGuestViews();
   syncChatAuth();   // 로그인/로그아웃을 은행원 iframe에 반영(사이트 로그인과 연동)
+}
+
+/* 섹션 전체가 막히는 2곳(내 계좌·마이페이지)의 안내문/본문 토글.
+   navigate()와 refreshAuthUI() 양쪽에서 부른다 — 예전엔 navigate()에서만 해서,
+   보고 있던 섹션에서 로그아웃하면 화면이 갱신되지 않는 구멍이 있었다. */
+function refreshGuestViews() {
+  const logged = isLoggedIn();
+  [["account-guest", "account-authed"], ["mypage-guest", "mypage-authed"]].forEach(([guest, authed]) => {
+    const g = document.getElementById(guest);
+    const a = document.getElementById(authed);
+    if (g) g.style.display = logged ? "none" : "";
+    if (a) a.style.display = logged ? "" : "none";
+  });
 }
 
 function updateAuthSectionView() {
@@ -125,9 +139,121 @@ document.addEventListener("click", (e) => {
   }
 });
 
+/* ── 로그인 게이트 ───────────────────────────────────────────────────
+ * 로그인이 필요한 지점에서 안내를 띄우고, [이전]은 직전 화면으로 되돌리고
+ * [로그인]은 로그인 화면에 보낸 뒤 원래 자리로 복귀시킨다.
+ *
+ * 안내 모양은 "무엇이 막히는가"로 가른다:
+ *   - 섹션 전체가 막히면  → 화면 안 안내문(`*-guest` 패널). 화면을 채울 것이 없으므로.
+ *   - 섹션 안의 탭·버튼만 → 팝업. 뒤에 계속 볼 화면이 남아 있을 때만 팝업이 의미가 있다.
+ *
+ * 직전 화면은 브라우저 히스토리로 되돌릴 수 없다 — navigate()가 history.replaceState만
+ * 쓰므로 스택이 쌓이지 않고, history.back()은 사이트를 벗어난다. 그래서 직접 기억한다.
+ * 섹션만 기억하면 부족하다: 1:1 문의는 #support 안의 탭이라 탭 표시가 이미 '문의하기'로
+ * 바뀐 뒤에 팝업이 뜬다. [이전]이 탭까지 되돌리지 않으면 "문의하기가 선택됐는데 공지
+ * 목록이 보이는" 어긋남이 남는다.
+ */
+const TABBED_SECTIONS = {
+  account: { selector: ".account-tab", key: "accountTab", go: accountGoTab, fallback: "inquiry" },
+  mypage: { selector: ".mypage-tab", key: "mypageTab", go: mypageGoTab, fallback: "profile" },
+  support: { selector: ".support-tab", key: "supportTab", go: supportGoTab, fallback: "notices" },
+};
+
+let curSection = "home";
+let prevSectionView = { section: "home", tab: null };   // 섹션을 떠날 때 기록
+const prevTabOf = {};                                   // 탭을 바꿀 때 기록 (섹션별)
+let gateBackView = null;                                // 팝업이 열릴 때 심어두는 복귀 지점
+let returnAfterLogin = null;                            // 로그인 성공 후 돌아갈 자리
+let gateReverting = false;                              // 되돌리는 중 — 그 이동은 기록하지 않는다
+
+function activeTabOf(section) {
+  const t = TABBED_SECTIONS[section];
+  if (!t) return null;
+  const el = document.querySelector(`${t.selector}.active`);
+  return el ? el.dataset[t.key] || null : null;
+}
+
+/* 섹션 전환 기록 — navigate()가 호출한다 */
+function noteSectionChange(name) {
+  if (gateReverting || name === curSection) return;
+  prevSectionView = { section: curSection, tab: activeTabOf(curSection) };
+  curSection = name;
+}
+
+/* 탭 전환 기록 — 각 *GoTab()이 전환 '전에' 호출한다 */
+function noteTabChange(section, name) {
+  if (gateReverting) return;
+  const was = activeTabOf(section);
+  if (was && was !== name) prevTabOf[section] = was;
+}
+
+function goView(view) {
+  if (!view || !view.section) return;
+  gateReverting = true;
+  try {
+    // 같은 섹션 안에서 탭만 되돌리는 경우엔 navigate()를 다시 타지 않는다 —
+    // navigate("support")는 '지금 활성인 탭'을 다시 로드하므로, 막힌 탭이 아직
+    // 활성인 상태에서 부르면 게이트 → 되돌리기 → 게이트로 무한히 맴돈다.
+    if (view.section !== curSection) {
+      navigate(view.section);
+      curSection = view.section;   // 기록을 건너뛰었으므로 직접 맞춘다
+    }
+    const t = TABBED_SECTIONS[view.section];
+    if (t && view.tab) t.go(view.tab);
+  } finally {
+    gateReverting = false;
+  }
+}
+
+/* 지금 섹션에서 탭 하나만 막혔을 때의 복귀 지점 */
+function tabFallbackView(section) {
+  const t = TABBED_SECTIONS[section];
+  return { section, tab: prevTabOf[section] || (t ? t.fallback : null) };
+}
+
+/* 로그인돼 있으면 true. 아니면 팝업으로 안내하고 false.
+   back = [이전]이 돌아갈 곳, next = 로그인 후 돌아갈 곳("섹션" 또는 "섹션:탭") */
+function requireLogin({ body, back, next }) {
+  if (isLoggedIn()) return true;
+  gateBackView = back || null;
+  showModal(
+    `<div class="gate">` +
+      `<div class="gate-icon" aria-hidden="true">` +
+        `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>` +
+      `</div>` +
+      `<h3 class="gate-heading">로그인이 필요합니다</h3>` +
+      `<p class="gate-body">${body}</p>` +
+      `<div class="gate-actions">` +
+        `<button class="btn btn-ghost" type="button" data-gate-back>이전</button>` +
+        `<button class="btn btn-primary" type="button" data-gate-login="${next}">로그인</button>` +
+      `</div>` +
+    `</div>`
+  );
+  return false;
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-gate-back]")) {
+    closeModal();
+    goView(gateBackView || prevSectionView);
+    gateBackView = null;
+    returnAfterLogin = null;
+    return;
+  }
+  const loginBtn = e.target.closest("[data-gate-login]");
+  if (!loginBtn) return;
+  const [section, tab] = (loginBtn.dataset.gateLogin || "").split(":");
+  returnAfterLogin = SECTIONS.includes(section) ? { section, tab: tab || null } : null;
+  gateBackView = null;
+  closeModal();
+  navigate("auth");
+  setAuthTab("login");
+});
+
 /* ── 라우팅 ──────────────────────────────────────────────────────── */
 function navigate(name) {
   if (!SECTIONS.includes(name)) name = "home";
+  noteSectionChange(name);
 
   if (name !== "backoffice") stopBoAutoRefresh();   // 관리자 밖으로 나가면 자동 갱신 해제
 
@@ -139,31 +265,32 @@ function navigate(name) {
   });
   updateNavIndicator();
 
-  if (name === "chat") {
-    const logged = isLoggedIn();
-    document.getElementById("chat-guest").style.display = logged ? "none" : "";
-    document.getElementById("chat-frame-wrap").style.display = logged ? "" : "none";
-    if (logged) ensureChatLoaded();
-  }
+  // AI은행원은 로그인 없이 열린다 — 상담·상품안내·공지에는 개인정보가 없다.
+  // 계좌 조회·이체처럼 본인 확인이 필요한 요청은 대화 안에서 로그인을 안내한다(app.py).
+  if (name === "chat") ensureChatLoaded();
   if (name === "products") { ensureBanksLoaded(); loadProductStats(); loadSpecialProducts(); }
   if (name === "account") {
-    const logged = isLoggedIn();
-    document.getElementById("account-guest").style.display = logged ? "none" : "";
-    document.getElementById("account-authed").style.display = logged ? "" : "none";
-    if (logged) { accountGoTab("inquiry"); loadAccounts(); }
+    refreshGuestViews();
+    if (isLoggedIn()) { accountGoTab("inquiry"); loadAccounts(); }
   }
   if (name === "mypage") {
-    const logged = isLoggedIn();
-    document.getElementById("mypage-guest").style.display = logged ? "none" : "";
-    document.getElementById("mypage-authed").style.display = logged ? "" : "none";
-    if (logged) { mypageGoTab("profile"); }
+    refreshGuestViews();
+    if (isLoggedIn()) mypageGoTab("profile");
   }
   if (name === "backoffice") {
     const auth = getAuth();
-    if (!auth?.token || auth.role !== "admin") {
-      navigate("home");
+    if (!auth?.token) {
+      // 비로그인에겐 Backoffice 메뉴 자체가 안 보이므로, 여기 닿는 건 주소를 직접 입력한
+      // 경우뿐이다. 예전엔 안내 없이 홈으로 튕겼다 → 팝업으로 알리고 직전 화면으로 돌린다.
+      requireLogin({
+        body: "백오피스는 관리자 전용 화면입니다.<br>관리자 계정으로 로그인해 주세요.",
+        back: prevSectionView,
+        next: "backoffice",
+      });
+      goView(prevSectionView);
       return;
     }
+    if (auth.role !== "admin") { navigate("home"); return; }   // 로그인했지만 관리자가 아닌 경우
     ensureBoTabLoaded("dashboard");
     const activeTab = document.querySelector(".bo-tab.active");
     setBoAutoRefresh(activeTab ? activeTab.dataset.boTab : "dashboard");
@@ -198,6 +325,7 @@ document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-nav]");
   if (!el) return;
   e.preventDefault();
+  closeModal();   // 모달 안의 이동 버튼을 눌렀을 때 모달이 남아 있지 않도록
   navigate(el.dataset.nav);
   if (el.dataset.auth) setAuthTab(el.dataset.auth);
   if (el.dataset.accountTab) accountGoTab(el.dataset.accountTab);
@@ -318,9 +446,15 @@ let chatLoaded = false;
 /* 은행원 iframe URL: 사이트 로그인 토큰을 항상 token 파라미터로 전달(로그아웃 시 빈 값).
    → 은행원(:8501)이 사이트 로그인 상태를 단일 기준으로 삼아 동기화한다.
    (로컬 데모용. 프로덕션에서는 URL 대신 postMessage 등 안전한 방식 권장) */
+/* 로그인 후 이어서 열 대화 id. 비로그인으로 대화하다 이체를 요청해 로그인한 경우,
+   iframe을 새 토큰으로 다시 붙이면 Streamlit 세션이 재시작돼 하던 대화가 사라진다 —
+   챗봇이 postMessage로 알려준 대화 id를 URL에 실어 보내 그 대화를 복원시킨다. */
+let chatResumeConv = null;
+
 function chatSrc() {
   const token = getAuth()?.token || "";
-  return `${CHAT_URL}&token=${encodeURIComponent(token)}`;
+  const resume = chatResumeConv ? `&conv=${encodeURIComponent(chatResumeConv)}` : "";
+  return `${CHAT_URL}&token=${encodeURIComponent(token)}${resume}`;
 }
 
 /* 챗봇은 Streamlit Community Cloud 무료 티어에 있어 12시간 무트래픽이면 잠든다. 잠든 채로
@@ -349,16 +483,28 @@ async function ensureChatLoaded() {
   wrap.innerHTML = "";
   const iframe = document.createElement("iframe");
   iframe.id = "chat-frame";
+  chatTokenInFrame = getAuth()?.token || "";
   iframe.src = chatSrc();
+  chatResumeConv = null;   // 한 번만 쓴다
   iframe.title = "AI 금융상담 은행원";
   iframe.allow = "clipboard-write";
   wrap.appendChild(iframe);
 }
 
-/* 로그인/로그아웃 시 은행원 iframe을 현재 토큰으로 재로딩 → 로그인 상태 연동 */
+/* 로그인/로그아웃 시 은행원 iframe을 현재 토큰으로 재로딩 → 로그인 상태 연동.
+   재로드는 Streamlit 세션을 새로 시작시켜 하던 대화가 사라지므로, 토큰이 실제로
+   바뀐 경우에만 한다 — refreshAuthUI()가 여러 경로에서 불려서 예전에는 바뀐 게
+   없을 때도 매번 갈아끼웠다. */
+let chatTokenInFrame = null;
+
 function syncChatAuth() {
   const iframe = document.getElementById("chat-frame");
-  if (iframe) iframe.src = chatSrc();
+  if (!iframe) return;
+  const token = getAuth()?.token || "";
+  if (token === chatTokenInFrame) return;
+  chatTokenInFrame = token;
+  iframe.src = chatSrc();
+  chatResumeConv = null;   // 한 번만 쓴다 — 로그아웃 때 남의 대화를 다시 열지 않도록
 }
 
 /* ── 은행 로고 배지 ──────────────────────────────────────────────── */
@@ -463,6 +609,7 @@ const ACCOUNT_TABS = ["inquiry", "transfer"];
 
 function accountGoTab(name) {
   if (!ACCOUNT_TABS.includes(name)) name = "inquiry";
+  noteTabChange("account", name);
   document.querySelectorAll(".account-tab").forEach((b) =>
     b.classList.toggle("active", b.dataset.accountTab === name)
   );
@@ -1885,7 +2032,16 @@ async function handleLogin() {
     statusEl.textContent = "";
     document.getElementById("login-form").reset();
     refreshAuthUI();
-    navigate("home");
+    // 게이트에 막혀서 로그인한 경우엔 막힌 자리로 돌려보낸다(없으면 지금처럼 홈).
+    const back = returnAfterLogin;
+    returnAfterLogin = null;
+    if (back) {
+      navigate(back.section);
+      const t = TABBED_SECTIONS[back.section];
+      if (t && back.tab) t.go(back.tab);
+    } else {
+      navigate("home");
+    }
   } catch (err) {
     statusEl.className = "tf-status err";
     statusEl.textContent = err.message;
@@ -1966,6 +2122,7 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest("#nav-logout")) return;
   e.preventDefault();
   clearAuth();
+  returnAfterLogin = null;
   refreshAuthUI();
   navigate("home");
 });
@@ -2194,6 +2351,7 @@ const MYPAGE_TABS = ["profile", "security", "accounts", "favorites",
 
 function mypageGoTab(name) {
   if (!MYPAGE_TABS.includes(name)) name = "profile";
+  noteTabChange("mypage", name);
   document.querySelectorAll(".mypage-tab").forEach((b) =>
     b.classList.toggle("active", b.dataset.mypageTab === name)
   );
@@ -5236,6 +5394,7 @@ let documentPage = 1, documentQuery = "";
 
 function supportGoTab(name) {
   if (!SUPPORT_TABS.includes(name)) name = "notices";
+  noteTabChange("support", name);
   document.querySelectorAll(".support-tab").forEach((b) =>
     b.classList.toggle("active", b.dataset.supportTab === name)
   );
@@ -5395,10 +5554,10 @@ function renderEventList(events) {
           // 당첨자 발표는 이 글에 덧붙이지 않고 "[당첨자 발표] ..." 별도 게시글로 분리되어 있다(추첨 실행 시 자동 생성).
           actionHtml = '<p class="tf-hint">추첨이 종료되었습니다. 목록에서 "[당첨자 발표]" 게시글을 확인해주세요.</p>';
         } else {
+          // 비로그인에게도 버튼을 그대로 보여주고, 누를 때 팝업으로 로그인을 안내한다
+          // (섹션 안의 버튼 하나만 막히는 경우 — 뒤 화면이 그대로 남아 있다).
           actionHtml = `<div class="event-entry" data-event-id="${ev.id}">` +
-            (isLoggedIn()
-              ? `<button class="btn btn-primary" type="button" data-event-enter="${ev.id}">응모하기</button>`
-              : `<p class="tf-hint">응모하려면 로그인이 필요합니다. <button class="btn btn-ghost" type="button" data-nav="auth">로그인</button></p>`) +
+            `<button class="btn btn-primary" type="button" data-event-enter="${ev.id}">응모하기</button>` +
             `</div>`;
         }
       }
@@ -5430,6 +5589,11 @@ async function updateEventEntryStates(events) {
 document.addEventListener("click", async (e) => {
   const enterBtn = e.target.closest("[data-event-enter]");
   if (!enterBtn) return;
+  if (!requireLogin({
+    body: "이벤트 응모는 당첨 안내를 보낼 계정이 필요해<br>로그인 후 이용하실 수 있습니다.",
+    back: { section: "support", tab: "events" },
+    next: "support:events",
+  })) return;
   enterBtn.disabled = true;
   try {
     const res = await apiFetch(`/api/events/${enterBtn.dataset.eventEnter}/enter`, { method: "POST" });
@@ -5444,11 +5608,21 @@ document.addEventListener("click", async (e) => {
 });
 
 /* 문의하기 (로그인 필수) */
+/* 1:1 문의는 고객센터 '안의 탭' 하나다 — 섹션 전체가 막히는 게 아니라 뒤에 볼 화면
+   (공지·FAQ·서식)이 그대로 남아 있으므로 팝업으로 알리고 직전 탭으로 되돌린다.
+   탭 활성 표시까지 되돌려야 "문의하기가 선택됐는데 공지 목록이 보이는" 어긋남이 없다. */
 function updateInquiryView() {
-  const logged = isLoggedIn();
-  document.getElementById("inquiry-guest").style.display = logged ? "none" : "";
-  document.getElementById("inquiry-authed").style.display = logged ? "" : "none";
-  if (logged) loadInquiries();
+  const back = tabFallbackView("support");
+  if (!requireLogin({
+    body: "1:1 문의는 답변을 보낼 계정이 필요해<br>로그인 후 이용하실 수 있습니다.",
+    back,
+    next: "support:inquiry",
+  })) {
+    goView(back);
+    return;
+  }
+  document.getElementById("inquiry-authed").style.display = "";
+  loadInquiries();
 }
 
 let inquiryListPage = 1;
@@ -5572,6 +5746,19 @@ function escapeHtml(s) {
   window.addEventListener("scroll", hide, { passive: true });
 })();
 
+/* ── 은행원 iframe → 로그인 화면 (대화 중 이체·계좌 조회를 요청한 경우) ────
+   챗봇은 Streamlit Cloud가 sandbox(allow-top-navigation 없음)로 띄우는 프레임 안에 있어
+   스스로 상위 창을 움직일 수 없다. 그래서 알려만 주고 이동은 여기서 한다.
+   대화 id를 함께 받아 로그인 후 그 대화로 되돌린다. */
+window.addEventListener("message", (e) => {
+  const d = e.data;
+  if (!d || d.type !== "goto-login") return;
+  chatResumeConv = d.conv || null;
+  returnAfterLogin = { section: "chat", tab: null };
+  navigate("auth");
+  setAuthTab("login");
+});
+
 /* ── 은행원 iframe → 부모 SPA 이동 (이체내역 조회하기 등) ───────────── */
 window.addEventListener("message", (e) => {
   const d = e.data;
@@ -5613,7 +5800,10 @@ document.getElementById("login-form")?.addEventListener("reset", () => {
 /* ── 초기 진입 (해시 기반) ───────────────────────────────────────── */
 fillSignupBanks();
 refreshAuthUI();
-navigate((location.hash || "#home").slice(1));
-window.addEventListener("hashchange", () =>
-  navigate((location.hash || "#home").slice(1))
-);
+/* 해시에 파라미터가 붙어 올 수 있어(#chat?conv=…) 섹션 이름만 떼어 쓴다 —
+   예전처럼 slice(1)을 그대로 넘기면 SECTIONS 매칭에 실패해 조용히 홈으로 빠진다. */
+function sectionFromHash() {
+  return (location.hash || "#home").slice(1).split(/[?&]/)[0];
+}
+navigate(sectionFromHash());
+window.addEventListener("hashchange", () => navigate(sectionFromHash()));

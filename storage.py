@@ -84,10 +84,14 @@ def load_conversation(conv_id: str) -> dict | None:
         return json.load(f)
 
 
-def list_conversations(query: str = "") -> list[dict]:
+def list_conversations(query: str = "", include_guest: bool = False) -> list[dict]:
     """최신순 대화 메타 목록 [{"id", "title", "updated_at"}, ...].
 
     query가 있으면 제목 또는 메시지 본문에 포함된 대화만 반환한다.
+
+    conv["guest"] 가 참인 대화(비로그인 방문자의 대화)는 기본적으로 제외한다.
+    이 목록은 디렉터리 전체를 훑고 대화 파일에는 사용자 식별 정보가 없어서, 익명 대화가
+    섞이면 그대로 모든 사람의 목록에 뜬다. 표식이 없는 기존 파일은 비게스트로 간주한다.
     """
     _ensure_dir()
     q = query.strip().lower()
@@ -96,6 +100,8 @@ def list_conversations(query: str = "") -> list[dict]:
         try:
             with open(p, encoding="utf-8") as f:
                 conv = json.load(f)
+            if conv.get("guest") and not include_guest:
+                continue
             if q:
                 title = conv.get("title", "").lower()
                 hit = q in title or any(

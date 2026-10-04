@@ -54,6 +54,10 @@ SYSTEM_PROMPT = (
     "- 상품 추천·비교 요청에는 반드시 search_products를 호출하고, 그 결과 products 목록(상품안내 "
     "페이지와 동일한 FSS 데이터) 안의 상품만 안내하세요. 목록에 없는 상품명·수치를 지어내지 마세요.\n"
     "- 금융상품 정보는 참고용이며 투자·금융 자문이 아님을 필요 시 안내하세요.\n"
+    "- 도구가 '로그인이 필요합니다'를 돌려주면 **그 업무만** 로그인이 필요하다는 뜻입니다. "
+    "사용자에게 로그인을 안내하고, 로그인하면 이 대화에서 이어서 처리할 수 있다고 알려주세요. "
+    "상품 비교·공지·FAQ·서식 안내는 로그인 없이 그대로 계속하세요. 비로그인 사용자에게 "
+    "계좌번호·비밀번호 같은 개인정보를 대화로 물어보지 마세요.\n"
     "- 답변은 한국어로, 금액은 원 단위로 읽기 쉽게 표기하세요."
 )
 
@@ -87,6 +91,26 @@ def _detail(resp) -> str:
         return f"요청 실패({resp.status_code})"
 
 
+def _login_required(what: str, ctx: dict | None = None) -> dict:
+    """토큰 없이 호출된 도구의 응답 — 로그인을 안내하라는 지시까지 함께 돌려준다.
+
+    ctx 를 받으면 ctx["login_required"] 를 세워, run_agent 가 결과에 그 사실을 실어
+    보낸다(UI가 답변 아래에 로그인 버튼을 띄우는 근거).
+
+    백엔드도 토큰이 없으면 401("로그인이 필요합니다.")을 내지만 앱단에서 먼저 막는다:
+    ① 어떤 업무가 막혔는지가 메시지에 담긴다 ② get_transactions 처럼 중간 단계
+    (_resolve_account_id → GET /api/accounts)에서 먼저 실패하는 도구는 백엔드 401이
+    "계좌를 찾을 수 없습니다"로 바뀌어 원인이 가려진다 ③ 쓸데없는 왕복이 줄어든다.
+    create_inquiry 가 쓰던 방식을 계좌·이체 도구로 넓힌 것이다."""
+    if ctx is not None:
+        ctx["login_required"] = True
+    return {
+        "error": f"{what}는 로그인이 필요합니다.",
+        "note": "사용자에게 로그인을 안내하세요. 로그인하면 이 대화에서 이어서 처리할 수 "
+                "있습니다. 상품 비교·공지·FAQ·서식 안내는 로그인 없이 그대로 계속하세요.",
+    }
+
+
 # ── 도구 구현 ────────────────────────────────────────────────────────
 def _resolve_account_id(account_no: str, token: str) -> int | None:
     """계좌번호(대시 무관)로 내 계좌 id 해석."""
@@ -100,10 +124,14 @@ def _resolve_account_id(account_no: str, token: str) -> int | None:
 
 
 def tool_get_accounts(args, ctx):
+    if not ctx.get("token"):
+        return _login_required("내 계좌 조회", ctx)
     return _get("/api/accounts", ctx.get("token"))
 
 
 def tool_get_transactions(args, ctx):
+    if not ctx.get("token"):
+        return _login_required("거래내역 조회", ctx)
     acc_id = _resolve_account_id(args.get("account_no", ""), ctx.get("token"))
     if acc_id is None:
         return {"error": "해당 계좌번호를 내 계좌에서 찾을 수 없습니다."}
@@ -119,6 +147,8 @@ def _digits(account_no: str) -> str:
 
 
 def tool_lookup_recipient(args, ctx):
+    if not ctx.get("token"):
+        return _login_required("받는 분 계좌 조회", ctx)
     return _get("/api/accounts/lookup", ctx.get("token"), params={
         "account_no": _digits(args.get("account_no", "")),
         "from_account": args.get("from_account") or "",
@@ -127,6 +157,8 @@ def tool_lookup_recipient(args, ctx):
 
 def tool_propose_transfer(args, ctx):
     """이체 제안만 생성(실행 안 함). 예금주·수수료 확인 후 pending 반환."""
+    if not ctx.get("token"):
+        return _login_required("이체", ctx)
     look = _get("/api/accounts/lookup", ctx.get("token"), params={
         "account_no": _digits(args.get("to_account", "")),
         "from_account": args.get("from_account") or "",
@@ -245,7 +277,7 @@ def tool_get_documents(args, ctx):
 
 def tool_create_inquiry(args, ctx):
     if not ctx.get("token"):
-        return {"error": "문의 접수는 로그인이 필요합니다."}
+        return _login_required("1:1 문의 접수", ctx)
     return _post("/api/inquiries", ctx.get("token"), {
         "title": args.get("title", ""), "content": args.get("content", ""),
     })
@@ -341,4 +373,7 @@ def run_agent(messages: list[dict], *, openai_key: str, model: str,
     if ctx.get("proposal"):
         return {"kind": "transfer_proposal", "proposal": ctx["proposal"],
                 "text": final or "이체 내용을 확인해 주세요."}
-    return {"kind": "message", "text": final}
+    # 로그인이 필요한 도구가 막혔으면 그 사실을 함께 돌려준다 — UI가 답변 아래에
+    # 로그인 버튼을 띄우는 근거가 된다(텍스트만으로는 UI가 알 수 없다).
+    return {"kind": "message", "text": final,
+            "login_required": bool(ctx.get("login_required"))}

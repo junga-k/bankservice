@@ -303,8 +303,15 @@
         <p class="section-desc">계좌 잔액 조회와 이체를 이용하세요.</p>
 
         <div class="panel account-guest" id="account-guest" style="display:none">
-          <p>계좌 잔액·거래내역 조회와 3단계 이체(입력→확인→완료)를 이용할 수 있습니다.</p>
-          <button class="btn btn-primary" type="button" data-nav="auth">데모 계정 안내 보기</button>
+          <div class="gate-icon" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          </div>
+          <h3 class="gate-heading">로그인이 필요합니다</h3>
+          <p class="gate-body">계좌 목록과 이체에는 계좌번호·이체 비밀번호가 포함되어 로그인 후 이용하실 수 있습니다. 상품안내와 공지사항, AI은행원 상담은 로그인 없이 이용하실 수 있습니다.</p>
+          <div class="gate-actions">
+            <button class="btn btn-ghost" type="button" data-gate-back>이전</button>
+            <button class="btn btn-primary" type="button" data-gate-login="account">로그인</button>
+          </div>
         </div>
 
         <div id="account-authed">
@@ -477,9 +484,15 @@
         <p class="section-desc">내 정보·보안·계좌를 관리하세요.</p>
 
         <div class="panel account-guest" id="mypage-guest" style="display:none">
-          <p>내 정보·보안(이체 비밀번호·이상행동 기록)·계좌 관리·즐겨찾기·예약이체·거래명세서를
-            확인할 수 있습니다.</p>
-          <button class="btn btn-primary" type="button" data-nav="auth">데모 계정 안내 보기</button>
+          <div class="gate-icon" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          </div>
+          <h3 class="gate-heading">로그인이 필요합니다</h3>
+          <p class="gate-body">내 정보·보안(이체 비밀번호·이상행동 기록)·계좌 관리·즐겨찾기·예약이체·거래명세서는 전부 본인 정보라 로그인 후 이용하실 수 있습니다.</p>
+          <div class="gate-actions">
+            <button class="btn btn-ghost" type="button" data-gate-back>이전</button>
+            <button class="btn btn-primary" type="button" data-gate-login="mypage">로그인</button>
+          </div>
         </div>
 
         <div id="mypage-authed">
@@ -1695,11 +1708,7 @@
 
         <!-- 문의하기 -->
         <div class="support-panel" id="support-panel-inquiry" style="display:none">
-          <div class="panel account-guest" id="inquiry-guest" style="display:none">
-            <p>1:1 문의를 접수하고 내 문의내역을 확인할 수 있습니다.</p>
-            <button class="btn btn-primary" type="button" data-nav="auth">데모 계정 안내 보기</button>
-          </div>
-
+          <!-- 비로그인 안내는 팝업으로 띄우고 직전 탭으로 되돌린다(main.js updateInquiryView) -->
           <div id="inquiry-authed">
             <div class="panel">
               <h3>문의 작성</h3>
@@ -1737,20 +1746,9 @@
 
     <!-- ── AI은행원 (iframe 지연 로드) ───────────────────────────── -->
     <section id="chat" class="section">
-      <div class="chat-guest" id="chat-guest" style="display:none">
-        <div class="auth-container">
-          <div class="auth-logo-wrap">
-            <img src="img/logo-mark.svg" alt="" aria-hidden="true" class="auth-logo" />
-            <span class="auth-logo-text">매치뱅크</span>
-          </div>
-          <div class="panel auth-panel" style="text-align:center">
-            <h2 class="auth-heading">AI은행원</h2>
-            <p class="section-desc">대화만으로 계좌조회·상품비교·이체까지 처리합니다.</p>
-            <button class="btn btn-primary" type="button" data-nav="auth">데모 계정 안내 보기</button>
-          </div>
-        </div>
-      </div>
-      <div id="chat-frame-wrap"><!-- 로그인 후 최초 진입 시 iframe 생성 --></div>
+      <!-- 로그인 없이 열린다 — 상담·상품안내·공지에는 개인정보가 없다.
+           계좌 조회·이체처럼 본인 확인이 필요한 요청만 대화 안에서 로그인을 안내한다. -->
+      <div id="chat-frame-wrap"><!-- 최초 진입 시 iframe 생성 --></div>
     </section>
 
   </main>
