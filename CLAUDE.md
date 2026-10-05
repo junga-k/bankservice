@@ -76,7 +76,19 @@ Kafka·Elasticsearch·Phoenix 3개를 매번 따로 띄우는 대신 `./start_in
 - `_group_options()`는 옵션을 `(fin_co_no, fin_prdt_cd)` 복합키로 묶는다. `fin_prdt_cd`는 은행마다 독립적으로 매기는 코드라 다른 은행끼리 우연히 같은 코드를 쓰는 경우가 실제로 있어서(`fin_prdt_cd` 단독 매칭 시 서로 다른 은행의 금리 옵션이 섞임), 반드시 은행코드까지 포함해서 묶어야 한다.
 - `backend/app.py`의 `/api/products`는 대출 카테고리면 `best_rate` 오름차순(최저금리 우선), 예금/적금은 내림차순(최고금리 우선)으로 정렬 — 대출은 금리가 낮을수록 유리해서 방향이 반대다.
 
+### 시간 기준 — KST 는 고정 오프셋으로 (2026-10-05)
+
+배포 서버는 UTC 로 돈다. **사용자 기준이어야 하는 시각은 전부 KST 로 센다** — 일일 이체한도의 "오늘"(`kst_today_start`)과 정기점검 창(`maintenance_state`). 둘 다 `backend/app.py`에 있다.
+
+- `ZoneInfo("Asia/Seoul")` 을 쓰지 않는다. 한국은 서머타임이 없어 `timezone(timedelta(hours=9))` 가 항상 정확하고, `zoneinfo` 는 OS tzdata 에 의존하는데 `requirements.txt` 에 `tzdata` 가 없어 배포 이미지에 따라 `ZoneInfoNotFoundError` 가 날 수 있다. 저장소 기존 관례도 같다 — `reset-demo-data.yml` 이 `UTC 18:00 = KST 03:00` 으로 직접 환산해 쓴다.
+- **시간을 보는 함수는 `now` 를 인자로 받게 만든다.** 23:50 을 기다리지 않고 경계를 주입해 검증할 수 있어야 한다(`tests/test_maintenance.py`). 점검 창은 자정을 넘어서(23:50~00:10) 경계가 특히 틀리기 쉽다 — 같은 날 안에서 끝나는 창도 함께 다뤄야 한다(점검 시각을 옮겨 확인할 때 그 경우가 된다).
+- **점검시간은 즉시 이체만 막고 예약·지연은 받는다.** 폴러도 점검 중엔 쉬므로 점검창에 걸린 예약건은 00:10 직후 실행된다. 예약 실행 보장은 `.github/workflows/run-due-transfers.yml`(KST 00:10)이 서버를 깨워 `POST /api/maintenance/run-due-transfers` 를 치는 것으로 한다 — 폴러는 서버 프로세스 안의 스레드라 서버리스에서 그 시각에 살아 있다는 보장이 없다.
+
 ### 이체 흐름 (동기 API + 비동기 워커)
+⚠️ **받는 계좌는 `db.lookup_account()` 가 돌려준 정규화된 값으로 저장해야 한다.** 요청 원문을 그대로 넣으면 `db.process_transfer` 의 `LEFT JOIN accounts dst ON dst.account_no = t.to_account` 가 정확 일치라서, 대시 표기만 달라도 내부 계좌를 못 찾고 "외부 은행 이체"로 간주해 **출금만 하고 입금을 건너뛴다**(자금 소실). 계좌번호 비교는 어디서든 숫자만 남겨서 한다(`_acct_digits`).
+
+⚠️ **프런트에서 `GET /api/transfers/{id}` 를 부를 때는 반드시 `apiFetch`** 를 쓴다. 인증 + 소유권 검사가 걸려 있어 생 `fetch` 는 401 이 되는데, 폴링 루프가 그걸 조용히 삼켜 **영수증 화면에 영영 도달하지 못했다**(2026-09-23~10-05 라이브 버그).
+
 `POST /api/transfer` → `db.create_transfer`(status=`pending`) → Kafka 발행. **`transfer_consumer.py`** 가 소비해 `db.process_transfer`로 출금계좌 차감 + 거래내역(`transactions`) 기록 + 상태를 `completed`/`failed`로 갱신한다. 즉 **잔액·거래내역 반영은 워커가 해야 일어난다.**
 
 ### RAG / 캐시
