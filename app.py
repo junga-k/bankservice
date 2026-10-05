@@ -387,6 +387,15 @@ st.markdown("""<style>
     line-height: 1.7;
     margin-right: auto;
 }
+/* ...단, 위 규칙은 후손 선택자라 **컬럼 안쪽 블록까지** 걸린다. 말풍선 폭을 82%로 묶으려던
+   것인데 st.columns 로 만든 칸 안의 블록도 82%로 줄고 좌우 8px 패딩까지 먹어서, 컬럼을
+   꽉 채우라고 한 버튼이 컬럼보다 좁아진다(컬럼 303px → 블록 248px → 버튼 232px).
+   그래서 이체 확인/취소 두 버튼 사이가 gap(16px)이 아니라 86~115px 로 벌어져 보였다
+   (2026-10-05 지적 → 실측으로 원인 확인). 말풍선 규칙은 그대로 두고 컬럼 안에서만 되돌린다. */
+[data-testid="stChatMessage"] [data-testid="stColumn"] [data-testid="stVerticalBlock"] {
+    max-width: none;
+    padding: 0;
+}
 /* 대화 본문 글씨 크기 — Streamlit 기본(14px)이 채팅 내용 치고는 조금 작아 보여서
    살짝 키움(질문/답변 공통). */
 [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {
@@ -697,9 +706,13 @@ body.chat-submitting [data-testid="stBottom"]{ transform: none !important; }
 /* 이체 확인 카드의 "이체하기"/"취소" 버튼 간격. 컬럼 자체를 content-width로 줄이려던
    첫 시도(width:auto+min-width:0)는 Streamlit 내부 width:100% 중첩 구조와 충돌해 버튼이
    쪼그라들며 "이체/하기"처럼 줄바꿈되는 버그를 냈다(2026-08-10) — 대신 버튼 쪽에
-   use_container_width=True를 줘서 버튼이 컬럼 폭을 정확히 채우게 했고(app.py 코드),
+   width="stretch"를 줘서 버튼이 컬럼 폭을 정확히 채우게 했고(app.py 코드),
    그 덕분에 여기 gap 값이 곧 버튼 사이 실제 간격이 된다. */
 [data-testid="stHorizontalBlock"]:has(.st-key-tf_exec){ gap: 16px !important; }
+/* 확인 카드의 "이체 확인"/"취소"도 같은 간격으로. 이 행에는 규칙이 없어서 Streamlit
+   기본 컬럼 간격이 그대로 나왔고, 모달보다 두 버튼이 멀어 보였다(2026-10-05 지적).
+   위 규칙과 같은 방식 — 공용 컨테이너에 구조 속성을 걸지 않고 gap 만, 해당 버튼 키로 스코프. */
+[data-testid="stHorizontalBlock"]:has(.st-key-tf_open_modal){ gap: 16px !important; }
 </style>""", unsafe_allow_html=True)
 
 def _thinking_indicator_html(label: str = "답변을 준비하고 있어요…") -> str:
@@ -957,7 +970,7 @@ def process_files(files) -> list[dict]:
 # ── 사이드바 ────────────────────────────────────────────────────────
 # 상단 'AI은행원' 제목은 CSS(stSidebarHeader::before)로 숨기기 버튼 행에 표시된다.
 with st.sidebar:
-    if st.button("새 채팅", icon=":material/edit_square:", use_container_width=True,
+    if st.button("새 채팅", icon=":material/edit_square:", width="stretch",
                  key="sidebar_new_chat"):
         storage.save_conversation(st.session_state.conversation)
         st.session_state.conversation = storage.new_conversation()
@@ -994,7 +1007,7 @@ with st.sidebar:
                 if cols[0].button(
                     meta["title"],
                     key=f"open_{meta['id']}",
-                    use_container_width=True,
+                    width="stretch",
                     type="primary" if is_current else "secondary",
                 ):
                     storage.save_conversation(st.session_state.conversation)
@@ -1002,7 +1015,7 @@ with st.sidebar:
                     if loaded:
                         st.session_state.conversation = loaded
                         st.rerun()
-                if cols[1].button("", icon=":material/delete:", key=f"del_{meta['id']}", use_container_width=True):
+                if cols[1].button("", icon=":material/delete:", key=f"del_{meta['id']}", width="stretch"):
                     storage.delete_conversation(meta["id"])
                     if is_current:
                         st.session_state.conversation = storage.new_conversation()
@@ -1137,7 +1150,7 @@ if not conv["messages"] and not _pending_input:
     # 문장 길이에 맞는 칩 형태: 한 줄에 나열해 가로 스크롤 리본으로(컨테이너 폭 안 채움)
     _scols = st.columns(len(_SUGGESTIONS))
     for _i, _sugg in enumerate(_SUGGESTIONS):
-        if _scols[_i].button(_sugg, key=f"sugg_{_i}", use_container_width=False):
+        if _scols[_i].button(_sugg, key=f"sugg_{_i}", width="content"):
             # _retry_prompt와 별개 키를 쓴다 — _retry_prompt는 "이미 conv에 있는 메시지를
             # 다시 보낸다"는 의미라 재추가를 건너뛰는데, 칩은 이번이 처음 보내는 새 메시지라
             # conv에 추가돼야 사이드바 제목(첫 사용자 메시지 기준)이 "새 대화"로 안 남는다.
@@ -1245,8 +1258,8 @@ for i, msg in enumerate(conv["messages"]):
                     if "기타" in _selected:
                         _etc_text = st.text_input("기타 사유를 입력해주세요", key=f"etc_{i}")
                     _fc1, _fc2 = st.columns(2)
-                    _canceled = _fc1.button("취소", key=f"dislike_cancel_{i}", use_container_width=True)
-                    _submitted = _fc2.button("제출", key=f"dislike_submit_{i}", use_container_width=True)
+                    _canceled = _fc1.button("취소", key=f"dislike_cancel_{i}", width="stretch")
+                    _submitted = _fc2.button("제출", key=f"dislike_submit_{i}", width="stretch")
                 if _submitted:
                     _submit_chat_feedback(conv, msg, i, "down", reasons=_selected, comment=_etc_text)
                 if _submitted or _canceled:
@@ -1283,14 +1296,18 @@ def _my_accounts(token: str) -> list[dict]:
     return []
 
 
-def _maintenance(token: str) -> dict:
-    """정기점검 상태를 백엔드에서 받아온다(점검 여부 판단은 서버가 한다 — 이 컨테이너의
-    시계는 UTC라 KST 기준 23:50~00:10을 여기서 계산하면 9시간 어긋난다)."""
+def _my_limits(token: str) -> dict:
+    """이체 정책·정기점검 상태·데모 PIN 힌트를 백엔드에서 한 번에 받아온다.
+
+    판단을 전부 서버에 맡기는 이유가 둘이다 —
+    ① 점검 여부: 이 컨테이너 시계는 UTC라 KST 23:50~00:10을 여기서 계산하면 9시간 어긋난다.
+    ② 데모 PIN 힌트: "로그인한 계정이 공개 데모 계정인가"는 백엔드만 안다(DEMO_LOGIN).
+    """
     try:
         r = requests.get(f"{_BACKEND_URL}/api/me/limits",
                          headers={"Authorization": f"Bearer {token}"}, timeout=_BACKEND_TIMEOUT)
         if r.ok:
-            return r.json().get("maintenance") or {}
+            return r.json()
     except Exception:
         pass
     return {}
@@ -1324,10 +1341,14 @@ def _clear_transfer_widget_keys() -> None:
         st.session_state.pop(_k, None)
 
 
-# 공개 데모의 이체 비밀번호 힌트. 사이트 로그인 화면이 아니라 **이체 확인 모달에서만**
-# 노출한다 — 로그인 비밀번호와 PIN 을 한 화면에 나란히 두면 인증 수단을 구분하지 않는
-# 것으로 읽힌다. 값은 배포 환경변수로만 들어온다(미설정이면 힌트 없음).
-_DEMO_TRANSFER_PIN = os.environ.get("DEMO_TRANSFER_PIN", "").strip()
+# 공개 데모의 이체 비밀번호 힌트는 **백엔드가 판단해서 내려준다**(/api/me/limits 의 demo_pin).
+# 사이트 로그인 화면이 아니라 이체 확인 모달에서만 노출하는 것은 그대로 — 로그인 비밀번호와
+# PIN 을 한 화면에 나란히 두면 인증 수단을 구분하지 않는 것으로 읽힌다.
+#
+# 예전에는 여기서 DEMO_TRANSFER_PIN 환경변수만 보고 **계정과 무관하게** 띄웠다. 그래서
+# admin 으로 로그인해도 reviewer 의 PIN 을 안내했고, 그대로 입력한 사용자가 비밀번호를
+# 연속으로 틀렸다(2026-10-05 라이브에서 발견). 로그인한 계정이 공개 데모 계정인지는
+# DEMO_LOGIN 을 가진 백엔드만 알 수 있어서 판단을 그쪽으로 옮겼다.
 
 
 def _fee_text(fee: int) -> str:
@@ -1387,7 +1408,8 @@ def _transfer_result_text(res: dict, pending: dict, from_account: str,
 @st.dialog("이체 확인")
 def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, amt: int,
                              conv: dict, token: str,
-                             sched_at: float | None, delay_min: int) -> None:
+                             sched_at: float | None, delay_min: int,
+                             demo_pin: str = "") -> None:
     """최종 확인 모달 — 체크박스 + 이체 비밀번호 + 실행.
 
     실패 시 st.rerun() 하지 않는다. 다이얼로그는 rerun 하면 닫히므로, 에러를 모달 안에서
@@ -1407,15 +1429,15 @@ def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, a
     _ok = st.checkbox("받는 분(예금주명)과 금액을 확인했습니다", key="tf_confirm_chk")
     _pw = st.text_input("이체 비밀번호 (숫자 6자리)", type="password", key="tf_pw",
                         max_chars=6, placeholder="이체 비밀번호 6자리를 입력하세요")
-    if _DEMO_TRANSFER_PIN:
-        st.caption(f"데모 이체 비밀번호: {_DEMO_TRANSFER_PIN}")
+    if demo_pin:
+        st.caption(f"데모 이체 비밀번호: {demo_pin}")
 
     # 두 버튼을 **먼저 그리고** 나서 분기한다. 예전에는 '이체하기' 블록 안에서 return 하는
     # 경로(검증 실패·이체 실패)가 '닫기' 렌더보다 앞서서, 실패한 순간 닫기 버튼이 사라졌다
     # (화면으로 확인하다 발견 — ✕ 로만 닫을 수 있었다).
     _c1, _c2 = st.columns(2, gap="small")
-    _do_exec = _c1.button("이체하기", type="primary", key="tf_exec", use_container_width=True)
-    _do_close = _c2.button("닫기", key="tf_modal_close", use_container_width=True)
+    _do_exec = _c1.button("이체하기", type="primary", key="tf_exec", width="stretch")
+    _do_close = _c2.button("닫기", key="tf_modal_close", width="stretch")
 
     if _do_close:
         # 입력했던 이체 비밀번호와 확인 체크는 여기서 지운다. 예전에는 tf_modal_open 만
@@ -1542,8 +1564,11 @@ if _pending:
 
         # 정기점검(23:50~00:10) 중에는 즉시 이체가 막힌다 — 실제 은행과 같다.
         # 판단은 백엔드가 하고(_maintenance), 여기서는 선택지만 바꿔 예약으로 유도한다.
-        _maint = _maintenance(auth_token)
+        _limits = _my_limits(auth_token)
+        _maint = _limits.get("maintenance") or {}
         _maint_on = bool(_maint.get("active"))
+        # 로그인한 계정이 공개 데모 계정일 때만 값이 채워져 온다(백엔드가 판단).
+        st.session_state["_demo_pin"] = _limits.get("demo_pin") or ""
         _when_opts = ["즉시 이체", "지연 이체 (취소 가능)", "예약 이체 (지정 시각)"]
         if _maint_on:
             st.warning(
@@ -1589,18 +1614,19 @@ if _pending:
         # 차단성 인증 이벤트로 읽혀, 이체 실행 권한을 LLM 에서 분리한 설계가 화면에 드러난다.
         # 두 버튼을 화면 양끝으로 벌리지 않고 나란히 붙여 배치한다
         # (동일폭 st.columns(2)는 두 버튼을 컨테이너 좌우 끝으로 밀어놓는 문제가 있었음).
-        # use_container_width=True로 버튼이 컬럼 폭을 정확히 채우게 해서, 버튼 사이 실제
-        # 간격이 gap 값 그대로 나오게 한다(컬럼이 버튼보다 넓어서 남는 여백 때문에 간격이
-        # 벌어져 보이던 문제를 CSS 폭 트릭 없이 해결 — 그 트릭이 버튼 줄바꿈 버그를 냈었음).
-        # 비율은 [1,1,3]이 아니라 [3,2,5] — 예전엔 "이체하기"(4자)가 1/5 칸에 들어갔지만
-        # 지금 라벨 "이체 확인"(공백 포함 5자)은 같은 폭에서 두 줄로 줄바꿈됐다
-        # (라이브에서 실제로 확인된 버그, 2026-09-23). "취소"(2자) 칸은 그대로 두고
-        # 첫 칸만 넓혔다.
-        _c1, _c2, _ = st.columns([3, 2, 5], gap="small")
+        # 버튼이 컬럼 폭을 정확히 채워야 버튼 사이 실제 간격이 gap 값 그대로 나온다 —
+        # 컬럼이 버튼보다 넓으면 남는 여백까지 간격으로 보인다. 그래서 width="stretch".
+        # ⚠️ 예전에는 같은 의도로 use_container_width=True 를 썼는데, Streamlit 1.58 에서
+        #    deprecated 되면서 실제로 동작을 멈췄다. 그 바람에 버튼이 컬럼 안에서 가운데
+        #    정렬된 채 작아졌고(컬럼 459px / 버튼 360px), 두 버튼 사이가 16px 이 아니라
+        #    115px 로 벌어져 보였다(2026-10-05 지적 → 실측으로 원인 확인).
+        # 비율 [2,2,6] — 두 칸을 같게 둬서 모달(동일폭 2칸)과 같은 모양이 되게 한다.
+        # 칸당 약 300px 라 "이체 확인"(5자)이 줄바꿈될 여지가 없다(2026-09-23 줄바꿈 버그).
+        _c1, _c2, _ = st.columns([2, 2, 6], gap="small")
         if _c1.button("이체 확인", type="primary", key="tf_open_modal",
-                      use_container_width=True):
+                      width="stretch"):
             st.session_state["tf_modal_open"] = True
-        if _c2.button("취소", key="tf_cancel_confirm", use_container_width=True):
+        if _c2.button("취소", key="tf_cancel_confirm", width="stretch"):
             st.session_state.pop("pending_transfer", None)
             _clear_transfer_widget_keys()
             conv["messages"].append({"role": "assistant", "content": "이체를 취소했습니다."})
@@ -1610,7 +1636,8 @@ if _pending:
     # 모달은 chat_message 컨테이너 밖에서 연다(다이얼로그는 화면 최상위에 렌더된다).
     if st.session_state.get("tf_modal_open"):
         _transfer_confirm_dialog(_pending, _from, _from_bank, _amt, conv, auth_token,
-                                 _sched_at, _delay_min)
+                                 _sched_at, _delay_min,
+                                 st.session_state.get("_demo_pin", ""))
 
 
 # ── 이체 완료 후: 내 계좌 거래내역으로 이동하는 액션(사이트에 postMessage) ──

@@ -513,9 +513,18 @@ def my_limits(user: dict = Depends(auth.get_current_user)):
     used = db.sum_user_transfers_today(db.user_account_nos(user["id"]), today0)
     # 점검 상태를 함께 내린다 — 이체 화면이 브라우저 시계로 계산하지 않도록 서버가 판단한다.
     # (이 엔드포인트는 이미 이체 탭에 들어올 때 호출된다 — main.js loadTransferNotice)
+    #
+    # 데모 이체 PIN 힌트도 여기서 준다. "로그인한 계정이 공개 데모 계정인가"를 아는 건
+    # 백엔드뿐이라(DEMO_LOGIN 과 사용자 정보를 둘 다 갖고 있다), 판단을 여기서 하고
+    # 클라이언트는 받은 것만 보여준다. 예전에 챗봇이 이 판단 없이 DEMO_TRANSFER_PIN 만
+    # 있으면 무조건 띄워서, admin 으로 로그인해도 reviewer 의 PIN 을 안내하는 바람에
+    # 사용자가 비밀번호를 연속으로 틀리는 일이 있었다(2026-10-05).
+    _demo_username, _, _ = os.environ.get("DEMO_LOGIN", "").strip().partition(":")
+    _demo_pin = os.environ.get("DEMO_TRANSFER_PIN", "").strip()
     return {"transfer_limit": once, "daily_transfer_limit": daily, "transfer_fee": fee,
             "used_today": used, "remaining_today": max(0, daily - used),
-            "maintenance": maintenance_info()}
+            "maintenance": maintenance_info(),
+            "demo_pin": _demo_pin if (_demo_username and user["username"] == _demo_username) else ""}
 
 
 @app.get("/api/me/transactions/export")
