@@ -62,7 +62,8 @@ Kafka·Elasticsearch·Phoenix 3개를 매번 따로 띄우는 대신 `./start_in
 - 새 제공자: `PROVIDERS`에 추가 → `_stream_<provider>()` 작성 → `stream_chat()` 분기 연결. `app.py` 수정 불필요.
 
 ### `agent.py` — 은행업무 AI 에이전트 (도구호출)
-- 단일 오케스트레이터가 OpenAI function-calling으로 백엔드 REST API를 **도구**로 호출. 도구는 도메인별 그룹(`ACCOUNT_TOOLS`/`TRANSFER_TOOLS`/`PRODUCT_TOOLS`/`SUPPORT_TOOLS`)으로 정의 → 추후 다중에이전트 전환 대비.
+- 단일 오케스트레이터가 LangGraph `create_react_agent`로 백엔드 REST API를 **도구**로 호출한다. 도구 9개는 `_build_lc_tools()` 안의 평평한 `specs` 리스트 하나로 정의된다 — 예전 OpenAI function-calling 시절의 도메인별 그룹 상수(`ACCOUNT_TOOLS` 등)는 리팩터링 때 사라졌으니 찾지 말 것(파일 머리말 docstring에 그 서술이 아직 남아 있다).
+- **로그인은 도구 단위로 걸린다.** `search_products`/`get_faqs`/`get_notices`/`get_documents` 4개는 애초에 토큰을 넘기지 않아 비로그인에서도 동작하고, 계좌·이체·문의접수 도구는 `_login_required(what, ctx)`로 앱단에서 먼저 막는다(백엔드도 401을 내지만 중간 단계에서 먼저 실패하면 원인이 가려져서). 그 헬퍼가 `ctx["login_required"]`를 세우면 `run_agent()` 결과에 실려 나가고, `app.py`가 그걸 보고 답변 아래에 로그인 안내 박스를 띄운다.
 - 도구는 `BACKEND_URL`(:8000)로 HTTP 호출하며, 인증 필요한 도구는 사용자 JWT를 Bearer로 전달.
 - **`propose_transfer`는 이체를 실행하지 않는다.** 예금주·수수료만 확인한 '제안'을 반환하고, 실제 실행은 `app.py`의 확인 카드에서 사용자가 버튼을 눌러야 `execute_transfer`→`POST /api/transfer`가 호출된다.
 - 상품 추천은 `search_products`가 `/api/products`(상품안내 페이지와 동일 소스, 예금/적금/주택담보대출/전세자금대출/신용대출 5종)를 조회 → 반환 목록 안의 상품만 안내하도록 지시.
@@ -84,12 +85,21 @@ Kafka·Elasticsearch·Phoenix 3개를 매번 따로 띄우는 대신 `./start_in
 
 ### 프런트엔드 (`site/`)
 - 정적 SPA(`index.html` + `js/main.js` + `css/style.css`). 섹션 토글 방식, 인증은 localStorage(JWT). Backoffice(관리자) 탭에 대시보드·이체모니터링·이용통계·성능관리 등.
+- **로그인 게이트는 `navigate()` 한 군데 + `requireLogin()` 헬퍼로 모인다.** 홈·AI은행원·상품안내·고객센터는 로그인 없이 열리고, 내 계좌·마이페이지·1:1문의·이벤트응모·백오피스만 막는다. 안내 모양은 막히는 범위로 가른다 — 섹션 전체면 화면 안 안내문(`*-guest` 패널), 섹션 안의 탭·버튼이면 팝업(`showModal()` 재사용). 두 가지가 한 화면에 겹치지 않게 유지할 것.
+- `[이전]`에 **`history.back()`을 쓰면 안 된다** — `navigate()`가 `history.replaceState`만 써서 스택이 없고 사이트를 벗어난다. 직전 위치를 `prevSectionView`/`prevTabOf`로 직접 기억한다(탭까지 기억해야 1:1 문의처럼 탭 단위로 막히는 곳에서 탭 표시가 어긋나지 않는다). 되돌리는 중의 이동은 `gateReverting` 플래그로 기록에서 제외하고, **같은 섹션 안에서 탭만 되돌릴 때는 `navigate()`를 다시 타지 않는다**(막힌 탭이 활성인 채로 부르면 게이트 → 되돌리기 → 게이트로 맴돈다).
 - `bankBadge()`가 은행명 옆 배지 렌더 — `site/img/banks/<파일>` 로고가 있으면 로고, 없으면 색상 배지로 자동 대체.
 - 헤더 로고는 `site/img/logo-mark.svg`(아이콘만)/`site/img/logo.svg`(아이콘+워드마크) — 파비콘 등 다른 곳에서도 재사용 가능하도록 파일로 분리돼 있다(헤더 자체는 `logo-mark.svg`만 씀).
 - `#products` 카테고리는 카드가 아니라 알약형 탭바(`.cat-tabs`/`.cat-tab`, 5개: 예금/적금/주택담보대출/전세자금대출/신용대출) — 설명 문구는 탭이 아니라 클릭 시 펼쳐지는 상품 목록 패널(`#product-list-desc`)에 표시된다. 목록이 길면 `renderProductList()`가 상위 `PRODUCT_LIST_PAGE_SIZE`(8)개만 보여주고 "더보기/접기" 토글로 나머지를 펼친다(`site/js/main.js`).
 
-### 사이트 ↔ 챗봇 로그인 연동
-사이트는 로그인 JWT를 챗봇 iframe URL에 `?token=`으로 전달(`main.js` `chatSrc`/`syncChatAuth`). 챗봇(`app.py`)은 `_SITE_EMBEDDED`일 때 이 토큰을 **단일 기준**으로 매 실행 동기화한다(로그인=토큰/로그아웃=빈값). 그래서 에이전트가 로그인 사용자 자격으로 은행 API를 호출한다. `:8501` 직접 접속 시에만 사이드바 수동 로그인 노출.
+### 사이트 ↔ 챗봇 연동 (양방향)
+
+**사이트 → 챗봇**: 로그인 JWT를 iframe URL에 `?token=`으로 전달(`main.js` `chatSrc`/`syncChatAuth`). 챗봇(`app.py`)은 `_SITE_EMBEDDED`일 때 이 토큰을 **단일 기준**으로 매 실행 동기화한다. 판정이 값이 아니라 **키의 존재**(`"token" in st.query_params`)라서, 로그아웃 상태로 붙는 빈 토큰(`&token=`)도 "사이트 안의 비로그인 방문자"로 구분된다. 로그인 후 대화를 이어갈 때는 `&conv=<id>`도 함께 실어 보낸다.
+- `syncChatAuth()`는 **토큰이 실제로 바뀐 경우에만** iframe을 다시 붙인다. 재로드는 Streamlit 세션을 새로 시작시켜 하던 대화를 날리기 때문이다.
+- ⚠️ 주석에 남아 있는 "`:8501` 직접 접속 시 사이드바 수동 로그인"은 **사실이 아니다** — 챗봇에는 로그인 폼이 없다(`/api/login` 호출 0건). 직접 접속해 토큰이 필요하면 백엔드에서 JWT를 받아 `?token=`으로 붙여야 한다.
+
+**챗봇 → 사이트**: `window.top.postMessage`. `goto-login`(로그인 유도 + 대화 id), `goto-account`(이체내역 보기)를 사이트의 `message` 리스너가 받는다.
+- **반드시 `window.top`이어야 한다.** `window.parent`는 사이트가 아니다 — `st.components.v1.html` 자체가 iframe이라 로컬에서도 한 단계 모자라고, 배포에서는 사이트 → streamlit.app 호스트 → 앱 → components.html로 한 겹 더 깊다. 실제로 `goto-account`가 그동안 동작하지 않았다(2026-10-04 발견·수정).
+- **링크나 `location`으로 상위 창을 움직일 수 없다.** Streamlit Cloud가 앱 프레임을 `allow-top-navigation` 없는 sandbox로 띄운다(호스트 번들에서 확인). 이동이 필요하면 postMessage로 알리고 사이트가 이동한다.
 
 ## 설정 파일 이원화 (자주 헷갈리는 부분)
 
