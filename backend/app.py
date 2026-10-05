@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import csv
+import datetime as _dt
 import hmac
 import io
 import json
@@ -116,18 +117,38 @@ def _start_scheduled_poller() -> None:
                 # 사이클 하나 동안 db 연결을 하나로 공유하고 사이클이 끝나면 확실히 닫는다
                 # (HTTP 요청의 request_scope와 같은 메커니즘 — 이 스레드는 별도 컨텍스트라
                 # HTTP 요청의 연결과 섞이지 않는다).
-                with db.request_scope():
-                    for tid in db.pop_due_scheduled(time.time()):
-                        try:
-                            db.process_transfer(tid)
-                        except Exception:
-                            pass
+                # 정기점검 중에는 건너뛴다 — 점검창에 실행 시각이 걸린 예약건은 점검이
+                # 끝난 뒤(00:10 직후) 처리된다.
+                if not maintenance_state()[0]:
+                    with db.request_scope():
+                        run_due_transfers()
             except Exception:
                 pass
             _poller_last_run = time.time()   # 하트비트 갱신
             time.sleep(15)
 
     threading.Thread(target=_loop, daemon=True).start()
+
+
+def run_due_transfers() -> dict:
+    """실행 시각이 도래한 예약/지연 이체를 처리한다. 폴러와 크론 엔드포인트가 함께 쓴다.
+
+    예외를 그냥 삼키지 않고 fail_transfer()로 기록한다 — 예전에는 `except: pass` 라서
+    처리 중 오류가 난 건이 영원히 pending 에 머물렀다(Kafka 컨슈머는 같은 상황에서
+    fail_transfer 를 부른다). pending 금액은 일일 한도도 계속 차지한다.
+    """
+    done, failed = 0, 0
+    for tid in db.pop_due_scheduled(time.time()):
+        try:
+            db.process_transfer(tid)
+            done += 1
+        except Exception as e:
+            failed += 1
+            try:
+                db.fail_transfer(tid, f"처리 오류: {e}")
+            except Exception:
+                pass
+    return {"processed": done, "failed": failed}
 
 
 def get_poller_status() -> dict:
@@ -155,6 +176,96 @@ TRANSFER_FEE = 0
 # 이체 한도(원) — 비밀번호(간편) 인증 수준에 맞춘 한도
 TRANSFER_LIMIT = 5_000_000        # 1회 500만원
 DAILY_TRANSFER_LIMIT = 10_000_000  # 1일 누적 1,000만원
+
+# ── 한국 시간(KST) ───────────────────────────────────────────────────
+# 배포 서버는 UTC로 돈다. "오늘"과 "점검시간"은 사용자 기준이어야 하므로 전부 KST로 센다.
+#
+# ZoneInfo("Asia/Seoul") 대신 고정 오프셋을 쓰는 이유: 한국은 서머타임이 없어 +9가 항상
+# 정확하고, zoneinfo 는 OS tzdata 에 의존하는데 requirements 에 tzdata 가 없어서 배포
+# 이미지에 따라 ZoneInfoNotFoundError 가 날 수 있다. 저장소의 기존 관례도 같다 —
+# reset-demo-data.yml 이 `UTC 18:00 = KST 03:00` 으로 직접 환산해 쓴다.
+KST = _dt.timezone(_dt.timedelta(hours=9))
+
+# 정기점검 — 이 시간대에는 즉시 이체를 막고 예약 이체로 유도한다(실제 은행과 같은 방식).
+MAINTENANCE_START = (23, 50)   # KST
+MAINTENANCE_END = (0, 10)      # KST (자정을 넘긴다)
+
+
+def kst_today_start(now: float | None = None) -> float:
+    """KST 자정(오늘 00:00)의 epoch. 일일 이체한도 집계 기준일."""
+    d = _dt.datetime.fromtimestamp(now if now is not None else time.time(), KST)
+    return d.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+
+
+def maintenance_state(now: float | None = None) -> tuple[bool, float]:
+    """(점검 중인가, 점검이 끝나는 시각 epoch).
+
+    now 를 인자로 받는 이유는 테스트 때문이다 — 23:50 을 기다리지 않고 경계값을 주입해
+    확인할 수 있어야 한다(자정을 넘는 구간이라 경계가 특히 틀리기 쉽다).
+    """
+    d = _dt.datetime.fromtimestamp(now if now is not None else time.time(), KST)
+    start = d.replace(hour=MAINTENANCE_START[0], minute=MAINTENANCE_START[1],
+                      second=0, microsecond=0)
+    end = d.replace(hour=MAINTENANCE_END[0], minute=MAINTENANCE_END[1],
+                    second=0, microsecond=0)
+    if end > start:
+        # 같은 날 안에서 끝나는 창(예: 03:00~03:20). 운영 기본값은 아니지만, 점검 시각을
+        # 옮겨 확인할 때 이 경우가 되므로 함께 다룬다 — 아래 자정 분기만 두면 재개 시각이
+        # 하루 뒤로 잡힌다(실제로 임시 창으로 화면 확인하다 발견).
+        return (start <= d < end), (end.timestamp() if start <= d < end else 0.0)
+    # 자정을 넘기는 창(운영 기본값 23:50~00:10)
+    if d >= start:          # 23:50~23:59 — 점검 종료는 내일 00:10
+        return True, (end + _dt.timedelta(days=1)).timestamp()
+    if d < end:             # 00:00~00:09 — 어제 23:50에 시작된 점검이 이어지는 중
+        return True, end.timestamp()
+    return False, 0.0
+
+
+def maintenance_info(now: float | None = None) -> dict:
+    """클라이언트에 내려줄 점검 상태(화면이 브라우저 시계를 믿지 않도록 서버가 계산)."""
+    active, resume_at = maintenance_state(now)
+    return {
+        "active": active,
+        "start": f"{MAINTENANCE_START[0]:02d}:{MAINTENANCE_START[1]:02d}",
+        "end": f"{MAINTENANCE_END[0]:02d}:{MAINTENANCE_END[1]:02d}",
+        "resume_at": resume_at,
+    }
+
+
+# 이체 비밀번호 오입력 — 세기만 하고 잠그지는 않는다.
+# 공개 데모라 reviewer 계정을 모든 방문자가 공유한다. 한 명이 계정을 잠그면 그 뒤 방문자가
+# 전부 이체를 못 하게 되므로, 남은 횟수를 알려주고 보안이력에 남기는 선까지만 한다.
+PIN_FAIL_WINDOW_S = 10 * 60   # 최근 10분 안의 실패만 센다
+PIN_FAIL_LIMIT = 5
+
+
+def _pin_fail_detail(username: str, now: float) -> str:
+    """이체 비밀번호 오입력 403 문구 — 남은 횟수를 함께 알려준다."""
+    base = "이체 비밀번호가 올바르지 않습니다."
+    try:
+        fails = db.count_recent_security_events(
+            "password_fail", username, now - PIN_FAIL_WINDOW_S)
+    except Exception:
+        return base + " 본인 확인에 실패했습니다."
+    left = PIN_FAIL_LIMIT - fails
+    if left > 0:
+        return f"{base} ({left}회 남음)"
+    # 소진돼도 막지는 않는다 — 문구만 강해진다.
+    return (f"{base} 연속 {fails}회 틀렸습니다. 마이페이지 > 보안에서 기록을 확인하시고, "
+            f"비밀번호가 기억나지 않으면 이체 비밀번호를 다시 설정해 주세요.")
+
+
+def _acct_digits(account_no: str) -> str:
+    """계좌번호에서 숫자만 남긴다(대시·공백 표기 차이를 흡수). agent.py의 _digits 와 같은 규칙."""
+    return re.sub(r"[^0-9]", "", account_no or "")
+
+
+MAINTENANCE_DETAIL = (
+    f"지금은 정기점검 시간입니다"
+    f"({MAINTENANCE_START[0]:02d}:{MAINTENANCE_START[1]:02d}~"
+    f"{MAINTENANCE_END[0]:02d}:{MAINTENANCE_END[1]:02d}). "
+    f"점검이 끝난 뒤 이용하시거나 예약 이체를 이용해 주세요."
+)
 
 
 class TransferReq(BaseModel):
@@ -398,10 +509,13 @@ def my_limits(user: dict = Depends(auth.get_current_user)):
     once = int(cfg.get("transfer_limit", TRANSFER_LIMIT))
     daily = int(cfg.get("daily_transfer_limit", DAILY_TRANSFER_LIMIT))
     fee = int(cfg.get("transfer_fee", TRANSFER_FEE))
-    today0 = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))
+    today0 = kst_today_start()   # 한도 리셋 기준은 KST 자정(이체 검증부와 같은 헬퍼)
     used = db.sum_user_transfers_today(db.user_account_nos(user["id"]), today0)
+    # 점검 상태를 함께 내린다 — 이체 화면이 브라우저 시계로 계산하지 않도록 서버가 판단한다.
+    # (이 엔드포인트는 이미 이체 탭에 들어올 때 호출된다 — main.js loadTransferNotice)
     return {"transfer_limit": once, "daily_transfer_limit": daily, "transfer_fee": fee,
-            "used_today": used, "remaining_today": max(0, daily - used)}
+            "used_today": used, "remaining_today": max(0, daily - used),
+            "maintenance": maintenance_info()}
 
 
 @app.get("/api/me/transactions/export")
@@ -958,6 +1072,20 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
             status_code=400,
             detail=f"1회 이체 한도({transfer_limit:,}원)를 초과했습니다.",
         )
+    now = time.time()
+
+    # 예약 시각이 과거면 거절한다. 예전에는 아래 `scheduled_at > now + 30` 조건이 거짓이 되면
+    # 그냥 즉시 이체로 떨어져서, "내일 보내달라"가 조용히 지금 이체되는 일이 가능했다.
+    # (이 검사는 챗봇 모달에만 있었다 — 클라이언트만 막으면 API 직접 호출로 뚫린다.)
+    if req.scheduled_at and req.scheduled_at <= now + 30:
+        raise HTTPException(status_code=400, detail="예약 시각은 현재보다 미래여야 합니다.")
+
+    # 정기점검 중에는 '지금 돈이 움직이는' 이체만 막는다. 예약·지연 이체는 그대로 받고,
+    # 실행은 폴러가 점검이 끝난 뒤에 한다(_start_scheduled_poller 의 점검 가드).
+    _executes_now = not req.scheduled_at and not (req.delay_minutes and req.delay_minutes > 0)
+    if _executes_now and maintenance_state(now)[0]:
+        raise HTTPException(status_code=503, detail=MAINTENANCE_DETAIL)
+
     # 출금 계좌가 로그인한 사용자 소유인지 확인
     my = {a["account_no"]: a for a in db.list_accounts(user["id"])}
     src = my.get(req.from_account)
@@ -968,15 +1096,19 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
     dst = db.lookup_account(req.to_account)
     if dst is None:
         raise HTTPException(status_code=404, detail="받는 계좌를 조회할 수 없습니다.")
-    if req.to_account == req.from_account:
+    # 동일계좌 검사는 숫자만 남겨 비교한다 — 원문끼리 비교하면 "110-222-333"과 "110222333"이
+    # 다른 값이 돼서 자기 계좌로의 이체가 통과한다(db.lookup_account 는 숫자만 보고 찾는다).
+    if _acct_digits(dst["account_no"]) == _acct_digits(src["account_no"]):
         raise HTTPException(status_code=400, detail="같은 계좌로는 이체할 수 없습니다.")
 
     fee = 0 if src["bank_name"] == dst["bank_name"] else transfer_fee
     if src["balance"] < req.amount + fee:
         raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
 
-    # 1일 누적 이체 한도(내 계좌들 오늘 completed+pending 합계 + 이번 금액)
-    _today0 = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))
+    # 1일 누적 이체 한도(내 계좌들 오늘 completed+pending 합계 + 이번 금액).
+    # "오늘"은 KST 자정 기준 — 서버 로컬(UTC) 기준으로 재면 한국 사용자에겐 한도가
+    # 자정이 아니라 오전 9시에 리셋된다.
+    _today0 = kst_today_start(now)
     if db.sum_user_transfers_today(list(my.keys()), _today0) + req.amount > daily_limit:
         db.log_security_event("limit_daily", user["username"], req.from_account,
                               req.to_account, req.amount,
@@ -997,10 +1129,9 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
     if not _ok:
         db.log_security_event("password_fail", user["username"], req.from_account,
                               req.to_account, req.amount, "이체 비밀번호 재인증 실패")
-        raise HTTPException(status_code=403, detail="이체 비밀번호가 올바르지 않습니다. 본인 확인에 실패했습니다.")
+        raise HTTPException(status_code=403, detail=_pin_fail_detail(user["username"], now))
 
     # 예약/지연 이체 판별: 즉시 실행이 아니면 미래 시각에 폴러가 처리
-    now = time.time()
     sched_at = None
     sched_status = "pending"
     if req.scheduled_at and req.scheduled_at > now + 30:      # 예약(미래 시각)
@@ -1014,8 +1145,13 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
                               req.to_account, req.amount,
                               f"신규 수취계좌 이체 · 예금주 {dst['holder_name']}")
 
+    # 받는 계좌는 조회로 찾은 **정규화된** 값을 저장한다. 요청 원문을 그대로 넣으면
+    # db.process_transfer 의 `LEFT JOIN accounts dst ON dst.account_no = t.to_account`
+    # 가 정확 일치라서, 대시 표기만 달라도 내부 계좌를 못 찾아 "외부 은행 이체"로 간주된다
+    # → 출금만 되고 입금이 안 되는 자금 소실. 정상 UI 경로는 조회 응답값을 보내서 지금까지
+    # 드러나지 않았지만, API를 직접 호출하면 바로 재현된다.
     transfer_id = db.create_transfer(
-        req.from_account, req.to_account, req.amount,
+        src["account_no"], dst["account_no"], req.amount,
         to_bank=dst["bank_name"], to_holder=dst["holder_name"],
         fee=fee, memo=req.memo, sender_memo=req.sender_memo,
         status=sched_status, scheduled_at=sched_at,
@@ -1733,6 +1869,33 @@ def maintenance_init_db(x_reset_token: str = Header(default="")):
     elapsed = time.time() - started
     print(f"[init-db] 스키마 반영 완료 · {elapsed:.1f}s")
     return {"ok": True, "elapsed_seconds": round(elapsed, 1)}
+
+
+# ── 예약 이체 스위프 (크론용) ─────────────────────────────────────────
+# 예약/지연 이체를 실제로 실행하는 건 서버 프로세스 안의 폴러 스레드인데, 서버리스에서는
+# 요청이 없으면 인스턴스가 살아 있지 않아 그 시각에 돌지 않는다. 특히 정기점검이 끝나는
+# 자정 무렵은 트래픽이 가장 적어서, 예약건이 다음 방문자가 올 때까지 밀린다.
+# 그래서 크론이 이 엔드포인트를 쳐서 서버를 깨우고 스위프까지 시킨다.
+#
+#   .github/workflows/run-due-transfers.yml (매일 UTC 15:10 = KST 00:10)
+#
+# 보호 방식과 경로 규칙은 위 두 엔드포인트와 같다 — /api/admin/* 가 아니라
+# /api/maintenance/* 여야 DEMO_READONLY 쓰기 가드에 걸리지 않는다.
+@app.post("/api/maintenance/run-due-transfers")
+def maintenance_run_due_transfers(x_reset_token: str = Header(default="")):
+    expected = os.environ.get("DEMO_RESET_TOKEN", "").strip()
+    if not expected:
+        raise HTTPException(404, "Not Found")          # 미설정 = 기능 없음
+    if not hmac.compare_digest(x_reset_token.strip(), expected):
+        raise HTTPException(403, "리셋 토큰이 올바르지 않습니다.")
+
+    active, resume_at = maintenance_state()
+    if active:
+        # 점검 중이면 실행하지 않는다(폴러와 같은 규칙). 크론이 조금 일찍 돈 경우.
+        return {"ok": True, "skipped": "maintenance", "resume_at": resume_at}
+    result = run_due_transfers()
+    print(f"[run-due-transfers] 처리 {result['processed']}건 · 실패 {result['failed']}건")
+    return {"ok": True, **result}
 
 
 # ── 정적 사이트 서빙 (마지막에 마운트: /api 라우트가 우선) ───────────

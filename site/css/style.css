@@ -363,6 +363,9 @@ main { min-height: calc(100vh - var(--header-h)); }
 @media (max-width: 680px) {
   .hero-trust { gap: var(--space-4); flex-wrap: wrap; }
 }
+/* .btn 의 display 가 hidden 속성(브라우저 기본 display:none)을 이겨버려서, hidden 을 걸어도
+   버튼이 그대로 보인다. 숨김은 항상 의도된 것이므로 여기서 한 번 되돌려 둔다. */
+.btn[hidden] { display: none; }
 .btn {
   display: inline-flex;
   align-items: center;
@@ -2806,6 +2809,18 @@ body:has(#chat.active) .site-footer {
 /* 면제일 때만 체크 표시를 붙인다(혜택 신호) */
 .tf-policy.free .tf-policy-main::before {
   content: "✓";
+  margin-right: var(--space-2);
+  font-weight: 700;
+}
+/* 정기점검 중 — 수수료·한도보다 "지금 이체가 안 된다"가 먼저 읽혀야 한다.
+   .free 와 같은 변형 패턴이고 색만 경고 토큰으로 바꾼다. */
+.tf-policy.warn {
+  background: var(--warning-soft);
+  border-color: var(--warning);
+}
+.tf-policy.warn .tf-policy-main { color: var(--warning); }
+.tf-policy.warn .tf-policy-main::before {
+  content: "⚠";
   margin-right: var(--space-2);
   font-weight: 700;
 }

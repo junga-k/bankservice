@@ -1370,6 +1370,21 @@ def count_security_events(event_type: str = "") -> int:
         ).fetchone()[0]
 
 
+def count_recent_security_events(event_type: str, username: str, since: float) -> int:
+    """특정 사용자의 최근 보안 이벤트 건수. 이체 비밀번호 연속 오입력 횟수를 세는 데 쓴다.
+
+    별도 실패 카운터 컬럼을 두지 않고 기존 security_events 를 세는 이유: 이미 모든 실패가
+    여기 기록되고 있고(마이페이지 > 보안에서 사용자도 확인한다), 잠금이 아니라 '남은 횟수
+    안내'만 할 것이라 영속 상태가 필요 없다.
+    """
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM security_events "
+            "WHERE event_type = ? AND username = ? AND created_at >= ?",
+            (event_type, username, since),
+        ).fetchone()[0]
+
+
 def log_admin_access(admin_username: str, admin_name: str, action: str,
                      target: str = "", detail: str = "") -> None:
     """관리자의 개인신용정보(계좌번호·금액 등) 열람을 기록. 실패해도 호출부(조회 응답)를

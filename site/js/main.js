@@ -770,6 +770,27 @@ function tfAmountValue() {
   return raw ? parseInt(raw, 10) : 0;
 }
 
+/* 계좌번호에서 숫자만 남긴다(대시 표기 차이 흡수). 백엔드 _acct_digits 와 같은 규칙. */
+function digitsOnly(s) {
+  return (s || "").replace(/[^0-9]/g, "");
+}
+
+/* 금액을 억/만 단위 한글로. 예: 100000 → "십만원".
+ * 0을 하나 더 치는 사고를 막으려고 숫자 옆에 한글을 같이 보여준다(국내 뱅킹 공통 패턴).
+ * 챗봇(app.py _won_kor)이 쓰던 것과 같은 표기를 사이트에도 맞춘다. */
+function wonKor(n) {
+  n = Math.floor(Math.abs(n || 0));
+  if (!n) return "";
+  const eok = Math.floor(n / 100000000);
+  const man = Math.floor((n % 100000000) / 10000);
+  const rest = n % 10000;
+  const parts = [];
+  if (eok) parts.push(`${eok.toLocaleString("ko-KR")}억`);
+  if (man) parts.push(`${man.toLocaleString("ko-KR")}만`);
+  if (rest) parts.push(rest.toLocaleString("ko-KR"));
+  return parts.join(" ") + "원";
+}
+
 /* ── 커스텀 셀렉트 ──────────────────────────────────────────────────
  * 네이티브 <select> 의 옵션 목록은 OS 가 그리는 메뉴라 CSS 로 크기·폰트·위치를 바꿀 수
  * 없다(macOS 에서 화면 가운데에 아주 크게 떠 사이트 톤과 어긋났다). 그래서 목록 UI 만
@@ -904,9 +925,11 @@ function updateAfterBalance() {
   const fee = tfVerified ? tfVerified.fee : (sameBank ? 0 : tfPolicyFee);
   const after = acc.balance - amt - fee;
   el.className = "tf-hint" + (after < 0 ? " err" : "");
-  el.textContent = after < 0
+  // 금액을 한글로 같이 보여준다 — 0을 하나 더 치는 사고를 입력 중에 바로 알아차리게.
+  el.textContent = (after < 0
     ? `잔액 부족 (수수료 ${won(fee)} 포함 ${won(amt + fee)} 필요)`
-    : `이체 후 잔액 ${won(after)}${fee ? ` (수수료 ${won(fee)} 별도)` : ""}`;
+    : `이체 후 잔액 ${won(after)}${fee ? ` (수수료 ${won(fee)} 별도)` : ""}`)
+    + ` · 보내는 금액 ${wonKor(amt)}`;
 }
 
 // 현재 펼쳐진 계좌의 거래내역 페이지네이션 상태(페이지 번호 클릭 시 재조회에 사용)
@@ -1017,6 +1040,25 @@ function tfGoStep(n) {
     s.classList.toggle("active", Number(s.dataset.step) === n);
     s.classList.toggle("done", Number(s.dataset.step) < n);
   });
+}
+
+/* 정기점검 중이면 STEP2의 '이체 실행'을 막고 '예약' 버튼을 연다.
+   사이트에는 원래 예약 UI가 없어서(예약·지연은 AI은행원에서만 만들었다) 버튼 하나만 둔다 —
+   백엔드의 scheduled_at, 마이페이지 예약목록·취소는 이미 전부 있다. */
+function updateMaintenanceView() {
+  const submit = document.getElementById("tf-submit");
+  const sched = document.getElementById("tf-schedule");
+  const note = document.getElementById("tf-maint-note");
+  if (!submit || !sched || !note) return;
+  const active = !!tfMaintenance.active;
+  submit.disabled = active;
+  sched.hidden = !active;
+  note.hidden = !active;
+  if (!active) return;
+  sched.textContent = `${tfMaintenance.end}에 예약`;
+  note.textContent =
+    `정기점검(${tfMaintenance.start}~${tfMaintenance.end}) 중에는 즉시 이체가 제한됩니다. ` +
+    `점검이 끝나는 ${tfMaintenance.end}에 실행되도록 예약하실 수 있습니다.`;
 }
 
 function tfResetVerify() {
@@ -1130,6 +1172,25 @@ document.addEventListener("click", (e) => {
   if (!amount) { statusEl.className = "tf-status err"; statusEl.textContent = "이체 금액을 입력하세요."; return; }
   const fee = tfVerified.fee;
   if (acc.balance < amount + fee) { statusEl.className = "tf-status err"; statusEl.textContent = "잔액이 부족합니다."; return; }
+  // 아래 3가지는 예전엔 서버만 막아서, 사용자가 비밀번호까지 입력하고 누른 뒤에야 알 수 있었다.
+  // 한도값은 loadTransferNotice()가 이미 /api/me/limits 로 받아둔 것을 쓴다.
+  if (digitsOnly(tfVerified.account_no) === digitsOnly(acc.account_no)) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = "같은 계좌로는 이체할 수 없습니다.";
+    return;
+  }
+  if (tfLimits.transfer_limit && amount > tfLimits.transfer_limit) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent = `1회 이체 한도(${won(tfLimits.transfer_limit)})를 초과했습니다.`;
+    return;
+  }
+  if (tfLimits.daily_transfer_limit && amount > tfLimits.remaining_today) {
+    statusEl.className = "tf-status err";
+    statusEl.textContent =
+      `오늘 남은 이체 한도(${won(tfLimits.remaining_today)})를 초과했습니다. ` +
+      `1일 한도는 ${won(tfLimits.daily_transfer_limit)}입니다.`;
+    return;
+  }
 
   const memo = document.getElementById("tf-memo").value.trim() || acc.holder_name;
   const senderMemo = document.getElementById("tf-sender-memo").value.trim() || tfVerified.holder_name;
@@ -1154,13 +1215,31 @@ document.addEventListener("click", (e) => {
 });
 
 /* STEP2 이체 실행 → POST → 폴링 → STEP3 영수증 */
+/* 실패를 상태코드별로 다르게 안내한다. 예전엔 400(입력 오류)·403(비밀번호)·503(점검)·
+   네트워크 단절이 전부 "이체 실패: …" 한 줄로 수렴해서, 사용자가 무엇을 고쳐야 하는지도
+   다시 시도해도 되는지도 알 수 없었다. */
+async function tfFailMessage(res) {
+  const { detail } = await res.json().catch(() => ({}));
+  if (detail) {
+    if (res.status === 503) return detail;                    // 점검 안내는 그 자체로 완결
+    if (res.status === 403) return detail;                    // 비밀번호 오류(남은 횟수 포함)
+    return detail;
+  }
+  // 본문이 JSON이 아닌 경우(502·게이트웨이 HTML 등) — 예전엔 "이체 실패: 이체 실패"가 떴다
+  if (res.status >= 500) return "서버에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.";
+  return `요청을 처리하지 못했습니다. (오류 ${res.status})`;
+}
+
 document.addEventListener("click", async (e) => {
-  if (e.target.id !== "tf-submit") return;
+  const submitBtn = e.target.closest("#tf-submit, #tf-schedule");
+  if (!submitBtn) return;
+  const scheduling = submitBtn.id === "tf-schedule";   // 점검 중 "00:10에 예약"
   const acc = currentFromAccount();
   const amount = tfAmountValue();
   const memo = document.getElementById("tf-memo").value.trim();
   const senderMemo = document.getElementById("tf-sender-memo").value.trim();
-  const password = document.getElementById("tf-password").value;
+  const pwEl = document.getElementById("tf-password");
+  const password = pwEl.value;
   const confirmed = document.getElementById("tf-confirm-check").checked;
   const statusEl = document.getElementById("tf-status2");
   statusEl.className = "tf-status";
@@ -1170,38 +1249,98 @@ document.addEventListener("click", async (e) => {
     statusEl.textContent = "받는 분과 금액을 확인한 뒤 체크해 주세요.";
     return;
   }
-  if (!password) {
+  if (!/^\d{6}$/.test(password)) {
     statusEl.className = "tf-status err";
-    statusEl.textContent = "이체 비밀번호를 입력해 주세요.";
+    statusEl.textContent = password
+      ? "이체 비밀번호는 숫자 6자리입니다."
+      : "이체 비밀번호를 입력해 주세요.";
+    pwEl.focus();
     return;
   }
-  statusEl.textContent = "이체 요청 중…";
-  e.target.disabled = true;
+  statusEl.textContent = scheduling ? "예약 요청 중…" : "이체 요청 중…";
+  submitBtn.disabled = true;
 
   try {
+    const body = {
+      from_account: acc.account_no, to_account: tfVerified.account_no,
+      amount, memo: memo || null, sender_memo: senderMemo || null,
+      password,
+    };
+    // 점검 중에는 즉시 이체가 막히므로 점검이 끝나는 시각으로 예약한다
+    // (백엔드·마이페이지 예약목록·취소는 이미 있어서 여기서 보낼 값만 더하면 된다).
+    if (scheduling) body.scheduled_at = tfMaintenance.resume_at;
+
     const res = await apiFetch("/api/transfer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from_account: acc.account_no, to_account: tfVerified.account_no,
-        amount, memo: memo || null, sender_memo: senderMemo || null,
-        password,
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
-      const { detail } = await res.json().catch(() => ({ detail: "이체 실패" }));
-      throw new Error(detail || "이체 실패");
+      const msg = await tfFailMessage(res);
+      if (res.status === 403) {          // 비밀번호 오류 — 바로 다시 칠 수 있게
+        pwEl.value = "";
+        pwEl.focus();
+      }
+      if (res.status === 503) loadTransferNotice();   // 점검 상태 다시 받아 안내 갱신
+      statusEl.className = "tf-status err";
+      statusEl.textContent = msg;
+      return;
     }
-    const { transfer_id } = await res.json();
-    statusEl.textContent = "이체 처리 중…";
-    await pollTransfer(transfer_id, statusEl);
+    const data = await res.json();
+    // 응답이 이미 최종 상태면 폴링하지 않는다. 배포 환경은 Kafka가 없어 이 요청 안에서
+    // 처리가 끝나므로 사실상 항상 이 경로다(예전엔 그래도 최소 0.5초를 더 기다렸다).
+    statusEl.textContent = scheduling ? "예약하는 중…" : "이체 처리 중…";
+    await tfFinish(data, statusEl);
   } catch (err) {
+    // 네트워크 단절·CORS·타임아웃 — 예전엔 영문 "Failed to fetch"가 그대로 노출됐다
+    console.error("이체 요청 실패:", err);
     statusEl.className = "tf-status err";
-    statusEl.textContent = "이체 실패: " + err.message;
+    statusEl.textContent =
+      "서버에 연결하지 못했습니다. 네트워크를 확인하고 다시 시도해 주세요. " +
+      "이미 처리됐을 수 있으니 내 계좌 > 거래내역을 먼저 확인해 주세요.";
   } finally {
-    e.target.disabled = false;
+    submitBtn.disabled = false;
   }
 });
+
+/* POST /api/transfer 응답을 받아 화면을 마무리한다(상태별 분기 한 곳). */
+async function tfFinish(data, statusEl) {
+  const { transfer_id: id, status } = data;
+  if (status === "scheduled" || status === "delayed") {
+    const when = data.scheduled_at
+      ? new Date(data.scheduled_at * 1000).toLocaleString("ko-KR",
+          { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
+      : "";
+    statusEl.className = "tf-status ok";
+    statusEl.textContent =
+      `예약되었습니다${when ? ` — ${when}에 이체됩니다.` : "."} ` +
+      `마이페이지 > 예약이체에서 취소할 수 있습니다. (거래번호 T${String(id).padStart(8, "0")})`;
+    return;
+  }
+  if (status === "failed") {
+    const tr = await tfFetchTransfer(id);
+    statusEl.className = "tf-status err";
+    statusEl.textContent = "이체 실패: " + ((tr && tr.error) || "처리에 실패했습니다.");
+    return;
+  }
+  if (status === "completed") {
+    const tr = await tfFetchTransfer(id);
+    if (tr) { renderReceipt(tr); loadAccounts(); tfGoStep(3); return; }
+    statusEl.className = "tf-status ok";
+    statusEl.textContent = "이체가 완료되었습니다. 내 계좌 > 거래내역에서 확인해 주세요.";
+    return;
+  }
+  await pollTransfer(id, statusEl);      // pending — Kafka 워커가 처리 중
+}
+
+async function tfFetchTransfer(id) {
+  try {
+    const res = await apiFetch(`/api/transfers/${id}`);
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
 
 /* STEP3 완료 → 초기화 */
 document.addEventListener("click", (e) => {
@@ -1218,11 +1357,16 @@ document.addEventListener("click", (e) => {
   tfGoStep(1);
 });
 
+/* Kafka 워커가 비동기 처리 중(pending)인 이체를 짧게 폴링한다.
+   ⚠️ apiFetch 여야 한다 — GET /api/transfers/{id}는 인증 + 소유권 검사가 걸려 있다.
+   생 fetch 를 쓰던 동안에는 매번 401이 떨어져 tr.status 가 undefined 가 되는 바람에
+   완료를 영영 감지하지 못하고 10초 뒤 "지연" 문구로 끝났다(영수증 화면 도달 불가). */
 async function pollTransfer(transferId, statusEl) {
+  const txno = "T" + String(transferId).padStart(8, "0");
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 500));
-    const res = await fetch(`/api/transfers/${transferId}`);
-    const tr = await res.json();
+    const tr = await tfFetchTransfer(transferId);
+    if (!tr) continue;                   // 일시적 오류는 넘기고 다음 회차에 다시 본다
     if (tr.status === "completed") {
       renderReceipt(tr);
       loadAccounts(); // 잔액 갱신
@@ -1235,8 +1379,12 @@ async function pollTransfer(transferId, statusEl) {
       return;
     }
   }
+  // 거래번호를 함께 보여준다 — 다시 누르면 같은 이체가 한 번 더 나가기 때문에
+  // (멱등성 키가 없다) 재시도 대신 내역 확인으로 유도해야 한다.
   statusEl.className = "tf-status";
-  statusEl.textContent = "이체 처리가 지연되고 있습니다. 잠시 후 내역을 확인하세요.";
+  statusEl.textContent =
+    `이체 처리가 지연되고 있습니다. 다시 시도하지 마시고 내 계좌 > 거래내역에서 ` +
+    `결과를 확인해 주세요. (거래번호 ${txno})`;
 }
 
 function renderReceipt(tr) {
@@ -2535,6 +2683,10 @@ async function saveMyConsents() {
  * "수수료 500원 별도"가 떠서 바로 위 면제 안내와 모순됐다. 백오피스에서 정책을 바꿔도
  * 따라오도록 /api/me/limits 값을 쓴다(아직 못 받았으면 0 = 면제 기본값). */
 let tfPolicyFee = 0;
+/* 1회·1일 한도와 정기점검 상태. STEP1 선차단과 STEP2 예약 버튼이 쓴다.
+   점검 여부는 **서버가 판단한 값**을 쓴다 — 브라우저 시계는 타임존도 시각도 믿을 수 없다. */
+let tfLimits = { transfer_limit: 0, remaining_today: 0 };
+let tfMaintenance = { active: false, start: "", end: "", resume_at: 0 };
 
 async function loadTransferNotice() {
   const box = document.getElementById("tf-notice");
@@ -2546,14 +2698,25 @@ async function loadTransferNotice() {
     if (!res.ok) return;
     const l = await res.json();
     tfPolicyFee = l.transfer_fee || 0;
+    tfLimits = l;
+    tfMaintenance = l.maintenance || tfMaintenance;
     updateAfterBalance();          // 캐시가 갱신됐으니 미리보기도 다시 계산
+    updateMaintenanceView();
     const limits = `1회 한도 ${won(l.transfer_limit)}, 1일 한도 ${won(l.daily_transfer_limit)}`;
-    if (l.transfer_fee) {
-      // 백오피스에서 수수료를 올린 경우 — 면제라고 말하면 안 된다
+    if (tfMaintenance.active) {
+      // 점검 중에는 수수료·한도보다 "지금 이체가 안 된다"가 먼저 보여야 한다
       box.classList.remove("free");
+      box.classList.add("warn");
+      main.textContent = `정기점검 중 (${tfMaintenance.start}~${tfMaintenance.end})`;
+      sub.textContent =
+        "지금은 즉시 이체가 제한됩니다. 점검이 끝나는 시각으로 예약하실 수 있습니다.";
+    } else if (l.transfer_fee) {
+      // 백오피스에서 수수료를 올린 경우 — 면제라고 말하면 안 된다
+      box.classList.remove("free", "warn");
       main.textContent = `이체 수수료 ${won(l.transfer_fee)}`;
       sub.textContent = limits;
     } else {
+      box.classList.remove("warn");
       box.classList.add("free");
       main.textContent = "이체 수수료 면제";
       sub.textContent = `타행으로 보낼 때도 수수료가 없습니다 (${limits})`;

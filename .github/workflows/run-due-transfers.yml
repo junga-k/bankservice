@@ -1,0 +1,51 @@
+# 실행 시각이 된 예약/지연 이체를 처리한다.
+#
+# 평소에는 백엔드 프로세스 안의 폴러 스레드(15초 주기)가 알아서 처리한다. 그런데 배포
+# 환경은 서버리스라 요청이 없으면 인스턴스가 살아 있지 않고, 따라서 그 시각에 폴러도
+# 돌지 않는다. 예약건은 "다음 방문자가 올 때" 늦게 실행된다.
+#
+# 특히 정기점검이 끝나는 00:10(KST)은 하루 중 트래픽이 가장 적은 시간이다. 점검 때문에
+# 예약으로 돌린 이체가 바로 그 시각에 몰리는데 깨워줄 사람이 없다. 그래서 크론이 직접
+# 서버를 깨우고 스위프까지 시킨다.
+#
+# 사전 설정 (reset-demo-data.yml 과 같은 토큰을 그대로 쓴다 — 운영 토큰을 늘리지 않는다):
+#   · Vercel  프로젝트 환경변수  DEMO_RESET_TOKEN
+#   · GitHub  저장소 시크릿      DEMO_RESET_TOKEN   (같은 값)
+#
+# ⚠️ 공개 저장소에서 60일간 활동이 없으면 GitHub이 schedule 트리거를 자동 비활성화한다.
+#    (복구: 커밋 1회 또는 Actions 탭의 "Enable workflow")
+name: Run due transfers
+
+on:
+  schedule:
+    - cron: "10 15 * * *"   # 매일 UTC 15:10 = KST 00:10 (정기점검이 끝나는 시각)
+  workflow_dispatch:
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call sweep endpoint
+        env:
+          RESET_TOKEN: ${{ secrets.DEMO_RESET_TOKEN }}
+          API_URL: https://bankservice-six.vercel.app/api/maintenance/run-due-transfers
+        run: |
+          if [ -z "$RESET_TOKEN" ]; then
+            echo "::error::DEMO_RESET_TOKEN 저장소 시크릿이 설정되지 않았습니다."
+            exit 1
+          fi
+
+          code=$(curl -sS -o response.json -w '%{http_code}' -X POST \
+                   -H "X-Reset-Token: $RESET_TOKEN" \
+                   --max-time 120 "$API_URL")
+
+          echo "HTTP $code"
+          cat response.json; echo
+
+          case "$code" in
+            200) echo "스위프 완료" ;;
+            404) echo "::error::Vercel 에 DEMO_RESET_TOKEN 환경변수가 없어 기능이 비활성 상태입니다."; exit 1 ;;
+            403) echo "::error::토큰 불일치 — Vercel 환경변수와 GitHub 시크릿 값이 같은지 확인하세요."; exit 1 ;;
+            *)   echo "::error::예상치 못한 응답($code)"; exit 1 ;;
+          esac

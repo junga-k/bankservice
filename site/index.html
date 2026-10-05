@@ -458,9 +458,12 @@
                    PIN 을 쓰는 자리에서만 안내한다(로그인 화면에는 두지 않는다). -->
               <p class="tf-hint" id="tf-pin-hint" hidden></p>
             </div>
+            <!-- 정기점검 중에만 보인다 (main.js updateMaintenanceView) -->
+            <p class="tf-newpayee" id="tf-maint-note" hidden></p>
             <div class="tf-confirm-actions">
               <button class="btn btn-ghost" id="tf-back" type="button">이전</button>
               <button class="btn btn-primary" id="tf-submit" type="button">이체 실행</button>
+              <button class="btn btn-primary" id="tf-schedule" type="button" hidden>예약</button>
             </div>
             <div id="tf-status2" class="tf-status"></div>
           </div>

@@ -1283,6 +1283,19 @@ def _my_accounts(token: str) -> list[dict]:
     return []
 
 
+def _maintenance(token: str) -> dict:
+    """정기점검 상태를 백엔드에서 받아온다(점검 여부 판단은 서버가 한다 — 이 컨테이너의
+    시계는 UTC라 KST 기준 23:50~00:10을 여기서 계산하면 9시간 어긋난다)."""
+    try:
+        r = requests.get(f"{_BACKEND_URL}/api/me/limits",
+                         headers={"Authorization": f"Bearer {token}"}, timeout=_BACKEND_TIMEOUT)
+        if r.ok:
+            return r.json().get("maintenance") or {}
+    except Exception:
+        pass
+    return {}
+
+
 # ── 이체 진행상태 폴링 헬퍼 ────────────────────────────────────────────
 def _poll_transfer_status(transfer_id: int, token: str,
                           timeout_s: float = 6.0, interval_s: float = 0.3) -> dict:
@@ -1397,8 +1410,23 @@ def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, a
     if _DEMO_TRANSFER_PIN:
         st.caption(f"데모 이체 비밀번호: {_DEMO_TRANSFER_PIN}")
 
+    # 두 버튼을 **먼저 그리고** 나서 분기한다. 예전에는 '이체하기' 블록 안에서 return 하는
+    # 경로(검증 실패·이체 실패)가 '닫기' 렌더보다 앞서서, 실패한 순간 닫기 버튼이 사라졌다
+    # (화면으로 확인하다 발견 — ✕ 로만 닫을 수 있었다).
     _c1, _c2 = st.columns(2, gap="small")
-    if _c1.button("이체하기", type="primary", key="tf_exec", use_container_width=True):
+    _do_exec = _c1.button("이체하기", type="primary", key="tf_exec", use_container_width=True)
+    _do_close = _c2.button("닫기", key="tf_modal_close", use_container_width=True)
+
+    if _do_close:
+        # 입력했던 이체 비밀번호와 확인 체크는 여기서 지운다. 예전에는 tf_modal_open 만
+        # 지워서 모달을 닫아도 tf_pw 가 남았고, 다시 열면 비밀번호가 채워진 채로 떴다.
+        # (카드에서 고른 보내는 계좌·이체 시점은 남겨둔다 — 닫기는 취소가 아니라
+        #  "잠시 접어두기"이고, _clear_transfer_widget_keys() 를 부르면 그것까지 초기화된다.)
+        for _k in ("tf_modal_open", "tf_pw", "tf_confirm_chk"):
+            st.session_state.pop(_k, None)
+        st.rerun()
+
+    if _do_exec:
         if not _ok:
             st.warning("예금주명과 금액을 확인한 뒤 체크해 주세요.")
             return
@@ -1416,17 +1444,21 @@ def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, a
             _final_text, _err = _transfer_result_text(_res, pending, from_account, amt, token)
 
         if _err:
-            st.error(f"이체 실패: {_err}")   # 모달 유지 → 수정 후 재시도
+            # 정기점검은 "실패"가 아니라 "지금은 안 되는 시간"이다. 같은 빨간 에러로 묶으면
+            # 사용자가 자기 입력을 의심하게 되므로 경고 톤으로 분리한다.
+            # (백엔드가 내려주는 문구로 판별한다 — execute_transfer 가 상태코드를 돌려주지
+            #  않아서다. 문구는 backend/app.py 의 MAINTENANCE_DETAIL 상수 하나뿐이다.)
+            if "정기점검" in _err:
+                st.warning(f"🛠️ {_err}")
+                st.caption("위 '이체 시점'에서 예약 이체를 선택하시면 점검이 끝난 뒤 실행됩니다.")
+            else:
+                st.error(f"이체 실패: {_err}")   # 모달 유지 → 수정 후 재시도
             return
 
         conv["messages"].append({"role": "assistant", "content": _final_text})
         st.session_state.pop("pending_transfer", None)
         _clear_transfer_widget_keys()
         storage.save_conversation(conv)
-        st.rerun()
-
-    if _c2.button("닫기", key="tf_modal_close", use_container_width=True):
-        st.session_state.pop("tf_modal_open", None)
         st.rerun()
 
 
@@ -1508,9 +1540,23 @@ if _pending:
             st.warning("⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.")
         st.caption("AI가 이체를 위해 정리한 정보입니다. 정확한지 확인 후 진행해 주세요.")
 
+        # 정기점검(23:50~00:10) 중에는 즉시 이체가 막힌다 — 실제 은행과 같다.
+        # 판단은 백엔드가 하고(_maintenance), 여기서는 선택지만 바꿔 예약으로 유도한다.
+        _maint = _maintenance(auth_token)
+        _maint_on = bool(_maint.get("active"))
+        _when_opts = ["즉시 이체", "지연 이체 (취소 가능)", "예약 이체 (지정 시각)"]
+        if _maint_on:
+            st.warning(
+                f"🛠️ 정기점검 중입니다 ({_maint.get('start','23:50')}~{_maint.get('end','00:10')}). "
+                f"지금은 즉시 이체가 제한되어, 점검이 끝나는 시각으로 예약해 드립니다."
+            )
+            _when_opts = ["예약 이체 (지정 시각)"]   # 즉시·지연은 점검 중 실행될 수 없다
+        # 선택지가 줄었는데 이전 선택("즉시 이체")이 세션에 남아 있으면 st.radio 가 에러를 낸다
+        if st.session_state.get("tf_when") not in _when_opts:
+            st.session_state.pop("tf_when", None)
+
         # 실행 시점 선택: 즉시 / 지연(취소 가능) / 예약(지정 시각)
-        _when = st.radio("이체 시점", ["즉시 이체", "지연 이체 (취소 가능)", "예약 이체 (지정 시각)"],
-                         horizontal=True, key="tf_when")
+        _when = st.radio("이체 시점", _when_opts, horizontal=True, key="tf_when")
         _sched_at = None
         _delay_min = 0
         if _when == "지연 이체 (취소 가능)":
@@ -1521,11 +1567,15 @@ if _pending:
         elif _when == "예약 이체 (지정 시각)":
             import datetime as _dt
             _now = _dt.datetime.now()
+            # 점검 중이면 기본값을 "점검이 끝나는 시각"으로 — 그때 바로 실행된다.
+            # resume_at 은 서버가 KST 로 계산해 내려준 epoch 이라 이 컨테이너 시계와 무관하다.
+            _default_dt = (_dt.datetime.fromtimestamp(_maint["resume_at"])
+                           if _maint_on and _maint.get("resume_at")
+                           else _now + _dt.timedelta(hours=1))
             _cd, _ct = st.columns(2)
-            _pd_date = _cd.date_input("예약 날짜", value=_now.date(),
+            _pd_date = _cd.date_input("예약 날짜", value=_default_dt.date(),
                                       min_value=_now.date(), key="tf_sched_d")
-            _pd_time = _ct.time_input("예약 시각", value=(_now + _dt.timedelta(hours=1)).time(),
-                                      key="tf_sched_t")
+            _pd_time = _ct.time_input("예약 시각", value=_default_dt.time(), key="tf_sched_t")
             _sched_dt = _dt.datetime.combine(_pd_date, _pd_time)
             _sched_at = _sched_dt.timestamp()
             if _sched_at <= _now.timestamp() + 30:
