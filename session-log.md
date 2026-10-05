@@ -1962,3 +1962,40 @@ API 직접 호출로 뚫린다. 이제 400.
 누르는 것 — Playwright 가 중첩 iframe 안 `st.chat_input` 에 제출을 못 시켰다(입력은 들어가는데
 Enter·전송버튼이 안 먹음). 챗봇을 직접 열어 같은 경로를 확인했고, 로컬에서는 사이트 iframe
 경유로도 확인했다.
+
+### 2026-10-05 (계속) — 라이브 확인 중 나온 버그 3건
+
+사용자가 배포본을 눌러보며 찾아준 것들. 전부 **화면을 실제로 보지 않았으면 못 잡았을** 종류다.
+
+**① 챗봇이 계정과 무관하게 데모 PIN을 안내했다 — 사용자가 5회 연속 틀린 원인.**
+사용자가 보내준 실패 스크린샷에서 보내는 계좌가 `신한은행 111-222-333444`(admin 계좌)인데
+모달은 `데모 이체 비밀번호: 802413`(reviewer 의 PIN)을 안내하고 있었다. admin 의 실제 PIN 은
+`135790` 이라 맞을 리가 없었다. 사이트는 `getAuth()?.username === DEMO_LOGIN.username` 을
+확인하는데(`main.js renderTransferPinHint`) 챗봇은 `if _DEMO_TRANSFER_PIN:` 하나뿐이었다.
+→ "로그인한 계정이 공개 데모 계정인가"는 `DEMO_LOGIN` 을 가진 백엔드만 안다. 판단을 백엔드로
+옮겨 `/api/me/limits` 가 `demo_pin` 을 내려주게 했다(해당 계정일 때만 값이 채워진다).
+점검 상태를 받으려고 이미 호출하던 엔드포인트라 왕복이 늘지 않는다.
+검증: `demo` → `'246810'`, `admin` → `''`, 화면에서도 각각 표시/미표시.
+
+**② `use_container_width` 가 Streamlit 1.58에서 deprecated 되며 동작을 멈췄다.**
+사용자가 "이체 확인/취소 사이가 넓어 보인다"고 지적해 실측했더니 컬럼 459px 에 버튼 360px —
+버튼이 컬럼을 안 채우고 가운데 정렬돼 있었다. `inspect.getdoc(st.button)` 으로 확인:
+*"deprecated ... For use_container_width=True, use width='stretch'"*. app.py 12곳을 현행
+API로 교체했다. **주석이 전제하던 동작의 복구**다(그 주석은 2026-08-10 줄바꿈 버그를 피하려고
+일부러 이 방식을 택했다고 적고 있었다).
+
+**③ 말풍선 CSS가 컬럼 안쪽까지 좁히고 있었다.** ②를 고쳐도 여전히 안 채워서 DOM 을 타고
+올라가 보니 `stColumn 303px → stVerticalBlock 248px → stElementContainer 232px` 로 두 번
+줄고 있었다. 범인은 어시스턴트 말풍선 규칙:
+```
+[data-testid="stChatMessage"]:has(...AvatarAssistant) [data-testid="stVerticalBlock"] {
+    padding: 0 8px; max-width: 82%; }
+```
+**후손 선택자**라 `st.columns` 로 만든 칸 안의 블록에도 걸린다. `303 × 0.82 = 248`,
+`248 − 16(padding) = 232` 로 숫자가 정확히 맞았다. 말풍선 규칙은 그대로 두고
+`[data-testid="stChatMessage"] [data-testid="stColumn"] [data-testid="stVerticalBlock"]` 로
+컬럼 안에서만 되돌렸다. 이건 CLAUDE.md 가 경고하는 "공용 Streamlit 컨테이너에 구조적 CSS"
+함정의 실제 사례다 — 규칙을 지운 게 아니라 좁은 범위에서만 무효화했다.
+
+확인 카드 비율도 `[3,2,5] → [2,2,6]` 으로 바꿔 두 버튼을 같은 폭으로 만들었다(모달과 같은
+모양). 실측 결과 카드 303+16+303, 모달 218+16+218, 줄바꿈 없음.
