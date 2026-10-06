@@ -1999,3 +1999,89 @@ API로 교체했다. **주석이 전제하던 동작의 복구**다(그 주석�
 
 확인 카드 비율도 `[3,2,5] → [2,2,6]` 으로 바꿔 두 버튼을 같은 폭으로 만들었다(모달과 같은
 모양). 실측 결과 카드 303+16+303, 모달 218+16+218, 줄바꿈 없음.
+
+### 2026-10-06 — Figma에 이체 컴포넌트 추가 + 그 과정에서 발견한 "챗봇 테마가 절반만 적용돼 있던" 문제
+
+`backlog.md`의 "▶ 다음 작업 — Figma 디자인시스템에 정기점검 배너 + 이체 모달 상태 추가"를 진행.
+결과적으로 **Figma 작업보다 챗봇 코드 정렬이 먼저**가 됐다. 경위:
+
+#### 발단 — 실측값 6개가 `docs/tokens.md` 토큰 밖이었다
+
+Figma에 넣을 값을 뽑으려고 로컬에서 AI은행원 이체 모달을 띄워 `getComputedStyle`로 실측했더니
+6개가 토큰과 달랐다: 경고 글자 `#926C05`/배경 `rgba(255,255,18,.1)`, 오류 글자 `#BD4043`/배경
+`rgba(255,43,43,.1)`, 모달 radius 16, 제목 24px, 딤 `rgba(136,176,215,.25)`, 체크박스 radius 4.
+
+CLAUDE.md에 "토큰에 없는 값은 임의로 만들지 말고 먼저 물어본다"가 있어서 사용자에게
+"실측 그대로 넣을지 / 토큰으로 치환할지"를 물었는데, **질문 자체가 잘못된 전제였다.**
+사용자 지적: "왜 한 사이트에서 진행한 디자인인데 토큰 값이 다른 이유는 뭐야? 사이트와 피그마의
+디자인 시스템이 동일한 기준으로 디자인 되어야하는데 추가 되는 부분만 달라질 수는 없어."
+
+#### 원인 — `[theme]` 키가 4개뿐이었다
+
+`.streamlit/config.toml`에 `primaryColor`/`backgroundColor`/`secondaryBackgroundColor`/`textColor`
+4개만 있었다. **그 4개가 덮는 영역은 실측 결과 전부 토큰과 정확히 일치**했다(버튼 `#0FA968`,
+입력창 배경 `#F8FAFD`, 글자 `#3C4043`, radius 8px). 토큰 밖으로 보이던 값은 전부 그 4개가
+**안 덮는 영역**이라 Streamlit 내장 팔레트(노랑 `#ffff12`, 빨강 `#ff2b2b`)가 그대로 나온 것.
+즉 기준이 둘이었던 게 아니라 **챗봇 테마 적용이 절반만 돼 있던 것**이다.
+
+Context7로 Streamlit 1.58 문서를 확인하니 나머지를 덮는 공식 테마 키가 전부 있었다
+(`borderColor`, `yellowColor`/`yellowBackgroundColor`, `redColor`/`redBackgroundColor`,
+`greenColor`, `blueColor`, `baseRadius`, `buttonRadius`).
+
+#### 고친 것
+
+사용자 결정: **코드 먼저 → Figma** (Figma가 '실제 화면의 결과물'이라는 원칙 유지),
+**색·radius만 사이트 표준에 맞추고 모달 폭 500px은 유지**.
+
+- `.streamlit/config.toml` — `borderColor` + 4색 팔레트의 `*Color`/`*BackgroundColor`를 토큰으로.
+  `baseRadius`는 **일부러 안 건드렸다** — 버튼·입력창·알림박스는 이미 8px로 맞아서, 바꾸면
+  이미 맞는 것들이 같이 틀어진다. 어긋난 건 다이얼로그 하나뿐이라 그것만 CSS로 잡았다.
+- `app.py` CSS — 딤 `rgba(0,0,0,.45)` / radius 14 / 그림자 `0 12px 40px rgba(0,0,0,.2)` / 제목 17px.
+  **전부 사이트 `.modal-box`/`.modal-overlay`에 이미 있던 값**이라 새로 만든 값이 0개다.
+  선택자의 `>`(`div[role="dialog"] > div:first-child`)는 DOM을 직접 덤프해서 확인하고 썼고,
+  emotion 해시 클래스는 버전마다 바뀌므로 쓰지 않았다.
+
+#### 함정 — 테마 키만으로는 글자색이 안 맞는다
+
+`yellowColor="#B45309"`를 넣어도 Streamlit은 그 색을 글자에 **그대로 쓰지 않고** 대비를 더
+확보하려고 한 단계 어둡게 보정한다(실측: `#B45309`→`#6B3106`, `#DC2626`→`#9E1A1A`,
+`#0FA968`→`#09633D`, `#2563EB`→`#1043B1`). **배경은 `*BackgroundColor`로 정확히 나온다.**
+
+알림 종류를 구분할 안정적 선택자도 없다 — emotion 해시뿐이고 `role`은 warning과 error가
+똑같이 `"alert"`, success와 info가 똑같이 `"status"`다. CSS 변수도 없다(스타일시트를 전부
+훑어 확인). 그래서 `app.py`에 `_alert(kind, body, key)` 헬퍼를 두고 호출부를
+`st.container(key="mbalert_<kind>_<key>")`로 감싼 뒤 `[class*="st-key-mbalert_warning_"]`로
+스코프해 색을 고정했다 — `.st-key-`는 이 프로젝트가 이미 쓰는 패턴이고 버전에 안 깨진다.
+`st.warning`/`error`/`success`/`info` 직접 호출 13곳을 전부 `_alert()`로 교체.
+
+검증(실제 앱, `getComputedStyle`): 딤 `#000000@.45` / radius 14 / 그림자 `0 12px 40px` /
+제목 17px / 경고 `#FEF3E2`+`#B45309` / 체크박스 테두리 `#DDE3EA` / 버튼 218+16+218.
+**토큰 밖 값 0개.** `pytest` 21개 통과.
+
+#### Figma 반영 — 새 페이지 `Components / Transfer`(`719:6`)
+
+Chat Feedback 바로 뒤에 신설. 컴포넌트 4개(`Transfer Policy Notice` `721:15` 3종 /
+`Chat Alert` `722:14` 4종 / `Transfer Confirm Modal` `723:141` 6종 / `Transfer Completed
+Message` `724:10`). 색·간격·radius는 전부 기존 변수에 바인딩. 각 컴포넌트셋 아래 한국어
+캡션을 달았다(기존 32개 관례).
+
+backlog가 미리 지적해둔 대로 **"이체완료 모달"은 만들지 않았다** — 성공하면 모달이 닫히고
+챗 버블로 남기 때문. 모달 variant가 아니라 별도 컴포넌트로 넣었다.
+
+#### 이번에 걸린 Figma 함정 2개 (다음에 또 만날 것)
+
+1. **`resize()`가 `primaryAxisSizingMode`를 `FIXED`로 되돌린다** — 모달 6개 variant가 전부
+   460px로 고정돼 경고 박스가 프레임 밖으로 삐져나왔다. `resize()` **뒤에** `AUTO`를 다시
+   켜야 하고, 자식 프레임(header/body/pin) → 부모 순서로 켜야 한다.
+2. **TEXT 노드에 `resize(w, 20)`을 하면 `textAutoResize`가 풀려 높이가 20px에 박힌다** —
+   캡션이 한 줄로 잘려 모달 카드 위에 겹쳐 보였다. `textAutoResize="NONE"` → `resize` →
+   다시 `"HEIGHT"` 순서로 폭만 주고 높이는 자동으로 둬야 한다.
+3. (참고) `combineAsVariants` 직후 세트는 `layoutMode==="NONE"`이라 자식에
+   `layoutPositioning="ABSOLUTE"`를 걸면 에러다. 그냥 `x`/`y`를 직접 주면 된다.
+   그리고 **스크립트가 중간에 에러나면 그 호출의 변경이 통째로 롤백된다**(페이지가 비어 있었다).
+
+#### 그 외
+
+- 이 세션에서도 Playwright 스크린샷이 "fonts loaded" 후 멈추는 현상이 재발했다. 이번 원인은
+  페이지가 아니라 **브라우저 세션 자체**였다 — `browser_close` 후 다시 열었더니 바로 찍혔다.
+  (CDP `Page.captureScreenshot`도 같이 멈췄던 게 단서.)

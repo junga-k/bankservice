@@ -1,5 +1,28 @@
 [theme]
-primaryColor = "#0FA968"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F8FAFD"
-textColor = "#3C4043"
+# 매치뱅크 디자인 토큰(site/css/style.css :root, docs/tokens.md)을 챗봇에도 그대로 적용한다.
+# 예전에는 아래 4개만 설정돼 있었다. 그 4개가 덮는 것(버튼·입력창·글자)은 토큰과 정확히
+# 일치했지만, 안 덮는 영역은 Streamlit 내장 팔레트(노랑 #ffff12 / 빨강 #ff2b2b)가 그대로
+# 노출돼 st.warning / st.error 가 사이트의 --warning / --error 와 다른 색으로 나왔다.
+# "사이트와 Figma가 한 기준이어야 한다"는 요구에 따라 나머지 키도 토큰으로 채운다(2026-10-06).
+primaryColor = "#0FA968"             # --blue
+backgroundColor = "#FFFFFF"          # --bg
+secondaryBackgroundColor = "#F8FAFD" # --bg-soft
+textColor = "#3C4043"                # --text
+
+borderColor = "#DDE3EA"              # --border
+
+# 기본 색 팔레트 — st.warning / st.error / st.success / st.info 가 여기서 색을 가져간다.
+# *BackgroundColor 를 비워두면 Streamlit 이 색상값의 10% 투명도로 만들어내므로(실측에서
+# rgba(255,255,18,.1) 이 그렇게 나왔다), 토큰의 -soft 값을 명시해 추정을 막는다.
+yellowColor = "#B45309"              # --warning
+yellowBackgroundColor = "#FEF3E2"    # --warning-soft
+redColor = "#DC2626"                 # --error
+redBackgroundColor = "#FDECEC"       # --error-soft
+greenColor = "#0FA968"               # --success (= --blue)
+greenBackgroundColor = "#E3F6EC"     # --success-soft (= --blue-soft)
+blueColor = "#2563EB"                # --info
+blueBackgroundColor = "#EAF1FD"      # --info-soft
+
+# radius 는 건드리지 않는다 — 버튼·입력창·경고박스는 실측 결과 이미 8px(= --radius-sm)로
+# 토큰과 맞다. 토큰과 어긋난 건 다이얼로그(16px) 하나뿐이라 app.py 의 CSS 에서만 바로잡는다.
+# 여기서 baseRadius 를 바꾸면 이미 맞는 것들까지 같이 틀어진다.

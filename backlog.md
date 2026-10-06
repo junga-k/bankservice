@@ -2,67 +2,6 @@
 
 아직 처리 안 된 작업 체크리스트. 완료하면 체크하고, 상세 조사/시행착오 기록은 `session-log.md`에 남긴다(이 파일엔 "무엇을 해야 하는지"만 간결하게 유지).
 
-## ▶ 다음 작업 — Figma 디자인시스템에 정기점검 배너 + 이체 모달 상태 추가 (2026-10-05 요청)
-
-대상 파일: **매치뱅크 디자인시스템**
-`https://www.figma.com/design/KnJEcMeU05dCaVk3krDKKF/매치뱅크-디자인시스템?node-id=0-1`
-
-2026-10-05 작업으로 새로 생긴 화면들이 Figma에 없다. 아래 둘을 추가한다.
-
-### A. 정기점검 안내 배너 (2곳, 생김새가 다르다)
-
-| 위치 | 구현 | 값 |
-|---|---|---|
-| 사이트 이체 화면 상단 | `.tf-policy.warn` (`site/css/style.css`) | `background: --warning-soft(#FEF3E2)` / `border: 1px solid --warning(#B45309)` / `radius: --radius-sm(8px)` / `padding: --space-3 --space-4` / 제목 `--text-sm` 700 `--warning` + `⚠` prefix / 부제 `--text-xs` `--text-sub` |
-| AI은행원 확인 카드 | `st.warning(...)` (`app.py`) | Streamlit 기본 경고 박스 — **실측 필요** |
-
-기존 `.tf-policy`에는 이미 중립 / `.free`(초록, 수수료 면제) 변형이 있으니, Figma에도
-**같은 컴포넌트의 variant 3종(기본 / free / warn)**으로 넣는 게 맞다.
-문구: `정기점검 중 (23:50~00:10)` + `지금은 즉시 이체가 제한됩니다. 점검이 끝나는 시각으로 예약하실 수 있습니다.`
-
-### B. AI은행원 이체 확인 모달 — 상태 variants
-
-⚠️ **먼저 바로잡을 것**: 요청에 "이체완료 모달"이 있었는데 **그런 모달은 없다.**
-성공하면 모달이 **닫히고** 챗 버블에 `✅ **이체 완료** — OOO님에게 N원을 보냈어요.` 와
-`📄 이체내역 조회하기` 버튼이 남는다(`app.py` `_completed_text()` / `_show_txn_link`).
-그러니 완료는 **모달 variant가 아니라 챗 버블 컴포넌트**로 넣어야 한다.
-
-모달(`@st.dialog("이체 확인")`)의 실제 상태는 아래 6가지다. 스크린샷이 있는 것/없는 것을 구분해 둔다.
-
-| # | 상태 | 문구 | 스크린샷 |
-|---|---|---|---|
-| 1 | 기본(입력 전) | 체크 해제 · PIN placeholder `이체 비밀번호 6자리를 입력하세요` + `0/6` 카운터 | 있음 |
-| 2 | 경고 — 체크 미완 | `예금주명과 금액을 확인한 뒤 체크해 주세요.` (노랑) | 있음 |
-| 3 | 경고 — PIN 미입력 | `이체 비밀번호를 입력해 주세요.` | 없음(같은 노랑 박스) |
-| 4 | 경고 — 예약시각 과거 | `예약 시각을 현재보다 미래로 설정해 주세요.` | 없음(같은 노랑 박스) |
-| 5 | 오류 — 실패 | `이체 실패: … (N회 남음)` 1줄 / 5회 소진 시 3줄 (빨강) | 있음(둘 다) |
-| 6 | **처리 중** | `st.spinner("이체를 처리하고 있어요…")` — 모달 유지 | **있음** → `docs/screenshots/ai-banker-transfer-processing.png` |
-
-6번 캡처 방법(다시 찍어야 할 때): 평소엔 요청이 1초 안에 끝나 스피너를 못 잡는다.
-`backend/app.py` 의 `transfer()` 맨 위에 `time.sleep(8)` 을 임시로 넣고, 챗봇을
-`BACKEND_TIMEOUT=30` 으로 띄운 뒤(기본 로컬값 3초·`agent._timeout()` 5초보다 길게),
-`이체하기` 클릭 직전에 애니메이션을 끄고(`*{animation:none!important}` — 스피너가 돌면
-스크린샷이 안정화되지 않는다) 바로 캡처한다. **찍고 나면 `git checkout -- backend/app.py`
-로 반드시 되돌릴 것**(이번엔 되돌림 확인까지 했다).
-스피너는 모달 안, 버튼 **아래**에 연한 초록 알약으로 뜬다 — 버튼은 그대로 보인다.
-
-추가로 모달 안에 조건부로 뜨는 것 둘:
-- 신규 수취계좌 경고 `⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.`
-- 데모 PIN 힌트 `데모 이체 비밀번호: ******` — **공개 데모 계정일 때만**(2026-10-05 수정)
-- 정기점검 중 실패는 빨강이 아니라 **경고 톤** `🛠️ 지금은 정기점검 시간입니다…` + 캡션
-
-### 작업 시 주의
-
-- **챗봇 모달은 Streamlit 기본 스타일이라 CSS 소스에 값이 없다.** `app.py`를 뒤져도 안 나오니
-  브라우저 `getComputedStyle`로 실측해야 한다(이 프로젝트의 기존 방식 — `docs/tokens.md`가
-  그렇게 만들어졌다). 이미 잰 값: 버튼 **218px + gap 16px + 218px**, 확인 카드 쪽은 204+16+204.
-- `docs/tokens.md`에 있는 값만 쓴다. 없는 값이 필요하면 **만들지 말고 먼저 물어본다**(CLAUDE.md).
-- 새로 만드는 화면·컴포넌트 아래에 **설명 캡션**을 단다(기존 32개에 전부 달려 있는 관례).
-- `session-log.md`의 **`detachInstance() 사용 이력`** 섹션을 확인할 것 — detach된 노드는
-  마스터를 고쳐도 반영이 안 된다.
-- Figma MCP는 **먼저 인증이 필요할 수 있다**(`authenticate` → `complete_authentication`).
-- 반영 후 `get_screenshot`으로 실제 화면과 나란히 대조한다.
-
 ## ▶ 다음 작업 — 정기점검 화면을 라이브에서 눈으로 확인 (2026-10-05에서 이월)
 
 정기점검(23:50~00:10 KST) 기능은 **코드·배포·로직 검증까지 끝났다.** 남은 건 **실제 그 시간대에
@@ -87,6 +26,42 @@
 
 **다시 확인할 필요 없는 것**(이미 라이브에서 봤다): 영수증 복구, PIN 오류 안내·남은 횟수,
 금액 한글 병기, 챗봇 실패 모달 유지, 데모 PIN 힌트 계정 구분, 버튼 폭·간격, 크론 수동 실행.
+
+4. **(2026-10-06 추가) 챗봇 알림 색** — 같은 방문에 AI은행원에서 아무 경고나 띄워 보고
+   (예: 체크 안 하고 '이체하기') 노란 박스 글자가 `--warning`(#B45309)으로 보이는지 확인.
+   로컬에서는 실측까지 끝냈지만 Streamlit Community Cloud 배포본에서는 못 봤다.
+
+## Figma 디자인시스템에 정기점검 배너 + 이체 모달 상태 추가 (2026-10-06, 완료)
+
+대상 파일: **매치뱅크 디자인시스템** `https://www.figma.com/design/KnJEcMeU05dCaVk3krDKKF`
+새 페이지 **`Components / Transfer`**(`719:6`) 신설 — Chat Feedback 바로 뒤.
+
+| 컴포넌트 | 노드 | variants |
+|---|---|---|
+| Transfer Policy Notice | `721:15` | Default / Free / Maintenance (사이트 `.tf-policy`) |
+| Chat Alert | `722:14` | Warning / Error / Success / Info (챗봇 알림 박스) |
+| Transfer Confirm Modal | `723:141` | Default / NeedCheck / NeedPin / PastSchedule / Failed / Processing |
+| Transfer Completed Message | `724:10` | (단일 — 모달 아님, 챗 버블) |
+
+색·간격·radius는 전부 기존 변수에 바인딩했다(`color/*`, `spacing/*`, `radius/*`). **토큰 밖 값 0개.**
+
+### 이 작업에서 먼저 고친 것 — 챗봇 테마가 절반만 적용돼 있었다
+
+실측하다 챗봇 알림 박스가 사이트와 다른 색인 걸 발견했다. 원인은 디자인 기준이 둘이어서가
+아니라 `.streamlit/config.toml` 의 `[theme]` 에 키가 4개뿐이었기 때문. 사용자가 "사이트와
+Figma가 동일한 기준이어야 한다"고 해서 **Figma보다 코드를 먼저 맞췄다**(그래야 Figma가
+'실제 화면의 결과물'이라는 이 프로젝트 원칙이 유지된다).
+
+- `.streamlit/config.toml` — `borderColor` + `yellow/red/green/blue` 의 `*Color`/`*BackgroundColor` 를 토큰으로 채움
+- `app.py` — 다이얼로그 딤/radius/그림자/제목을 사이트 `.modal-box` 표준에 맞추는 CSS + `_alert()` 헬퍼 신설
+- `docs/tokens.md` 9절 — 대응표와 "글자색은 테마 키만으로는 안 맞는다" 경위 기록
+- 폭 500px 은 유지(사이트 확인창 380px → 내용이 터짐. 사이트에도 `.modal-box.wide` 720px 예외가 있다)
+
+검증: 실제 앱에서 `getComputedStyle` 로 딤 `#000000@.45` / radius 14 / 그림자 `0 12px 40px` /
+제목 17px / 경고 `#FEF3E2`+`#B45309` / 체크박스 테두리 `#DDE3EA` 전부 확인. `pytest` 21개 통과.
+
+**남은 것**: 이 변경은 Streamlit Community Cloud 의 라이브 챗봇에도 반영된다 — 배포 후
+라이브에서 알림 색이 의도대로 나오는지 한 번 눈으로 볼 것.
 
 ## 정기점검 + 이체 실패 화면 — 배포 완료 (2026-10-05)
 

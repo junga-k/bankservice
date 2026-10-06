@@ -190,8 +190,14 @@ Kafka·Elasticsearch·Phoenix 3개를 매번 따로 띄우는 대신 `./start_in
 - **사각 버튼/입력창**: `border-radius: 12px`
 - **아이콘+텍스트 정렬**: 아이콘-텍스트 간격 `gap: 8px` 기준, 좌측 padding 14px
 
+**챗봇 테마는 `.streamlit/config.toml`이 먼저다 (2026-10-06)**
+- 챗봇 색이 사이트와 다르면 CSS로 덮기 전에 **`[theme]` 키가 비어 있는지부터 본다.** 예전에 키가 4개뿐이라(`primaryColor`/`backgroundColor`/`secondaryBackgroundColor`/`textColor`) 그 4개가 덮는 것만 토큰과 맞고 나머지(경고 노랑·오류 빨강·테두리)는 Streamlit 내장 팔레트가 그대로 나왔다. 지금은 `borderColor`와 `*Color`/`*BackgroundColor` 팔레트까지 토큰으로 채워져 있다. 자세한 대응표는 `docs/tokens.md` 9절.
+- ⚠️ **`st.warning`/`st.error`/`st.success`/`st.info`를 직접 부르지 말고 `app.py`의 `_alert(kind, body, key)`를 쓸 것.** 배경은 테마 키로 토큰값이 그대로 나오지만 **글자색은 Streamlit이 대비를 더 확보하려고 임의로 어둡게 보정**해버린다(`#B45309`→`#6B3106`). 알림 종류를 구분할 안정적 선택자가 없어서(emotion 해시뿐이고 `role`은 warning/error가 똑같이 `"alert"`) 호출부를 `st.container(key="mbalert_<kind>_<key>")`로 감싸 색을 고정한다. 직접 부르면 그 박스만 색이 틀어진다.
+- `baseRadius`는 건드리지 않는다 — 버튼·입력창·알림박스는 이미 8px(`--radius-sm`)로 맞다. 어긋난 건 다이얼로그(16px)뿐이라 그것만 CSS로 14px(`--radius`)로 돌린다.
+
 **Streamlit(`app.py`) 전용 CSS 작성 시 항상 주의할 점**
 - Streamlit `key=`로 생성되는 `.st-key-<key>` 클래스는 버튼의 바로 위 부모가 아니라 그 바깥 `stElementContainer`에 붙는다. CSS 선택자에 직계 자식 결합자(`>`)를 쓰면 조용히 안 먹으니 항상 후손 결합자(space)를 쓸 것 — 이 세션에서만 3번 재발한 버그.
+- 반대로 **다이얼로그 내부 구조에는 `>`가 필요하다**(`div[role="dialog"] > div:first-child` = 제목 영역). DOM을 직접 확인하고 쓴 것이며, emotion 해시 클래스(`st-emotion-cache-*`)는 버전마다 바뀌므로 선택자에 쓰지 않는다.
 - Python/CSS를 고쳐도 이미 열린 세션에 반영이 안 될 때가 잦다. 브라우저 새로고침보다 `streamlit run` 프로세스 자체를 재시작하는 편이 확실하다.
 
 

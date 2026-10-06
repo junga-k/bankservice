@@ -713,7 +713,53 @@ body.chat-submitting [data-testid="stBottom"]{ transform: none !important; }
    기본 컬럼 간격이 그대로 나왔고, 모달보다 두 버튼이 멀어 보였다(2026-10-05 지적).
    위 규칙과 같은 방식 — 공용 컨테이너에 구조 속성을 걸지 않고 gap 만, 해당 버튼 키로 스코프. */
 [data-testid="stHorizontalBlock"]:has(.st-key-tf_open_modal){ gap: 16px !important; }
+
+/* ── 다이얼로그(st.dialog) 외형을 사이트 모달 표준에 맞춘다 ──────────
+   사이트에는 이미 모달 표준이 있다(site/css/style.css 의 .modal-overlay/.modal-box):
+   딤 rgba(0,0,0,.45) / radius --radius(14) / shadow 0 12px 40px rgba(0,0,0,.2) /
+   제목 17px. 챗봇 쪽은 Streamlit 기본값(딤 rgba(136,176,215,.25), radius 16,
+   그림자 없음, 제목 24px)이 그대로 나와 같은 서비스인데 팝업 모양이 달랐다.
+   색/radius 만 맞추고 폭(500px)은 건드리지 않는다 — 이체 모달은 계좌·예금주·수수료·
+   체크·PIN 까지 들어가서 사이트 확인창 폭(380px)에 넣으면 줄바꿈으로 터진다
+   (사이트에도 내용 많은 모달용 .modal-box.wide 720px 예외가 이미 있다).
+   선택자의 `>` 는 DOM 을 직접 확인하고 쓴 것이다(shell > 첫 자식 = 제목 영역).
+   emotion 해시 클래스(st-emotion-cache-*)는 버전마다 바뀌므로 쓰지 않는다. */
+[data-testid="stDialog"]{ background: rgba(0, 0, 0, 0.45) !important; }
+[data-testid="stDialog"] div[role="dialog"]{
+    border-radius: 14px !important;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2) !important;
+}
+[data-testid="stDialog"] div[role="dialog"] > div:first-child
+  [data-testid="stMarkdownContainer"] p{
+    font-size: 17px !important;
+    line-height: 1.5 !important;
+}
+
+/* ── 알림 박스(st.warning/error/success/info) 글자색 ────────────────
+   배경은 .streamlit/config.toml 의 *BackgroundColor 로 토큰값이 그대로 나온다(실측 확인).
+   그런데 글자색은 Streamlit 이 theme 의 색을 그대로 쓰지 않고 대비를 더 확보하려고
+   한 단계 어둡게 보정해버린다 — --warning #B45309 → #6B3106, --error #DC2626 → #9E1A1A
+   (실측). 그래서 같은 문구가 사이트보다 챗봇에서 더 탁하게 보였다.
+   알림 종류를 구분할 안정적인 선택자가 없어서(emotion 해시 클래스뿐이고 role 은
+   warning 과 error 가 똑같이 "alert" 다) 호출부를 컨테이너 key 로 감싸 스코프한다(_alert).
+   success 글자색만 --success 가 아니라 --blue-dark 인데, 사이트도 연한 초록 배경 위에서는
+   그렇게 쓴다(.tf-policy.free .tf-policy-main). */
+[class*="st-key-mbalert_warning_"] [data-testid="stAlertContainer"]{ color: #B45309 !important; }
+[class*="st-key-mbalert_error_"]   [data-testid="stAlertContainer"]{ color: #DC2626 !important; }
+[class*="st-key-mbalert_success_"] [data-testid="stAlertContainer"]{ color: #0B8457 !important; }
+[class*="st-key-mbalert_info_"]    [data-testid="stAlertContainer"]{ color: #2563EB !important; }
 </style>""", unsafe_allow_html=True)
+
+
+def _alert(kind: str, body: str, key: str) -> None:
+    """알림 박스를 매치뱅크 토큰 색으로 띄운다 — st.warning/error/success/info 대체.
+
+    Streamlit 이 글자색을 임의로 어둡게 보정하는 것을 막으려고 호출부를 컨테이너로 감싸
+    CSS 로 색을 고정한다(위 스타일 블록 참고). `key` 는 CSS 훅일 뿐이지만 rerun 마다
+    같아야 Streamlit 이 엘리먼트를 다시 만들지 않으므로 호출부가 고정 문자열로 넘긴다.
+    """
+    with st.container(key=f"mbalert_{kind}_{key}"):
+        getattr(st, kind)(body)
 
 def _thinking_indicator_html(label: str = "답변을 준비하고 있어요…") -> str:
     """AI 응답 대기 중 채팅창에 표시할 커스텀 아이콘 HTML.
@@ -861,11 +907,13 @@ def _demo_quota_consume() -> None:
 # (완전한 차단은 아니다: URL에 빈 token= 만 붙이면 _SITE_EMBEDDED 가 참이 돼 통과한다.
 #  남용 억제는 어디까지나 위의 턴 상한이 담당한다.)
 if _DEMO_PUBLIC and not _SITE_EMBEDDED:
-    st.info(
+    _alert(
+        "info",
         "**AI 은행원은 매치뱅크 사이트 안에서 이용할 수 있습니다.**\n\n"
         f"[매치뱅크 바로가기]({_SITE_URL}/#chat) → 상단 **AI은행원** 탭 "
         "(상담·상품안내는 로그인 없이 바로 이용하실 수 있습니다)\n\n"
-        f"직접 실행해보시려면 [GitHub README]({_REPO_URL})의 로컬 실행 안내를 참고하세요."
+        f"직접 실행해보시려면 [GitHub README]({_REPO_URL})의 로컬 실행 안내를 참고하세요.",
+        "demo_public_gate",
     )
     st.stop()
 
@@ -1078,10 +1126,12 @@ agent_enabled = provider == "OpenAI" and bool(openai_key)
 api_key = get_api_key(provider)
 if not api_key:
     key_name = llm.secret_key_for(provider)
-    st.error(
+    _alert(
+        "error",
         f"**{provider} API 키가 설정되지 않았습니다.**\n\n"
         f"⚙️ 설정 페이지에서 입력하거나 `.streamlit/secrets.toml` 에 추가하세요:\n\n"
-        f"```toml\n{key_name} = \"여기에-키-입력\"\n```"
+        f"```toml\n{key_name} = \"여기에-키-입력\"\n```",
+        "no_api_key",
     )
     st.stop()
 
@@ -1424,7 +1474,7 @@ def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, a
         f"- 수수료: {_fee_text(pending['fee'])}"
     )
     if pending.get("is_new_payee"):
-        st.warning("⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.")
+        _alert("warning", "⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.", "new_payee_modal")
 
     _ok = st.checkbox("받는 분(예금주명)과 금액을 확인했습니다", key="tf_confirm_chk")
     _pw = st.text_input("이체 비밀번호 (숫자 6자리)", type="password", key="tf_pw",
@@ -1450,13 +1500,13 @@ def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, a
 
     if _do_exec:
         if not _ok:
-            st.warning("예금주명과 금액을 확인한 뒤 체크해 주세요.")
+            _alert("warning", "예금주명과 금액을 확인한 뒤 체크해 주세요.", "need_check")
             return
         if not _pw:
-            st.warning("이체 비밀번호를 입력해 주세요.")
+            _alert("warning", "이체 비밀번호를 입력해 주세요.", "need_pin")
             return
         if sched_at and sched_at <= time.time() + 30:
-            st.warning("예약 시각을 현재보다 미래로 설정해 주세요.")
+            _alert("warning", "예약 시각을 현재보다 미래로 설정해 주세요.", "past_sched_modal")
             return
 
         _exec = dict(pending, from_account=from_account)
@@ -1471,10 +1521,10 @@ def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, a
             # (백엔드가 내려주는 문구로 판별한다 — execute_transfer 가 상태코드를 돌려주지
             #  않아서다. 문구는 backend/app.py 의 MAINTENANCE_DETAIL 상수 하나뿐이다.)
             if "정기점검" in _err:
-                st.warning(f"🛠️ {_err}")
+                _alert("warning", f"🛠️ {_err}", "maintenance_modal")
                 st.caption("위 '이체 시점'에서 예약 이체를 선택하시면 점검이 끝난 뒤 실행됩니다.")
             else:
-                st.error(f"이체 실패: {_err}")   # 모달 유지 → 수정 후 재시도
+                _alert("error", f"이체 실패: {_err}", "exec_failed")   # 모달 유지 → 수정 후 재시도
             return
 
         conv["messages"].append({"role": "assistant", "content": _final_text})
@@ -1559,7 +1609,7 @@ if _pending:
             f"- 수수료: {_fee_text(_pending['fee'])}"
         )
         if _pending.get("is_new_payee"):
-            st.warning("⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.")
+            _alert("warning", "⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.", "new_payee_card")
         st.caption("AI가 이체를 위해 정리한 정보입니다. 정확한지 확인 후 진행해 주세요.")
 
         # 정기점검(23:50~00:10) 중에는 즉시 이체가 막힌다 — 실제 은행과 같다.
@@ -1571,9 +1621,11 @@ if _pending:
         st.session_state["_demo_pin"] = _limits.get("demo_pin") or ""
         _when_opts = ["즉시 이체", "지연 이체 (취소 가능)", "예약 이체 (지정 시각)"]
         if _maint_on:
-            st.warning(
+            _alert(
+                "warning",
                 f"🛠️ 정기점검 중입니다 ({_maint.get('start','23:50')}~{_maint.get('end','00:10')}). "
-                f"지금은 즉시 이체가 제한되어, 점검이 끝나는 시각으로 예약해 드립니다."
+                f"지금은 즉시 이체가 제한되어, 점검이 끝나는 시각으로 예약해 드립니다.",
+                "maintenance_card",
             )
             _when_opts = ["예약 이체 (지정 시각)"]   # 즉시·지연은 점검 중 실행될 수 없다
         # 선택지가 줄었는데 이전 선택("즉시 이체")이 세션에 남아 있으면 st.radio 가 에러를 낸다
@@ -1604,7 +1656,7 @@ if _pending:
             _sched_dt = _dt.datetime.combine(_pd_date, _pd_time)
             _sched_at = _sched_dt.timestamp()
             if _sched_at <= _now.timestamp() + 30:
-                st.warning("예약 시각은 현재보다 미래여야 합니다.")
+                _alert("warning", "예약 시각은 현재보다 미래여야 합니다.", "past_sched_card")
             else:
                 st.caption(f"🗓️ {_sched_dt.strftime('%Y-%m-%d %H:%M')}에 실행 예약됩니다.")
 
@@ -1799,7 +1851,7 @@ uploaded_files = _chat_input.files if _chat_input else []
 if prompt:
     _quota_ok, _quota_msg = _demo_quota_check()
     if not _quota_ok:
-        st.warning(_quota_msg)
+        _alert("warning", _quota_msg, "quota")
         st.stop()
     _demo_quota_consume()
     st.session_state.pop("_show_txn_link", None)  # 새 메시지 입력 시 이체내역 링크 정리
@@ -1914,7 +1966,7 @@ if prompt:
         except Exception as e:
             _thinking_ph.empty()
             response = None
-            st.error(f"응답 생성 중 오류가 발생했습니다:\n{e}")
+            _alert("error", f"응답 생성 중 오류가 발생했습니다:\n{e}", "stream_failed")
 
     if response:
         conv["messages"].append({"role": "assistant", "content": response})

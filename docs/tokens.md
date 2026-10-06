@@ -203,3 +203,60 @@ Figma 파일엔 아래 Semantic 값들 밑에 `Primitives` 컬렉션(`green/100~
 | `.btn-ghost` 텍스트 색상 | **불일치 발견(각주가 틀렸음) → 문서 수정** | 62개 인스턴스 전수 조사 결과 예외 없이 `--blue`(`#0FA968`). 과거 각주의 "컨텍스트별로 다르다"는 관측은 재현되지 않음 — 위 1-3절 각주 갱신함 |
 
 교훈: 표 형태로 한 번 기록된 값도 코드가 나중에 바뀌면 조용히 stale해질 수 있다 — 특히 "코드 수정 완료" 이벤트(7절)가 있었다면, 그 수정이 참조하는 실측 표(1-2절 등)도 같이 갱신해야 했는데 이번에 그 갭이 있었음을 확인.
+
+---
+
+## 9. 챗봇(Streamlit) 테마 매핑 — "왜 챗봇만 색이 달랐나" (2026-10-06)
+
+Figma 디자인시스템에 AI은행원 이체 모달을 추가하려고 실측하다가, **챗봇 쪽 알림 박스가
+사이트와 다른 색으로 나오는 것**을 발견했다. 원인은 디자인 기준이 둘이어서가 아니라
+`.streamlit/config.toml` 의 `[theme]` 에 키가 **4개만** 설정돼 있었기 때문이다.
+
+그 4개(`primaryColor`/`backgroundColor`/`secondaryBackgroundColor`/`textColor`)가 덮는
+영역은 실측 결과 **전부 토큰과 정확히 일치**했다(버튼 `#0FA968`, 입력창 배경 `#F8FAFD`,
+글자 `#3C4043`, radius 8px). 토큰 밖으로 보이던 값은 전부 **그 4개가 안 덮는 영역**이라
+Streamlit 내장 팔레트(노랑 `#ffff12`, 빨강 `#ff2b2b`)와 기본 다이얼로그 스타일이 그대로
+노출된 것이었다. Streamlit 1.58 에는 나머지를 덮는 테마 키가 전부 있어서 채워 넣었다.
+
+| 대상 | 수단 | 값 |
+|---|---|---|
+| 테두리 | `borderColor` | `--border #DDE3EA` |
+| 경고 배경 | `yellowBackgroundColor` | `--warning-soft #FEF3E2` |
+| 오류 배경 | `redBackgroundColor` | `--error-soft #FDECEC` |
+| 성공 배경 | `greenBackgroundColor` | `--success-soft #E3F6EC` |
+| 정보 배경 | `blueBackgroundColor` | `--info-soft #EAF1FD` |
+| 다이얼로그 딤 | `app.py` CSS | `rgba(0,0,0,.45)` (사이트 `.modal-overlay` 와 동일) |
+| 다이얼로그 radius | `app.py` CSS | `--radius 14px` (사이트 `.modal-box` 와 동일) |
+| 다이얼로그 그림자 | `app.py` CSS | `0 12px 40px rgba(0,0,0,.2)` (사이트 `.modal-box` 와 동일) |
+| 다이얼로그 제목 | `app.py` CSS | `17px` (사이트 `.modal-box h3` 와 동일) |
+
+**`baseRadius` 는 일부러 건드리지 않았다** — 버튼·입력창·알림박스는 이미 8px(`--radius-sm`)로
+토큰과 맞다. 토큰과 어긋난 건 다이얼로그(16px) 하나뿐이라 그것만 CSS 로 바로잡는 편이
+이미 맞는 것들을 틀지 않는다.
+
+**다이얼로그 폭 500px 은 유지한다**(사이트 확인창은 380px). 이체 모달은 계좌·예금주·수수료·
+체크·PIN 까지 들어가 380px 에서는 줄바꿈으로 터진다 — 사이트에도 내용 많은 모달용
+`.modal-box.wide`(720px) 예외가 이미 있어서, "폭은 내용에 따라 두 단계" 가 기존 규칙이다.
+
+### ⚠️ 알림 글자색은 테마 키만으로는 안 맞는다
+
+`yellowColor` 등에 토큰값을 넣어도 Streamlit 은 그 색을 글자에 **그대로 쓰지 않고** 대비를
+더 확보하려고 한 단계 어둡게 보정한다(실측):
+
+| 토큰 | 넣은 값 | Streamlit 이 글자에 쓴 값 |
+|---|---|---|
+| `--warning` | `#B45309` | `#6B3106` |
+| `--error` | `#DC2626` | `#9E1A1A` |
+| `--success` | `#0FA968` | `#09633D` |
+| `--info` | `#2563EB` | `#1043B1` |
+
+배경은 `*BackgroundColor` 로 지정하면 정확히 나오지만 글자색은 이 보정을 피할 수 없다.
+알림 종류를 구분할 안정적인 선택자도 없다 — emotion 해시 클래스(`st-emotion-cache-*`)뿐이고
+`role` 은 warning 과 error 가 똑같이 `"alert"` 다. 그래서 `app.py` 에 `_alert(kind, body, key)`
+헬퍼를 두고 호출부를 `st.container(key="mbalert_<kind>_<key>")` 로 감싼 뒤
+`[class*="st-key-mbalert_warning_"]` 식으로 스코프해 색을 고정했다(`.st-key-` 는 이 프로젝트가
+이미 쓰는 패턴이고 버전이 바뀌어도 안 깨진다). **챗봇에서 `st.warning`/`st.error`/`st.success`/
+`st.info` 를 직접 부르지 말고 `_alert()` 를 쓸 것** — 직접 부르면 그 박스만 색이 틀어진다.
+
+성공 글자색만 `--success`(`#0FA968`) 가 아니라 `--blue-dark`(`#0B8457`) 인데, 사이트도 연한
+초록 배경 위에서는 그렇게 쓴다(`.tf-policy.free .tf-policy-main`).
