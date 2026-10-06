@@ -10,8 +10,15 @@ import json as _json
 import time
 import re as _re
 import base64 as _base64
+import datetime as _dtmod
 import streamlit as st
 import streamlit.components.v1 as _components
+
+# 사용자 기준 시각은 전부 KST 로 센다. 배포 컨테이너(Streamlit Community Cloud)는 UTC 로
+# 돌기 때문에, datetime.now()/fromtimestamp()/combine().timestamp() 를 그냥 쓰면 9시간이
+# 어긋난다 — 실제로 "10/7 00:00 예약"이 09:00 으로 저장된 버그가 있었다(2026-10-06 발견).
+# backend/app.py 와 같은 이유로 ZoneInfo 가 아니라 고정 오프셋을 쓴다(tzdata 의존 회피).
+KST = _dtmod.timezone(_dtmod.timedelta(hours=9))
 
 # ── 은행 홈페이지 URL 매핑 ────────────────────────────────────────────
 _BANK_URLS: dict[str, str] = {
@@ -1428,14 +1435,14 @@ def _transfer_result_text(res: dict, pending: dict, from_account: str,
 
     if status == "scheduled":
         import datetime as _dt2
-        when_txt = _dt2.datetime.fromtimestamp(res["scheduled_at"]).strftime("%Y-%m-%d %H:%M")
+        when_txt = _dt2.datetime.fromtimestamp(res["scheduled_at"], KST).strftime("%Y-%m-%d %H:%M")
         return (f"🗓️ **예약 완료** — {pending['holder_name']}님에게 {amt:,}원을 "
                 f"{when_txt}에 이체하도록 예약했어요. (거래번호 {res['transfer_id']}) "
                 f"실행 전까지 취소할 수 있어요."), None
 
     if status == "delayed":
         import datetime as _dt2
-        when_txt = _dt2.datetime.fromtimestamp(res["scheduled_at"]).strftime("%H:%M")
+        when_txt = _dt2.datetime.fromtimestamp(res["scheduled_at"], KST).strftime("%H:%M")
         return (f"⏳ **지연 이체 접수** — {pending['holder_name']}님에게 {amt:,}원을 "
                 f"{when_txt}에 이체합니다. (거래번호 {res['transfer_id']}) "
                 f"그 전까지 내 계좌·관리자 화면에서 취소할 수 있어요."), None
@@ -1643,20 +1650,31 @@ if _pending:
             st.caption(f"⏳ {_dsel} 실행됩니다. 실행 전까지 내 계좌·관리자 화면에서 취소할 수 있어요.")
         elif _when == "예약 이체 (지정 시각)":
             import datetime as _dt
-            _now = _dt.datetime.now()
+            # 전부 KST 기준으로 다룬다. 예전에는 naive datetime 이라 배포 컨테이너(UTC)에서
+            # 날짜/시각 위젯이 UTC 를 보여주고, 고른 값도 UTC 로 해석돼 9시간 뒤로 저장됐다.
+            _now = _dt.datetime.now(KST)
             # 점검 중이면 기본값을 "점검이 끝나는 시각"으로 — 그때 바로 실행된다.
-            # resume_at 은 서버가 KST 로 계산해 내려준 epoch 이라 이 컨테이너 시계와 무관하다.
-            _default_dt = (_dt.datetime.fromtimestamp(_maint["resume_at"])
+            _default_dt = (_dt.datetime.fromtimestamp(_maint["resume_at"], KST)
                            if _maint_on and _maint.get("resume_at")
                            else _now + _dt.timedelta(hours=1))
             _cd, _ct = st.columns(2)
             _pd_date = _cd.date_input("예약 날짜", value=_default_dt.date(),
                                       min_value=_now.date(), key="tf_sched_d")
             _pd_time = _ct.time_input("예약 시각", value=_default_dt.time(), key="tf_sched_t")
-            _sched_dt = _dt.datetime.combine(_pd_date, _pd_time)
+            _sched_dt = _dt.datetime.combine(_pd_date, _pd_time, tzinfo=KST)
             _sched_at = _sched_dt.timestamp()
+            # 고른 시각이 점검 창(23:50~00:10) 안이면 서버가 400 으로 거절한다. 모달까지
+            # 가서야 알게 두지 말고 여기서 먼저 알려준다 — 2026-10-06 라이브 확인에서
+            # "00:00 예약이 그대로 되는 것처럼 보였다"는 지적이 나온 자리다.
+            _ms, _me = _maint.get("start", "23:50"), _maint.get("end", "00:10")
+            _hm = _sched_dt.strftime("%H:%M")
+            _in_maint = (_hm >= _ms or _hm < _me) if _ms > _me else (_ms <= _hm < _me)
             if _sched_at <= _now.timestamp() + 30:
                 _alert("warning", "예약 시각은 현재보다 미래여야 합니다.", "past_sched_card")
+            elif _in_maint:
+                _alert("warning",
+                       f"{_hm}는 정기점검 시간({_ms}~{_me})이라 그때 실행할 수 없어요. "
+                       f"점검이 끝나는 {_me} 이후로 정해 주세요.", "sched_in_maint_card")
             else:
                 st.caption(f"🗓️ {_sched_dt.strftime('%Y-%m-%d %H:%M')}에 실행 예약됩니다.")
 

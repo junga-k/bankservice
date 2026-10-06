@@ -78,11 +78,21 @@ Kafka·Elasticsearch·Phoenix 3개를 매번 따로 띄우는 대신 `./start_in
 
 ### 시간 기준 — KST 는 고정 오프셋으로 (2026-10-05)
 
-배포 서버는 UTC 로 돈다. **사용자 기준이어야 하는 시각은 전부 KST 로 센다** — 일일 이체한도의 "오늘"(`kst_today_start`)과 정기점검 창(`maintenance_state`). 둘 다 `backend/app.py`에 있다.
+배포 서버는 UTC 로 돈다(Vercel·Streamlit Community Cloud 둘 다). **사용자 기준이어야 하는 시각은 전부 KST 로 센다.**
+
+⚠️ **이 규칙이 적용되는 파일은 `backend/app.py` 하나가 아니다.** 2026-10-05 에 백엔드만 고치고 챗봇을 빠뜨려서, 사용자가 고른 "10/7 00:00" 예약이 UTC 로 해석돼 **09:00 으로 저장되는 버그**가 났다(2026-10-07 라이브에서 발견). 지금 KST 를 명시해야 하는 곳:
+
+| 파일 | 대상 |
+|---|---|
+| `backend/app.py` | `KST` 상수, 일일한도의 "오늘"(`kst_today_start`), 점검 창(`maintenance_state`), 예약 거절 문구의 재개 시각 |
+| `app.py` (챗봇) | `KST` 상수, 예약 날짜·시각 위젯(`now()`/`fromtimestamp()`/`combine()`), 예약·지연 완료 문구의 `strftime` |
+| `.github/workflows/*.yml` | cron 은 UTC 라 주석으로 환산을 명시(`UTC 15:10 = KST 00:10`) |
+
+**naive `datetime` 을 쓰지 말 것** — `datetime.now()`, `datetime.fromtimestamp(ts)`, `datetime.combine(d, t).timestamp()` 는 전부 컨테이너 로컬시각(배포=UTC) 기준이다. 반드시 `tz`/`tzinfo` 를 넘긴다.
 
 - `ZoneInfo("Asia/Seoul")` 을 쓰지 않는다. 한국은 서머타임이 없어 `timezone(timedelta(hours=9))` 가 항상 정확하고, `zoneinfo` 는 OS tzdata 에 의존하는데 `requirements.txt` 에 `tzdata` 가 없어 배포 이미지에 따라 `ZoneInfoNotFoundError` 가 날 수 있다. 저장소 기존 관례도 같다 — `reset-demo-data.yml` 이 `UTC 18:00 = KST 03:00` 으로 직접 환산해 쓴다.
 - **시간을 보는 함수는 `now` 를 인자로 받게 만든다.** 23:50 을 기다리지 않고 경계를 주입해 검증할 수 있어야 한다(`tests/test_maintenance.py`). 점검 창은 자정을 넘어서(23:50~00:10) 경계가 특히 틀리기 쉽다 — 같은 날 안에서 끝나는 창도 함께 다뤄야 한다(점검 시각을 옮겨 확인할 때 그 경우가 된다).
-- **점검시간은 즉시 이체만 막고 예약·지연은 받는다.** 폴러도 점검 중엔 쉬므로 점검창에 걸린 예약건은 00:10 직후 실행된다. 예약 실행 보장은 `.github/workflows/run-due-transfers.yml`(KST 00:10)이 서버를 깨워 `POST /api/maintenance/run-due-transfers` 를 치는 것으로 한다 — 폴러는 서버 프로세스 안의 스레드라 서버리스에서 그 시각에 살아 있다는 보장이 없다.
+- **점검시간은 즉시 이체를 막고, 예약·지연은 "실행 시각"이 점검 창 밖일 때만 받는다.** 예전에는 즉시 이체만 검사해서 23:59 에 `00:00` 예약이 그대로 통과했다 — 폴러가 점검 중엔 쉬므로 돈이 점검 중에 움직이진 않지만, "00:00에 보낸다"고 해놓고 00:10 이후에 나가는 셈이라 약속이 거짓이 된다. 지금은 `maintenance_state(exec_at)` 로 보고 400 으로 거절한다(점검 창은 매일 반복되므로 먼 미래 시각도 같이 막힌다). 실행 시각은 **한 번만 계산해 `create_transfer` 까지 같은 값을 쓴다** — 두 군데서 따로 계산하면 검사와 저장값이 어긋난다. 예약 실행 보장은 `.github/workflows/run-due-transfers.yml`(KST 00:10)이 서버를 깨워 `POST /api/maintenance/run-due-transfers` 를 치는 것으로 한다 — 폴러는 서버 프로세스 안의 스레드라 서버리스에서 그 시각에 살아 있다는 보장이 없다.
 
 ### 이체 흐름 (동기 API + 비동기 워커)
 ⚠️ **받는 계좌는 `db.lookup_account()` 가 돌려준 정규화된 값으로 저장해야 한다.** 요청 원문을 그대로 넣으면 `db.process_transfer` 의 `LEFT JOIN accounts dst ON dst.account_no = t.to_account` 가 정확 일치라서, 대시 표기만 달라도 내부 계좌를 못 찾고 "외부 은행 이체"로 간주해 **출금만 하고 입금을 건너뛴다**(자금 소실). 계좌번호 비교는 어디서든 숫자만 남겨서 한다(`_acct_digits`).

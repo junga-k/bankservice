@@ -1089,11 +1089,35 @@ def transfer(req: TransferReq, user: dict = Depends(auth.get_current_user)):
     if req.scheduled_at and req.scheduled_at <= now + 30:
         raise HTTPException(status_code=400, detail="예약 시각은 현재보다 미래여야 합니다.")
 
-    # 정기점검 중에는 '지금 돈이 움직이는' 이체만 막는다. 예약·지연 이체는 그대로 받고,
-    # 실행은 폴러가 점검이 끝난 뒤에 한다(_start_scheduled_poller 의 점검 가드).
-    _executes_now = not req.scheduled_at and not (req.delay_minutes and req.delay_minutes > 0)
-    if _executes_now and maintenance_state(now)[0]:
+    # 실행 시각을 여기서 한 번만 정한다 — 아래 create_transfer 의 sched_at 도 이 값을 쓴다
+    # (두 군데서 따로 계산하면 점검 검사와 실제 저장값이 어긋날 수 있다).
+    exec_at: float | None = None
+    exec_status = "pending"
+    if req.scheduled_at and req.scheduled_at > now + 30:       # 예약(미래 시각)
+        exec_at, exec_status = float(req.scheduled_at), "scheduled"
+    elif req.delay_minutes and req.delay_minutes > 0:          # 지연이체(취소 가능)
+        exec_at, exec_status = now + req.delay_minutes * 60, "delayed"
+
+    # 정기점검 중에는 '지금 돈이 움직이는' 이체를 막는다.
+    if exec_at is None and maintenance_state(now)[0]:
         raise HTTPException(status_code=503, detail=MAINTENANCE_DETAIL)
+
+    # 예약·지연도 **실행 시각이 점검 창 안이면** 받지 않는다. 받아두면 폴러가 점검 중에는
+    # 쉬기 때문에 돈이 실제로 점검 중에 움직이진 않지만, 사용자에게는 "00:00에 보낸다"고
+    # 약속해놓고 실제로는 00:10 이후에 나가는 셈이 된다 — 2026-10-06 라이브 확인에서
+    # 23:59에 10/7 00:00 예약이 그대로 통과하는 것으로 발견했다.
+    # 점검 창은 매일 반복되므로 내일 23:55 같은 먼 미래 시각도 같은 이유로 막힌다.
+    if exec_at is not None:
+        in_maint, resume_at = maintenance_state(exec_at)
+        if in_maint:
+            resume_hm = _dt.datetime.fromtimestamp(resume_at, KST).strftime("%H:%M")
+            raise HTTPException(
+                status_code=400,
+                detail=(f"예약 시각이 정기점검 시간"
+                        f"({MAINTENANCE_START[0]:02d}:{MAINTENANCE_START[1]:02d}~"
+                        f"{MAINTENANCE_END[0]:02d}:{MAINTENANCE_END[1]:02d})에 걸칩니다. "
+                        f"점검이 끝나는 {resume_hm} 이후로 설정해 주세요."),
+            )
 
     # 출금 계좌가 로그인한 사용자 소유인지 확인
     my = {a["account_no"]: a for a in db.list_accounts(user["id"])}
