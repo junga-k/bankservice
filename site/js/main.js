@@ -267,7 +267,7 @@ function navigate(name) {
 
   // AI은행원은 로그인 없이 열린다 — 상담·상품안내·공지에는 개인정보가 없다.
   // 계좌 조회·이체처럼 본인 확인이 필요한 요청은 대화 안에서 로그인을 안내한다(app.py).
-  if (name === "chat") ensureChatLoaded();
+  if (name === "chat") { ensureChatLoaded(); syncChatAuth(); }   // 숨겨져 있는 동안 미뤄둔 토큰 반영
   if (name === "products") { ensureBanksLoaded(); loadProductStats(); loadSpecialProducts(); }
   if (name === "account") {
     refreshGuestViews();
@@ -457,6 +457,16 @@ function chatSrc() {
   return `${CHAT_URL}&token=${encodeURIComponent(token)}${resume}`;
 }
 
+/* 은행원 iframe 은 AI은행원 섹션이 실제로 보일 때만 (재)로드한다.
+   Streamlit 1.58 의 st.chat_input 은 처음 그려질 때 입력칸 높이를 한 번 재서 기준으로 삼는데,
+   섹션이 display:none 이면 그 값이 0 으로 잡혀 입력창이 "확장형"(입력줄 위, +·전송 버튼 아래
+   줄, 높이 96px)으로 굳는다. 보이는 상태에서 로드하면 "한 줄형"(59px)이다. 로그인/로그아웃은
+   항상 다른 섹션에서 일어나서, 그때 syncChatAuth() 가 바로 갈아끼우면 AI은행원을 열 때마다
+   입력창 모양이 달라졌다(2026-10-15 재현: 숨김 로드→확장형, 보임 로드→한 줄형). */
+function chatFrameMountable() {
+  return document.getElementById("chat")?.classList.contains("active");
+}
+
 /* 챗봇은 Streamlit Community Cloud 무료 티어에 있어 12시간 무트래픽이면 잠든다. 잠든 채로
    iframe을 붙이면 방문자가 챗봇 대신 "Zzzz — 깨울까요?" 화면과 버튼을 보게 되므로, iframe을
    붙이기 전에 서버(/api/chat/wake)가 대신 깨우고 그 동안 로딩 화면을 보여준다.
@@ -480,6 +490,9 @@ async function ensureChatLoaded() {
     /* 깨우기 실패는 무시하고 그냥 붙인다 */
   }
 
+  // 깨우는 동안 다른 메뉴로 나갔으면 붙이지 않는다 — 다음 진입 때 다시 시도(chatFrameMountable 참고)
+  if (!chatFrameMountable()) { chatLoaded = false; return; }
+
   wrap.innerHTML = "";
   const iframe = document.createElement("iframe");
   iframe.id = "chat-frame";
@@ -502,6 +515,7 @@ function syncChatAuth() {
   if (!iframe) return;
   const token = getAuth()?.token || "";
   if (token === chatTokenInFrame) return;
+  if (!chatFrameMountable()) return;   // 섹션에 들어올 때 navigate() 가 다시 부른다
   chatTokenInFrame = token;
   iframe.src = chatSrc();
   chatResumeConv = null;   // 한 번만 쓴다 — 로그아웃 때 남의 대화를 다시 열지 않도록

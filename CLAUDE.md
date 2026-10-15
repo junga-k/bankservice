@@ -117,11 +117,25 @@ Kafka·Elasticsearch·Phoenix 3개를 매번 따로 띄우는 대신 `./start_in
 
 **사이트 → 챗봇**: 로그인 JWT를 iframe URL에 `?token=`으로 전달(`main.js` `chatSrc`/`syncChatAuth`). 챗봇(`app.py`)은 `_SITE_EMBEDDED`일 때 이 토큰을 **단일 기준**으로 매 실행 동기화한다. 판정이 값이 아니라 **키의 존재**(`"token" in st.query_params`)라서, 로그아웃 상태로 붙는 빈 토큰(`&token=`)도 "사이트 안의 비로그인 방문자"로 구분된다. 로그인 후 대화를 이어갈 때는 `&conv=<id>`도 함께 실어 보낸다.
 - `syncChatAuth()`는 **토큰이 실제로 바뀐 경우에만** iframe을 다시 붙인다. 재로드는 Streamlit 세션을 새로 시작시켜 하던 대화를 날리기 때문이다.
+- ⚠️ **iframe 은 AI은행원 섹션이 보일 때만 (재)로드한다**(`chatFrameMountable()`). 숨겨진(`display:none`) 섹션에서 로드되면 Streamlit 1.58 입력창이 처음 잰 높이를 0 으로 기준 삼아 **확장형**(입력줄 위, `+`·전송 버튼 아랫줄)으로 굳는다. 로그인/로그아웃은 항상 다른 섹션에서 일어나므로, 그때 바로 갈아끼우면 들어갈 때마다 입력창 모양이 달라졌다(2026-10-15). 숨겨진 동안 바뀐 토큰은 `navigate("chat")` 이 섹션 진입 시 반영한다.
 - ⚠️ 주석에 남아 있는 "`:8501` 직접 접속 시 사이드바 수동 로그인"은 **사실이 아니다** — 챗봇에는 로그인 폼이 없다(`/api/login` 호출 0건). 직접 접속해 토큰이 필요하면 백엔드에서 JWT를 받아 `?token=`으로 붙여야 한다.
 
 **챗봇 → 사이트**: `window.top.postMessage`. `goto-login`(로그인 유도 + 대화 id), `goto-account`(이체내역 보기)를 사이트의 `message` 리스너가 받는다.
 - **반드시 `window.top`이어야 한다.** `window.parent`는 사이트가 아니다 — `st.components.v1.html` 자체가 iframe이라 로컬에서도 한 단계 모자라고, 배포에서는 사이트 → streamlit.app 호스트 → 앱 → components.html로 한 겹 더 깊다. 실제로 `goto-account`가 그동안 동작하지 않았다(2026-10-04 발견·수정).
 - **링크나 `location`으로 상위 창을 움직일 수 없다.** Streamlit Cloud가 앱 프레임을 `allow-top-navigation` 없는 sandbox로 띄운다(호스트 번들에서 확인). 이동이 필요하면 postMessage로 알리고 사이트가 이동한다.
+
+### AI은행원 빈 화면(첫 화면)은 고정 디자인이다 (2026-10-15 확정)
+
+누가 언제 열어도 같아야 한다 — Figma 디자인시스템 기준. 바꾸지 말 것, 바꿔야 하면 먼저 물어본다.
+
+| 항목 | 값 | 어디서 |
+|---|---|---|
+| 입력창 | **한 줄형** — `+` · 입력칸 · 전송 버튼이 한 줄, 높이 59px, 폭 520px | 위 iframe 로드 규칙으로 보장 |
+| 인사말 문구 → 입력창 | **48px**(`--space-7`) 고정 | `app.py` `placeHeroInput()` → `--mb-hero-shift` |
+| 입력창 → 추천 칩(포커스 시) | **24px**(`--space-5`) 고정 | 같은 함수 → `--mb-chips-top` |
+
+- 예전엔 인사말은 위에서 `16vh`, 입력창은 아래에서 `translateY(-41vh)`, 칩은 `top:60%`로 **각자 다른 기준**이라 창 높이마다 간격이 달랐다(실측 128~415px). 지금은 스크립트가 인사말 문구 위치를 재서 입력창·칩을 그 아래에 붙인다 — 인사말이 두 줄로 접혀도, 창 크기를 바꿔도 같은 간격.
+- 다시 vh·% 로 위치를 잡지 말 것. 확인은 `getBoundingClientRect()` 로 위 세 값을 창 높이 2~3개에서 재본다.
 
 ## 설정 파일 이원화 (자주 헷갈리는 부분)
 

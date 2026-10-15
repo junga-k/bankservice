@@ -678,8 +678,13 @@ st.markdown("""<style>
    Streamlit이 칩 버튼 자체를 지우기 전 한 프레임 동안 기본값(display:flex)으로 칩이
    잠깐 다시 보이는 "잔상"이 실측 확인됐다(제출 직후 body 클래스가 빈 문자열로 리셋되는
    순간과 겹침). 그래서 대화 상태와 무관하게 항상 떠 있어야 하는 이 CSS를 전역 블록으로 옮김. */
+/* 입력창 세로 위치 = 인사말 문구 바로 아래 고정 간격(48px, --space-7). 예전엔 translateY(-41vh)로
+   아래에서 올려서, 위에서 16vh 로 내려오는 인사말과 기준이 달라 창 높이마다 간격이 벌어졌다
+   (실측: 창 높이 700→128px, 900→243px, 1200→415px, 2026-10-15). 실제 값은 빈 화면 스크립트의
+   placeHeroInput()이 인사말 위치를 재서 --mb-hero-shift 로 넣는다(인사말이 두 줄로 접혀도 맞도록).
+   fallback calc 는 스크립트가 돌기 전 첫 프레임용 — 한 줄 인사말 기준 실측으로 맞춘 근사값이다. */
 body.chat-empty [data-testid="stBottom"]{
-  transform: translateY(-41vh) !important;   /* 레이아웃(사이드바 오프셋·가로중심) 유지한 채 위로만 */
+  transform: translateY(var(--mb-hero-shift, calc(294px - 84vh))) !important;   /* 레이아웃(사이드바 오프셋·가로중심) 유지한 채 위로만 */
   background: transparent !important; box-shadow: none !important; border: none !important;
 }
 [data-testid="stChatInput"]{ margin-right: 0 !important; }
@@ -689,7 +694,7 @@ body.chat-empty [data-testid="stChatInput"]{
 .stMain{ position: relative !important; }
 [data-testid="stHorizontalBlock"]:has([class*="st-key-sugg_"]){
   position: absolute !important; left: 0 !important; right: 0 !important;
-  top: 60% !important;
+  top: var(--mb-chips-top, 60%) !important;   /* 입력창 바로 아래 — placeHeroInput()이 채운다 */
   justify-content: center !important; gap: 10px !important;
   display: none !important; z-index: 39;
   flex-wrap: nowrap !important;
@@ -1234,8 +1239,38 @@ if not conv["messages"] and not _pending_input:
         }
       }
       function kwFocusHandler(){ pd.body.classList.add('kw-open'); }
+      // 입력창을 인사말 문구 아래 고정 간격(--space-7, 48px)에 둔다 — 전역 CSS 의 stBottom 규칙 참고.
+      // 현재 이동량(m42)에 "목표 위치 - 지금 위치"를 더하는 방식이라 한 번에 수렴한다.
+      var HERO_GAP = 48;
+      function placeHeroInput(){
+        var b = pd.body;
+        if (!b.classList.contains('chat-empty') || b.classList.contains('chat-submitting')) return;
+        var p = pd.querySelector('.chat-hero-greeting p');
+        var box = pd.querySelector('[data-testid="stChatInput"] > div');
+        var bottom = pd.querySelector('[data-testid="stBottom"]');
+        if (!p || !box || !bottom) return;
+        var pr = p.getBoundingClientRect();
+        if (!pr.height) return;   // 인사말이 숨겨진 순간(제출 직후 등)엔 재지 않는다
+        var cur = new DOMMatrix(getComputedStyle(bottom).transform).m42;
+        var delta = pr.bottom + HERO_GAP - box.getBoundingClientRect().top;
+        if (Math.abs(delta) > 0.5) b.style.setProperty('--mb-hero-shift', (cur + delta) + 'px');
+        // 추천 칩도 입력창을 따라 바로 아래(--space-5, 24px)에 둔다. 예전 top:60% 고정이면
+        // 입력창이 올라온 만큼 칩과 벌어진다(창 높이 900 에서 238px 실측).
+        var main = pd.querySelector('.stMain');
+        if (main){
+          var inputBottom = pr.bottom + HERO_GAP + box.getBoundingClientRect().height;
+          b.style.setProperty('--mb-chips-top', (inputBottom + 24 - main.getBoundingClientRect().top + main.scrollTop) + 'px');
+        }
+      }
       bind();
-      new MutationObserver(bind).observe(pd.body, {childList:true, subtree:true});
+      placeHeroInput();
+      new MutationObserver(function(){ bind(); placeHeroInput(); }).observe(pd.body, {childList:true, subtree:true});
+      // 재실행마다 이 iframe 이 새로 생기므로, 이전 실행이 건 resize 리스너를 떼고 하나만 유지한다.
+      var pw = window.parent;
+      if (pw.__mbHeroResize) pw.removeEventListener('resize', pw.__mbHeroResize);
+      pw.__mbHeroResize = placeHeroInput;
+      pw.addEventListener('resize', placeHeroInput);
+      if (pd.fonts && pd.fonts.ready) pd.fonts.ready.then(placeHeroInput);
     })();
     </script>""", height=0)
     st.markdown("<div style='height:4vh'></div>", unsafe_allow_html=True)
