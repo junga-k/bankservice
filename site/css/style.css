@@ -1116,8 +1116,19 @@ main { min-height: calc(100vh - var(--header-h)); }
   font-size: 13px;
 }
 
+/* 상품 목록 보관본 안내 — 금감원 서버 장애 중 마지막 정상 데이터를 보여줄 때(main.js showProductStale) */
+#product-list-stale {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--warning-soft);
+  color: var(--warning);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
 /* ── 챗 iframe ───────────────────────────────────────────────────── */
 #chat-frame-wrap {
+  position: relative;   /* 무활동 예고(#chat-idle-warn)를 대화창 위에 띄우는 기준 */
   width: 100%;
   height: calc(100vh - var(--header-h));
 }
@@ -1164,6 +1175,31 @@ main { min-height: calc(100vh - var(--header-h)); }
 @media (prefers-reduced-motion: reduce) {
   #chat-wake .chat-wake-spinner { animation-duration: 2400ms; }
 }
+
+/* AI은행원 무활동 자동 종료(main.js checkChatIdle) — 9분째 예고, 10분째 종료 안내.
+   예고는 입력창(하단)을 가리지 않게 상단 중앙에 띄운다. 종료 안내는 #chat-wake 레이아웃을 재사용.
+   토큰만 사용(신규 색상/간격 값 없음). */
+#chat-idle-warn {
+  position: absolute;
+  top: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - var(--space-5) * 2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+#chat-idle-warn .chat-idle-sec { font-weight: 600; color: var(--blue-dark); }
+#chat-idle-warn .btn { padding: var(--space-2) var(--space-4); font-size: var(--text-sm); flex: none; }
+#chat-wake .chat-idle-actions { display: flex; gap: var(--space-2); }
 
 /* AI은행원: 비로그인 안내(로그인해야 이용 가능) — #auth 카드와 동일한 톤 */
 .chat-guest {

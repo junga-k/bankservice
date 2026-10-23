@@ -760,6 +760,9 @@ body.chat-submitting [data-testid="stBottom"]{ transform: none !important; }
 [class*="st-key-mbalert_error_"]   [data-testid="stAlertContainer"]{ color: #DC2626 !important; }
 [class*="st-key-mbalert_success_"] [data-testid="stAlertContainer"]{ color: #0B8457 !important; }
 [class*="st-key-mbalert_info_"]    [data-testid="stAlertContainer"]{ color: #2563EB !important; }
+/* 사이트로 활동 신호만 보내는 0높이 컴포넌트 — 빈 칸(gap)이 생기지 않게 숨긴다.
+   display:none 이어도 iframe 스크립트는 실행된다. */
+.st-key-mb_activity { display: none; }
 </style>""", unsafe_allow_html=True)
 
 
@@ -1885,6 +1888,21 @@ _components.html("""<script>
   );
 })();
 </script>""", height=0)
+
+# ── 사이트에 활동 신호 보내기 (무활동 자동 종료용) ─────────────────────
+# 사이트는 cross-origin 이라 이 안의 입력·클릭을 못 본다. 그래서 실행(rerun)마다 알려주고,
+# 사이트가 10분 동안 신호가 없으면 iframe 을 내리고 자체 종료 안내를 띄운다 — 그대로 두면
+# Streamlit 내장 "Connection timed out" 창이 뜬다. 대화 id 를 함께 보내 [이어서 대화하기]가
+# 그 대화를 복원하게 한다. 이 지점은 이번 입력이 대화에 추가되기 전이라 "메시지가 있을 때만"
+# 으로 거르면 첫 질문의 id 가 빠진다 — 항상 보낸다. 저장 안 된 id 는 복원 시 새 대화가 된다.
+# 타임스탬프를 넣는 건 내용이 같으면 Streamlit 이 iframe 을 다시 만들지 않아서다.
+# window.top 인 이유는 위 goto-account 와 같다. 컨테이너는 CSS 로 숨겨 레이아웃에 안 끼게 한다.
+with st.container(key="mb_activity"):
+    _components.html(
+        "<script>window.top.postMessage({type:'chat-activity',conv:%s,t:%d},'*');</script>"
+        % (_json.dumps(conv["id"]), int(time.time() * 1000)),
+        height=0,
+    )
 
 # ── 모델 결정 (선택 UI는 표시하지 않음) ─────────────────────────────
 model = st.session_state.selected_model

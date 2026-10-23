@@ -469,29 +469,54 @@ function chatFrameMountable() {
 
 /* 챗봇은 Streamlit Community Cloud 무료 티어에 있어 12시간 무트래픽이면 잠든다. 잠든 채로
    iframe을 붙이면 방문자가 챗봇 대신 "Zzzz — 깨울까요?" 화면과 버튼을 보게 되므로, iframe을
-   붙이기 전에 서버(/api/chat/wake)가 대신 깨우고 그 동안 로딩 화면을 보여준다.
+   붙이기 전에 서버(/api/chat/wake)가 대신 깨운다.
    서버를 거치는 이유: Streamlit Cloud API에 CORS 헤더가 없어 브라우저에서 직접 못 부른다.
-   깨우기가 실패하거나 오래 걸려도 iframe은 그대로 붙인다(degrade — 최악이어도 기존과 동일). */
+   깨우기가 실패하거나 오래 걸려도 iframe은 그대로 붙인다(degrade — 최악이어도 기존과 동일).
+
+   깨어 있어도 wake 응답에 0.7~1초가 걸려서(2026-10-23 실측), 예전처럼 로딩 화면을 먼저 그리면
+   "깨우고 있습니다 · 최대 1분"이 들어갈 때마다 보였다. 그래서 ① 사이트를 열 때 미리 깨워 두고
+   ② 로딩 화면은 CHAT_WAKE_SHOW_MS 안에 안 끝날 때만 그린다(=실제로 잠들어 있을 때). */
+const CHAT_WAKE_SHOW_MS = 1500;    // 이 안에 끝나면 로딩 화면 없이 바로 붙인다
+const CHAT_WAKE_SLOW_MS = 5000;    // 이보다 길어지면 "잠들어 있었다"로 보고 안내를 바꾼다
+const CHAT_WAKE_REUSE_MS = 5 * 60 * 1000;   // 미리 깨운 결과를 믿는 시간
+let chatWake = null;   // { promise, at }
+
+function wakeChat() {
+  if (!chatWake || Date.now() - chatWake.at > CHAT_WAKE_REUSE_MS) {
+    chatWake = {
+      at: Date.now(),
+      promise: fetch("/api/chat/wake", { method: "POST" }).catch(() => { /* 실패는 무시하고 그냥 붙인다 */ }),
+    };
+  }
+  return chatWake.promise;
+}
+
 async function ensureChatLoaded() {
   if (chatLoaded) return;
+  if (chatIdleEnded) { showChatIdleEnded(); return; }   // 종료 안내는 사용자가 버튼을 누를 때까지 유지
   chatLoaded = true;   // 대기 중 재진입으로 iframe이 두 번 생기지 않게 먼저 잠근다
 
   const wrap = document.getElementById("chat-frame-wrap");
-  wrap.innerHTML =
-    '<div id="chat-wake">' +
-      '<div class="chat-wake-spinner"></div>' +
-      '<div><div class="chat-wake-title">AI 은행원을 깨우고 있습니다</div>' +
-      '처음 접속하면 최대 1분쯤 걸릴 수 있어요.</div>' +
-    '</div>';
+  wrap.innerHTML = "";
+  const showWake = setTimeout(() => {
+    wrap.innerHTML =
+      '<div id="chat-wake">' +
+        '<div class="chat-wake-spinner"></div>' +
+        '<div><div class="chat-wake-title">AI 은행원을 준비하고 있어요</div>' +
+        '<span class="chat-wake-sub">잠시만 기다려 주세요.</span></div>' +
+      '</div>';
+  }, CHAT_WAKE_SHOW_MS);
+  const showSlow = setTimeout(() => {
+    const sub = wrap.querySelector(".chat-wake-sub");
+    if (sub) sub.textContent = "한동안 쉬고 있던 AI 은행원을 깨우는 중이에요. 보통 30~45초 걸려요.";
+  }, CHAT_WAKE_SLOW_MS);
 
-  try {
-    await fetch("/api/chat/wake", { method: "POST" });
-  } catch {
-    /* 깨우기 실패는 무시하고 그냥 붙인다 */
-  }
+  await wakeChat();
+  clearTimeout(showWake);
+  clearTimeout(showSlow);
 
   // 깨우는 동안 다른 메뉴로 나갔으면 붙이지 않는다 — 다음 진입 때 다시 시도(chatFrameMountable 참고)
-  if (!chatFrameMountable()) { chatLoaded = false; return; }
+  if (!chatFrameMountable()) { chatLoaded = false; wrap.innerHTML = ""; return; }
 
   wrap.innerHTML = "";
   const iframe = document.createElement("iframe");
@@ -502,6 +527,88 @@ async function ensureChatLoaded() {
   iframe.title = "AI 금융상담 은행원";
   iframe.allow = "clipboard-write";
   wrap.appendChild(iframe);
+  noteChatActivity();
+}
+
+/* ── AI은행원 무활동 자동 종료 ─────────────────────────────────────
+   대화창을 켜둔 채 오래 두면 Streamlit 내장 "Connection timed out" 창(영문, 문구 변경 불가)이
+   떴다. 금융 서비스답게 사이트가 먼저 무활동을 세서, 1분 전에 예고하고 시간이 되면 iframe을
+   내린 뒤 자체 종료 안내를 보여준다. iframe 안의 입력·클릭은 cross-origin 이라 사이트가 못
+   보므로, 챗봇이 실행(rerun)마다 보내는 'chat-activity' 신호로 센다(app.py). 답변을 읽기만
+   하는 시간은 신호가 없어서 예고의 [계속하기]가 그걸 보완한다.
+   경과 시간은 타이머 횟수가 아니라 시각 차로 잰다 — 백그라운드 탭은 타이머가 늦게 돈다. */
+const CHAT_IDLE_WARN_MS = 9 * 60 * 1000;
+const CHAT_IDLE_END_MS = 10 * 60 * 1000;
+let chatLastActive = 0;
+let chatIdleConv = null;        // 마지막으로 알려준 저장된 대화 id — [이어서 대화하기]에서 복원
+let chatIdleConvToken = null;   // 그 대화가 어느 로그인 상태에서 온 건지(다른 계정에 남의 대화를 열지 않게)
+let chatIdleEnded = false;
+let chatIdleTicker = null;
+
+function noteChatActivity() {
+  chatLastActive = Date.now();
+  document.getElementById("chat-idle-warn")?.remove();
+  if (!chatIdleTicker) chatIdleTicker = setInterval(checkChatIdle, 1000);
+}
+
+function checkChatIdle() {
+  if (!document.getElementById("chat-frame")) {   // iframe 이 없으면 셀 것도 없다
+    clearInterval(chatIdleTicker);
+    chatIdleTicker = null;
+    return;
+  }
+  const idle = Date.now() - chatLastActive;
+  if (idle >= CHAT_IDLE_END_MS) { endChatForIdle(); return; }
+  if (idle < CHAT_IDLE_WARN_MS) return;
+
+  const wrap = document.getElementById("chat-frame-wrap");
+  let warn = document.getElementById("chat-idle-warn");
+  if (!warn) {
+    warn = document.createElement("div");
+    warn.id = "chat-idle-warn";
+    warn.setAttribute("role", "alert");
+    warn.innerHTML =
+      '<span><span class="chat-idle-sec"></span> 뒤 보안을 위해 대화가 종료돼요.</span>' +
+      '<button type="button" class="btn btn-primary">계속하기</button>';
+    warn.querySelector("button").addEventListener("click", noteChatActivity);
+    wrap.appendChild(warn);
+  }
+  const left = Math.max(0, Math.ceil((CHAT_IDLE_END_MS - idle) / 1000));
+  warn.querySelector(".chat-idle-sec").textContent = `${left}초`;
+}
+
+function endChatForIdle() {
+  clearInterval(chatIdleTicker);
+  chatIdleTicker = null;
+  chatLoaded = false;
+  chatIdleEnded = true;
+  chatTokenInFrame = null;
+  showChatIdleEnded();
+}
+
+function showChatIdleEnded() {
+  const wrap = document.getElementById("chat-frame-wrap");
+  wrap.innerHTML =
+    '<div id="chat-wake" class="chat-idle-end">' +
+      '<div><div class="chat-wake-title">보안을 위해 대화를 종료했어요</div>' +
+      '10분 동안 사용하지 않아 대화를 종료했어요.</div>' +
+      '<div class="chat-idle-actions">' +
+        '<button type="button" class="btn btn-ghost" data-idle="home">홈으로</button>' +
+        '<button type="button" class="btn btn-primary" data-idle="resume">이어서 대화하기</button>' +
+      '</div>' +
+    '</div>';
+  wrap.querySelector('[data-idle="home"]').addEventListener("click", () => {
+    chatIdleEnded = false;
+    wrap.innerHTML = "";
+    navigate("home");
+  });
+  wrap.querySelector('[data-idle="resume"]').addEventListener("click", () => {
+    chatIdleEnded = false;
+    // 로그인 사용자만, 그것도 같은 계정일 때만 이전 대화를 복원한다. 비로그인은 새 대화.
+    const token = getAuth()?.token || "";
+    if (token && chatIdleConv && chatIdleConvToken === token) chatResumeConv = chatIdleConv;
+    ensureChatLoaded();
+  });
 }
 
 /* 로그인/로그아웃 시 은행원 iframe을 현재 토큰으로 재로딩 → 로그인 상태 연동.
@@ -1576,12 +1683,32 @@ async function loadProductList(category, desc) {
       const { detail } = await res.json().catch(() => ({}));
       throw new Error(detail || "상품 목록을 불러오지 못했습니다.");
     }
-    const { products } = await res.json();
+    const { products, stale, fetched_at } = await res.json();
+    showProductStale(stale ? fetched_at : null);
     productListExpanded = false;
     renderProductList(products);
   } catch (err) {
+    showProductStale(null);
     listEl.innerHTML = `<p class="product-list-empty">${escapeHtml(err.message)}</p>`;
   }
+}
+
+/* 금감원 서버 장애 중이면 백엔드가 마지막으로 성공한 조회 결과(보관본)를 stale 표시와 함께
+   준다. 실시간 금리가 아니라는 걸 목록 위에 알린다. fetchedAt 이 null 이면 안내를 지운다. */
+function showProductStale(fetchedAt) {
+  const anchor = document.querySelector("#product-list-panel .product-search-wrap");
+  let note = document.getElementById("product-list-stale");
+  if (!fetchedAt) { note?.remove(); return; }
+  if (!note) {
+    note = document.createElement("p");
+    note.id = "product-list-stale";
+    note.setAttribute("role", "status");
+    anchor.before(note);   // 검색창 위 — 추천 카드·목록 전체에 대한 안내라서
+  }
+  const d = new Date(fetchedAt * 1000);
+  note.textContent =
+    `금융감독원 상품 정보 서버가 응답하지 않아 ${d.getMonth() + 1}월 ${d.getDate()}일 기준 금리를 보여드려요. ` +
+    "실제 금리와 다를 수 있어요.";
 }
 
 /* 상품 목록이 길면 상위 N개만 보여주고 "더보기/접기"로 나머지를 펼치고 접는다 */
@@ -5936,6 +6063,16 @@ window.addEventListener("message", (e) => {
   setAuthTab("login");
 });
 
+/* ── 은행원 iframe → 활동 신호 (무활동 자동 종료용, ensureChatLoaded 아래 설명 참고) ── */
+window.addEventListener("message", (e) => {
+  const d = e.data;
+  if (!d || d.type !== "chat-activity") return;
+  if (!document.getElementById("chat-frame")) return;   // 이미 종료된 뒤 늦게 온 신호는 무시
+  chatIdleConv = d.conv || null;
+  chatIdleConvToken = chatTokenInFrame;
+  noteChatActivity();
+});
+
 /* ── 은행원 iframe → 부모 SPA 이동 (이체내역 조회하기 등) ───────────── */
 window.addEventListener("message", (e) => {
   const d = e.data;
@@ -5983,4 +6120,6 @@ function sectionFromHash() {
   return (location.hash || "#home").slice(1).split(/[?&]/)[0];
 }
 navigate(sectionFromHash());
+// AI은행원을 누르기 전에 미리 깨워 둔다 — 홈을 둘러보는 동안 깨어나 진입 때 기다리지 않게(wakeChat 참고)
+wakeChat();
 window.addEventListener("hashchange", () => navigate(sectionFromHash()));

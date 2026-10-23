@@ -168,7 +168,15 @@ def _fetch_pages(
             timeout=30,
         )
         resp.raise_for_status()
-        result = resp.json().get("result", {})
+        # 금감원 시스템 점검 중에는 API 가 JSON 대신 점검 안내 페이지(www.fss.or.kr/notice/...)로
+        # 리다이렉트한다(2026-10-23 18:00~10-24 09:00 실측). JSON 파싱 오류 대신 원인을 말해준다.
+        try:
+            data = resp.json()
+        except ValueError:
+            if resp.history:
+                raise ValueError(f"금감원 시스템 점검 중(점검 안내 페이지로 연결됨: {resp.url})")
+            raise
+        result = data.get("result", {})
         if result.get("err_cd", "000") != "000":
             raise ValueError(f"FSS API 오류: {result.get('err_msg', '알 수 없는 오류')}")
         base_all.extend(result.get("baseList") or [])
@@ -177,6 +185,30 @@ def _fetch_pages(
         if page >= max_page:
             break
         page += 1
+    return base_all, opt_all
+
+
+def _fetch_groups(
+    auth: str, endpoint: str, fin_groups: list[str]
+) -> tuple[list[dict], list[dict]]:
+    """여러 금융권역을 모아 조회한다. 특정 권역이 그 카테고리를 미지원해 실패하면 건너뛰지만,
+    **전부 실패하면 예외를 던진다.** 예전엔 전부 삼켜서 금감원 서버가 응답하지 않을 때도
+    빈 목록이 "정상 0건"으로 나갔고, 그 빈 결과가 1시간 캐시돼 상품안내가 통째로 비었다
+    (2026-10-23 FSS 장애 때 발견). 기본 권역이 은행 하나뿐이라 실제로는 그 한 번의 실패가 곧 전부 실패다."""
+    base_all: list[dict] = []
+    opt_all: list[dict] = []
+    last_err: Exception | None = None
+    ok = 0
+    for grp in fin_groups:
+        try:
+            b, o = _fetch_pages(auth, endpoint, grp)
+            base_all.extend(b)
+            opt_all.extend(o)
+            ok += 1
+        except Exception as e:
+            last_err = e
+    if ok == 0 and last_err is not None:
+        raise last_err
     return base_all, opt_all
 
 
@@ -240,15 +272,7 @@ def fetch_category(
     if fin_groups is None:
         fin_groups = _DEFAULT_GROUPS
     endpoint = PRODUCT_TYPES[category]
-    base_all: list[dict] = []
-    opt_all: list[dict] = []
-    for grp in fin_groups:
-        try:
-            b, o = _fetch_pages(auth, endpoint, grp)
-            base_all.extend(b)
-            opt_all.extend(o)
-        except Exception:
-            pass  # 특정 권역이 해당 카테고리를 미지원하면 건너뜀
+    base_all, opt_all = _fetch_groups(auth, endpoint, fin_groups)
     options_by_code = _group_options(opt_all)
     result = []
     for base in base_all:
@@ -307,15 +331,7 @@ def fetch_category_structured(
     if fin_groups is None:
         fin_groups = _DEFAULT_GROUPS
     endpoint = PRODUCT_TYPES[category]
-    base_all: list[dict] = []
-    opt_all: list[dict] = []
-    for grp in fin_groups:
-        try:
-            b, o = _fetch_pages(auth, endpoint, grp)
-            base_all.extend(b)
-            opt_all.extend(o)
-        except Exception:
-            pass  # 특정 권역이 해당 카테고리를 미지원하면 건너뜀
+    base_all, opt_all = _fetch_groups(auth, endpoint, fin_groups)
     options_by_code = _group_options(opt_all)
     result = []
     for base in base_all:
@@ -366,15 +382,7 @@ def _fetch_loan_structured(
     if fin_groups is None:
         fin_groups = _DEFAULT_GROUPS
     endpoint = PRODUCT_TYPES[category]
-    base_all: list[dict] = []
-    opt_all: list[dict] = []
-    for grp in fin_groups:
-        try:
-            b, o = _fetch_pages(auth, endpoint, grp)
-            base_all.extend(b)
-            opt_all.extend(o)
-        except Exception:
-            pass
+    base_all, opt_all = _fetch_groups(auth, endpoint, fin_groups)
     options_by_code = _group_options(opt_all)
     is_credit = category == "신용대출"
     result = []

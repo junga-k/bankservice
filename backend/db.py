@@ -793,6 +793,42 @@ def _search_clause(columns: list[str], q: str) -> tuple[str, list[str]]:
     return " OR ".join(conditions), params
 
 
+# ── FSS 상품 마지막 정상 결과 보관 ───────────────────────────────────
+# 금감원(FSS) 서버가 응답하지 않으면 상품안내가 통째로 비었다(2026-10-23). 마지막으로 성공한
+# 조회 결과를 카테고리별로 남겨 두고, 장애 중에는 그걸 "M월 D일 기준"으로 보여준다.
+# 배포 환경은 콜드스타트 비용 때문에 init_db() 를 건너뛰므로(app.py), 스키마에 넣는 대신
+# 쓸 때마다 CREATE TABLE IF NOT EXISTS 로 스스로 만든다 — 별도 마이그레이션 호출이 필요 없다.
+_FSS_CACHE_DDL = (
+    "CREATE TABLE IF NOT EXISTS fss_products_cache ("
+    " category   TEXT PRIMARY KEY,"
+    " data       TEXT NOT NULL,"
+    " fetched_at REAL NOT NULL)"
+)
+
+
+def save_fss_products(category: str, products: list[dict]) -> None:
+    with get_conn() as conn:
+        conn.execute(_FSS_CACHE_DDL)
+        conn.execute(
+            "INSERT OR REPLACE INTO fss_products_cache (category, data, fetched_at) VALUES (?, ?, ?)",
+            (category, json.dumps(products, ensure_ascii=False), time.time()),
+        )
+
+
+def load_fss_products(category: str) -> tuple[list[dict], float] | None:
+    """(상품 목록, 저장 시각). 보관본이 없거나 테이블이 아직 없으면 None."""
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT data, fetched_at FROM fss_products_cache WHERE category = ?", (category,),
+            ).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    return json.loads(row["data"]), row["fetched_at"]
+
+
 def list_notices(offset: int = 0, limit: int = 20, q: str = "") -> list[dict]:
     with get_conn() as conn:
         if q:

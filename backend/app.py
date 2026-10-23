@@ -1279,10 +1279,33 @@ def stats_top_products():
 # ── 상품안내: FSS(금융감독원) 실시간 상품 데이터 ──────────────────────
 _PRODUCT_CACHE: dict[str, tuple[float, list]] = {}
 _PRODUCT_CACHE_TTL = 3600  # 1시간
+# 금감원 서버가 응답하지 않으면 요청마다 수십 초씩 매달린다(2026-10-23 장애 때 요청당 ~10초,
+# 금리비교는 두 번 호출이라 그 두 배). 한 번 실패하면 이 시간 동안은 다시 두드리지 않고
+# 바로 보관본으로 응답한다. 짧게 잡아 복구되면 곧 실시간 데이터로 돌아오게 한다.
+_FSS_RETRY_AFTER = 120
+_fss_down_since: float | None = None
+
+
+def _fetch_products_live(auth_key: str, category: str) -> list:
+    if category == "금리비교":
+        products = fss_fetcher.fetch_category_structured(auth_key, "예금") + \
+            fss_fetcher.fetch_category_structured(auth_key, "적금")
+    else:
+        products = fss_fetcher.fetch_category_structured(auth_key, category)
+    # 대출은 금리가 낮을수록 유리하므로 오름차순(최저금리 우선), 예금/적금은 내림차순(최고금리 우선)
+    if category in fss_fetcher.LOAN_CATEGORIES:
+        products.sort(key=lambda p: p["best_rate"] if p["best_rate"] is not None else float("inf"))
+    else:
+        products.sort(key=lambda p: p["best_rate"] or 0, reverse=True)
+    return products
 
 
 @app.get("/api/products")
 def get_products(category: str):
+    """FSS 실시간 조회. 금감원 서버 장애 시에는 마지막으로 성공한 결과(db 보관본)를
+    stale=True 와 그 시각을 붙여 돌려준다 — 화면이 "M월 D일 기준"으로 안내한다.
+    빈 결과·실패 결과는 메모리 캐시에 넣지 않는다(예전엔 빈 목록을 1시간 붙들고 있었다)."""
+    global _fss_down_since
     if category not in ("예금", "적금", "금리비교", *fss_fetcher.LOAN_CATEGORIES):
         raise HTTPException(400, "지원하지 않는 카테고리입니다.")
     now = time.time()
@@ -1293,22 +1316,32 @@ def get_products(category: str):
     auth_key = config.load().get("fss_api_key", "")
     if not auth_key:
         raise HTTPException(503, "FSS API 키가 설정되지 않았습니다.")
-    try:
-        if category == "금리비교":
-            products = fss_fetcher.fetch_category_structured(auth_key, "예금") + \
-                fss_fetcher.fetch_category_structured(auth_key, "적금")
-        else:
-            products = fss_fetcher.fetch_category_structured(auth_key, category)
-    except Exception as e:
-        raise HTTPException(502, f"FSS API 조회 실패: {e}")
 
-    # 대출은 금리가 낮을수록 유리하므로 오름차순(최저금리 우선), 예금/적금은 내림차순(최고금리 우선)
-    if category in fss_fetcher.LOAN_CATEGORIES:
-        products.sort(key=lambda p: p["best_rate"] if p["best_rate"] is not None else float("inf"))
-    else:
-        products.sort(key=lambda p: p["best_rate"] or 0, reverse=True)
-    _PRODUCT_CACHE[category] = (now, products)
-    return {"products": products}
+    if _fss_down_since is None or now - _fss_down_since >= _FSS_RETRY_AFTER:
+        try:
+            products = _fetch_products_live(auth_key, category)
+            if not products:
+                raise ValueError("금감원 응답에 상품이 없습니다.")
+            _fss_down_since = None
+            _PRODUCT_CACHE[category] = (now, products)
+            try:
+                db.save_fss_products(category, products)
+            except Exception as e:   # 보관 실패가 정상 응답을 막지 않게
+                print(f"[products] 보관본 저장 실패: {e}")
+            return {"products": products}
+        except Exception as e:
+            _fss_down_since = now
+            print(f"[products] FSS 조회 실패({category}): {e}")
+
+    saved = db.load_fss_products(category)
+    if saved:
+        products, fetched_at = saved
+        return {"products": products, "stale": True, "fetched_at": fetched_at}
+    raise HTTPException(
+        502,
+        "금융감독원 상품 정보 서버가 응답하지 않아 상품 목록을 불러오지 못했습니다. "
+        "잠시 후 다시 시도해 주세요.",
+    )
 
 
 # ── Backoffice: FSS 데이터 신선도·업데이트 모니터링 ────────────────────
@@ -1334,9 +1367,9 @@ def _fss_fetch_all(auth_key: str) -> list:
     cached = _PRODUCT_CACHE.get("금리비교")
     if cached and now - cached[0] < _PRODUCT_CACHE_TTL:
         return cached[1]
-    products = fss_fetcher.fetch_category_structured(auth_key, "예금") + \
-        fss_fetcher.fetch_category_structured(auth_key, "적금")
-    products.sort(key=lambda p: p["best_rate"] or 0, reverse=True)
+    products = _fetch_products_live(auth_key, "금리비교")
+    if not products:   # 0건을 "정상"으로 보여주지 않는다 — 장애로 본다
+        raise ValueError("금감원 응답에 상품이 없습니다.")
     _PRODUCT_CACHE["금리비교"] = (now, products)
     return products
 
@@ -1353,7 +1386,10 @@ def admin_fss_status(user: dict = Depends(auth.require_admin)):
     try:
         products = _fss_fetch_all(auth_key)
     except Exception as e:
-        return {"status": "down", "detail": f"FSS API 조회 실패: {e}",
+        saved = db.load_fss_products("예금")
+        backup = (f" · 상품안내는 {_dt.datetime.fromtimestamp(saved[1], KST):%m월 %d일} 기준 보관본으로 표시 중"
+                  if saved else " · 보관된 상품 데이터가 없어 상품안내가 비어 있습니다")
+        return {"status": "down", "detail": f"금감원 서버 연결 실패: {e}{backup}",
                 "products": 0, "by_category": {}, "latest_dcls": None,
                 "ingest": ingest, "changes_summary": None, "changes": None}
 
