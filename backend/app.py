@@ -233,7 +233,7 @@ def maintenance_info(now: float | None = None) -> dict:
 
 
 # 이체 비밀번호 오입력 — 세기만 하고 잠그지는 않는다.
-# 공개 데모라 reviewer 계정을 모든 방문자가 공유한다. 한 명이 계정을 잠그면 그 뒤 방문자가
+# 데모 계정은 여러 사람이 공유할 수 있다. 한 명이 계정을 잠그면 그 뒤 방문자가
 # 전부 이체를 못 하게 되므로, 남은 횟수를 알려주고 보안이력에 남기는 선까지만 한다.
 PIN_FAIL_WINDOW_S = 10 * 60   # 최근 10분 안의 실패만 센다
 PIN_FAIL_LIMIT = 5
@@ -324,13 +324,6 @@ class LoginReq(BaseModel):
 # ── 인증 ─────────────────────────────────────────────────────────────
 # 관리자가 방문자 입장에서 계좌조회·거래내역·이체·AI은행원 등 사이트 기능을
 # 테스트할 때 쓰는 데모 계정(seed_bank.py에서 생성). 고정값이라 여기서만 노출.
-DEMO_ACCOUNT_INFO = {
-    "username": "demo",
-    "password": "demo1234",
-    "note": "계좌조회·거래내역·이체·AI은행원 등 방문자 기능 테스트용 계정입니다.",
-}
-
-
 @app.post("/api/signup")
 def signup(req: SignupReq):
     username = req.username.strip()
@@ -513,18 +506,9 @@ def my_limits(user: dict = Depends(auth.get_current_user)):
     used = db.sum_user_transfers_today(db.user_account_nos(user["id"]), today0)
     # 점검 상태를 함께 내린다 — 이체 화면이 브라우저 시계로 계산하지 않도록 서버가 판단한다.
     # (이 엔드포인트는 이미 이체 탭에 들어올 때 호출된다 — main.js loadTransferNotice)
-    #
-    # 데모 이체 PIN 힌트도 여기서 준다. "로그인한 계정이 공개 데모 계정인가"를 아는 건
-    # 백엔드뿐이라(DEMO_LOGIN 과 사용자 정보를 둘 다 갖고 있다), 판단을 여기서 하고
-    # 클라이언트는 받은 것만 보여준다. 예전에 챗봇이 이 판단 없이 DEMO_TRANSFER_PIN 만
-    # 있으면 무조건 띄워서, admin 으로 로그인해도 reviewer 의 PIN 을 안내하는 바람에
-    # 사용자가 비밀번호를 연속으로 틀리는 일이 있었다(2026-10-05).
-    _demo_username, _, _ = os.environ.get("DEMO_LOGIN", "").strip().partition(":")
-    _demo_pin = os.environ.get("DEMO_TRANSFER_PIN", "").strip()
     return {"transfer_limit": once, "daily_transfer_limit": daily, "transfer_fee": fee,
             "used_today": used, "remaining_today": max(0, daily - used),
-            "maintenance": maintenance_info(),
-            "demo_pin": _demo_pin if (_demo_username and user["username"] == _demo_username) else ""}
+            "maintenance": maintenance_info()}
 
 
 @app.get("/api/me/transactions/export")
@@ -624,7 +608,7 @@ def find_username(req: FindIdReq):
 def reset_password(req: ResetPwReq):
     """데모: 아이디+이름+전화 일치 시 비밀번호 재설정(실제 서비스는 이메일/SMS 인증 필요).
 
-    시드 계정(demo/admin/reviewer 등)은 여기서 바꿀 수 없다. 이 엔드포인트는 OTP가
+    시드 계정(demo/admin 등)은 여기서 바꿀 수 없다. 이 엔드포인트는 OTP가
     프런트 목업이고 rate limit도 없는데, 로그인 화면이 공개 계정 아이디를 안내하고
     README에 이름·전화가 적혀 있어 표적이 명시된 상태다. 게다가 리셋(reset_demo_data)은
     users.password_hash를 되돌리지 않으므로, 한 번 바뀌면 복구되지 않고 데모 전체가 잠긴다.
@@ -645,11 +629,6 @@ def reset_password(req: ResetPwReq):
         raise HTTPException(status_code=400, detail="새 비밀번호는 4자 이상 입력하세요.")
     db.set_password_hash(found["id"], auth.hash_password(req.new_password))
     return {"ok": True}
-
-
-@app.get("/api/admin/demo-account")
-def admin_demo_account(user: dict = Depends(auth.require_admin)):
-    return DEMO_ACCOUNT_INFO
 
 
 # ── Backoffice: 회원관리 ──────────────────────────────────────────────
@@ -1799,34 +1778,11 @@ def admin_delete_event(event_id: int, user: dict = Depends(auth.require_admin)):
 # 주소를 배포 환경마다 다르게 넣을 수 있도록, main.js가 로드되기 전에 이 작은 동적 스크립트로
 # window.CHAT_BASE_URL을 먼저 심어둔다. CHAT_BASE_URL 환경변수 미설정 시 빈 문자열 반환 →
 # main.js가 기존과 동일하게 http://localhost:8501로 폴백(로컬 개발 동작 변화 없음).
-#
-# window.DEMO_LOGIN도 같은 방식으로 심는다 — 공개 데모의 안내 계정이다.
-# 왜 여기서 주는가: site/js/main.js는 공개 정적 파일이라 비밀번호를 거기 박으면
-# view-source에 그대로 노출되고 저장소에도 영구히 남는다("유출된 자격증명"으로 읽힌다).
-# 배포 환경변수로만 흘리면 저장소 코드와 정적 번들에는 남지 않는다.
-# 형식: DEMO_LOGIN="reviewer:<비밀번호>". 미설정 시 null → 프런트가 안내 카드도,
-# 아이디 입력 시 비밀번호 자동 채우기도 렌더하지 않는다(로컬 clone 동작 변화 없음).
 @app.get("/js/env-config.js")
 def env_config_js():
     chat_base_url = os.environ.get("CHAT_BASE_URL", "")
-
-    demo_username, _, demo_password = os.environ.get("DEMO_LOGIN", "").strip().partition(":")
-    demo_login = (
-        {
-            "username": demo_username,
-            "password": demo_password,
-            # 이체 비밀번호는 로그인 화면에 쓰지 않는다 — 이체 확인 단계에서만 안내한다.
-            # 프런트는 로그인한 계정이 이 공개 계정일 때만 힌트를 렌더한다(main.js).
-            "transferPin": os.environ.get("DEMO_TRANSFER_PIN", "").strip(),
-        }
-        if demo_username and demo_password else None
-    )
-
     return Response(
-        content=(
-            f"window.CHAT_BASE_URL = {json.dumps(chat_base_url)};\n"
-            f"window.DEMO_LOGIN = {json.dumps(demo_login, ensure_ascii=False)};"
-        ),
+        content=f"window.CHAT_BASE_URL = {json.dumps(chat_base_url)};\n",
         media_type="application/javascript",
     )
 

@@ -79,11 +79,6 @@
               </div>
             </div>
 
-            <!-- 로그인 화면의 데모 계정 안내로 보내는 배지.
-                 window.DEMO_LOGIN 이 있을 때만 main.js 가 노출한다. -->
-            <button class="hero-demo-badge" type="button" id="hero-demo-badge" data-nav="auth" hidden>
-              포트폴리오 데모 · 계정 안내 보기
-            </button>
           </div>
         </div>
       </div>
@@ -454,9 +449,6 @@
               <label for="tf-password">이체 비밀번호 (숫자 6자리)</label>
               <input id="tf-password" type="password" inputmode="numeric" maxlength="6"
                      autocomplete="off" placeholder="이체 비밀번호 6자리를 입력하세요" />
-              <!-- 공개 데모 계정으로 로그인한 경우에만 main.js 가 채운다.
-                   PIN 을 쓰는 자리에서만 안내한다(로그인 화면에는 두지 않는다). -->
-              <p class="tf-hint" id="tf-pin-hint" hidden></p>
             </div>
             <!-- 정기점검 중에만 보인다 (main.js updateMaintenanceView) -->
             <p class="tf-newpayee" id="tf-maint-note" hidden></p>
@@ -776,12 +768,6 @@
         <div class="panel auth-panel" id="login-panel">
           <h2 class="auth-heading">로그인</h2>
           <p class="section-desc">계좌 조회부터 이체까지, 로그인 후 이용하세요.</p>
-
-          <!-- 공개 데모 안내. window.DEMO_LOGIN(= /js/env-config.js)이 있을 때만
-               main.js 의 renderDemoLoginHint()가 채운다. 비밀번호는 여기에 인쇄하지
-               않는다 — 아이디를 입력하면 자동으로 채워진다. 이체 비밀번호도 인쇄하지
-               않는다(이체 확인 단계에서 안내). -->
-          <div class="demo-hint" id="demo-login-hint" hidden></div>
 
           <form id="login-form" class="auth-form">
             <div class="tf-field">
@@ -1113,14 +1099,6 @@
         <!-- 회원관리 -->
         <div class="bo-panel" id="bo-panel-members" style="display:none">
           <div class="metric-grid" id="bo-user-summary"><!-- JS 렌더 --></div>
-
-          <div class="panel">
-            <h3>테스트 계정</h3>
-            <p class="section-desc">방문자 입장에서 계좌조회·거래내역·이체·AI은행원 등 기능을 테스트할 때 쓰는
-              데모 계정 정보입니다.</p>
-            <button class="btn btn-ghost bo-btn-right" type="button" id="bo-show-demo">테스트 계정 보기</button>
-            <div id="bo-demo-info" class="admin-demo-info"></div>
-          </div>
 
           <div class="panel">
             <h3>회원 목록</h3>
@@ -1765,7 +1743,6 @@
           매치뱅크
         </a>
         <p class="footer-tagline">은행 금융상품을 한눈에, AI에게 물어보세요.</p>
-        <p class="footer-disclaimer">※ 이 사이트는 포트폴리오 목적으로 제작된 데모 프로젝트입니다. 실제 금융거래는 이루어지지 않습니다.</p>
       </div>
 
       <div class="footer-links">

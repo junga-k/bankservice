@@ -1133,27 +1133,8 @@ document.addEventListener("click", (e) => {
   showTransactions(id, card.dataset.acctNo);
 });
 
-/* 이체 확인 단계의 PIN 힌트.
- * 공개 데모 계정(DEMO_LOGIN.username)으로 로그인한 경우에만 노출한다 —
- * 다른 계정으로 들어왔다면 그 계정의 PIN 이 아니므로 안내하면 틀린 정보가 된다.
- * PIN 을 로그인 화면이 아니라 여기서만 보여주는 이유: 로그인 비밀번호와 PIN 을
- * 한 화면에 나란히 두면 인증 수단을 구분하지 않는 것으로 읽힌다. */
-function renderTransferPinHint() {
-  const el = document.getElementById("tf-pin-hint");
-  if (!el) return;
-  const pin = DEMO_LOGIN?.transferPin;
-  const isDemoAccount = pin && getAuth()?.username === DEMO_LOGIN.username;
-  if (!isDemoAccount) {
-    el.hidden = true;
-    return;
-  }
-  el.textContent = `데모 이체 비밀번호: ${pin}`;
-  el.hidden = false;
-}
-
 /* ── 이체 마법사 ─────────────────────────────────────────────────── */
 function tfGoStep(n) {
-  if (n === 2) renderTransferPinHint();   // 확인 단계에 들어올 때마다 갱신
   [1, 2, 3].forEach((i) => {
     document.getElementById(`tf-step-${i}`).style.display = i === n ? "block" : "none";
   });
@@ -2246,59 +2227,6 @@ document.addEventListener("click", (e) => {
     statusEl.textContent = `${label} 간편로그인은 준비 중입니다.`;
   }
 });
-
-/* ── 공개 데모 로그인 안내 + 비밀번호 자동 채우기 ──────────────────
- * window.DEMO_LOGIN 은 /js/env-config.js 가 심는다(= 배포 환경변수 DEMO_LOGIN).
- * 비밀번호를 이 파일에 하드코딩하지 않는 이유: main.js 는 공개 정적 파일이라
- * view-source 에 그대로 노출되고 저장소에도 영구히 남는다.
- * 미설정(null)이면 카드도 자동 채우기도 동작하지 않는다 → 로컬 clone 동작 변화 없음.
- *
- * 화면에 인쇄하는 것은 아이디뿐이다. 비밀번호는 그 아이디를 입력하면 채워지고,
- * 이체 비밀번호는 아예 여기서 다루지 않는다(이체 확인 단계에서 안내).
- */
-const DEMO_LOGIN = window.DEMO_LOGIN || null;
-
-// 자동으로 채워 넣은 비밀번호인지 추적한다. 사용자가 직접 입력한 값은 절대 지우지 않는다.
-let demoPwAutofilled = false;
-
-function renderDemoLoginHint() {
-  // 홈 히어로의 안내 배지도 같은 조건(DEMO_LOGIN 존재)으로만 노출한다
-  const badge = document.getElementById("hero-demo-badge");
-  if (badge && DEMO_LOGIN) badge.hidden = false;
-
-  const box = document.getElementById("demo-login-hint");
-  if (!box || !DEMO_LOGIN) return;          // 미설정이면 hidden 그대로 둔다
-  box.innerHTML = `
-    <p class="demo-hint-title">포트폴리오 데모</p>
-    <p class="demo-hint-body">아이디에
-      <button type="button" class="demo-hint-chip" id="demo-login-chip">${DEMO_LOGIN.username}</button>
-      을 입력하시면 비밀번호가 자동으로 채워집니다.</p>
-    <p class="demo-hint-body">계좌조회 · 이체 · AI 은행원 · 마이페이지와
-      백오피스 9개 메뉴를 모두 보실 수 있습니다.</p>
-    <p class="demo-hint-note">이체 비밀번호는 이체 확인 단계에서 안내합니다.</p>`;
-  box.hidden = false;
-}
-
-/* 아이디 입력값에 따라 비밀번호를 채우거나 (우리가 채운 경우에만) 되돌린다.
- * 입력란이 비어 있을 때만 채운다 — 브라우저 비밀번호 관리자가 이미 넣어둔 값을
- * 덮어쓰지 않기 위함이다(#login-password 는 autocomplete="current-password"). */
-function syncDemoPassword() {
-  if (!DEMO_LOGIN) return;
-  const userEl = document.getElementById("login-username");
-  const pwEl = document.getElementById("login-password");
-  if (!userEl || !pwEl) return;
-
-  const match = userEl.value.trim() === DEMO_LOGIN.username;
-  if (match) {
-    if (!pwEl.value) {
-      pwEl.value = DEMO_LOGIN.password;
-      demoPwAutofilled = true;
-    }
-  } else if (demoPwAutofilled) {
-    pwEl.value = "";
-    demoPwAutofilled = false;
-  }
-}
 
 async function handleLogin() {
   const username = document.getElementById("login-username").value.trim();
@@ -3624,24 +3552,6 @@ async function loadBoDashboardBankRank() {
     console.error("은행 비중 로드 실패:", err);
   }
 }
-
-/* 테스트 계정(데모 계정) 정보 표시 */
-document.addEventListener("click", async (e) => {
-  if (!e.target.closest("#bo-show-demo")) return;
-  const box = document.getElementById("bo-demo-info");
-  box.textContent = "불러오는 중…";
-  try {
-    const res = await apiFetch("/api/admin/demo-account");
-    if (!res.ok) throw new Error("조회 실패");
-    const data = await res.json();
-    box.innerHTML =
-      `<div class="cf-row"><span>아이디</span><b>${escapeHtml(data.username)}</b></div>` +
-      `<div class="cf-row"><span>비밀번호</span><b>${escapeHtml(data.password)}</b></div>` +
-      `<p class="tf-hint">${escapeHtml(data.note)}</p>`;
-  } catch (err) {
-    box.textContent = "불러오지 못했습니다.";
-  }
-});
 
 /* 회원관리 */
 async function loadBoUsers(page = 1) {
@@ -6092,23 +6002,6 @@ window.addEventListener("message", (e) => {
     }
   };
   open();
-});
-
-/* ── 공개 데모 안내 카드 + 자동 채우기 리스너 ───────────────────── */
-renderDemoLoginHint();
-document.getElementById("login-username")?.addEventListener("input", syncDemoPassword);
-// 아이디 칩 클릭 → 타이핑 없이도 같은 경로를 태운다(카드는 렌더 후에 생기므로 위임으로 받는다)
-document.addEventListener("click", (e) => {
-  if (!e.target.closest("#demo-login-chip")) return;
-  const userEl = document.getElementById("login-username");
-  if (!userEl) return;
-  userEl.value = DEMO_LOGIN.username;
-  syncDemoPassword();
-  document.getElementById("login-password")?.focus();
-});
-// 로그인 폼이 reset 되면(로그인 성공) 자동 채움 추적도 초기화한다
-document.getElementById("login-form")?.addEventListener("reset", () => {
-  demoPwAutofilled = false;
 });
 
 /* ── 초기 진입 (해시 기반) ───────────────────────────────────────── */

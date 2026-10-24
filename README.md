@@ -258,7 +258,7 @@ python3.12 -m venv .venv          # 시스템 기본 python3 가 3.12 가 아니
 .venv/bin/pip install -r requirements.txt
 
 # 데모 데이터 시드 — bank.db 는 .gitignore 대상이라 이 단계가 필수입니다
-.venv/bin/python seed_bank.py      # 사용자·계좌·거래·이체 (reviewer/reviewer1234, demo/demo1234, admin/admin1234)
+.venv/bin/python seed_bank.py      # 사용자·계좌·거래·이체 (demo/demo1234, admin/admin1234)
 .venv/bin/python seed_support.py   # 공지·FAQ·서식·이벤트·배너
 .venv/bin/python seed_usage.py     # 이용 통계 이벤트
 
@@ -297,9 +297,6 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # OPENAI_API_KEY �
 | `KAFKA_DISABLED` | Kafka 없이 동기 처리 |
 | `DEMO_READONLY` / `DEMO_PUBLIC` | 공개 데모 보호 (백오피스 쓰기 차단 / 챗봇 남용 상한) |
 | `JWT_SECRET` | JWT 서명 키. **배포 환경에서는 반드시 설정** — 미설정 시 저장소에 있는 폴백 상수를 쓰게 되고, 공개 저장소이므로 누구나 `role:"admin"` 토큰을 위조할 수 있다 |
-| `DEMO_LOGIN` | 로그인 화면이 안내할 공개 계정. `아이디:비밀번호` 형식(예: `reviewer:...`). 미설정 시 안내 카드와 자동 입력이 아예 렌더되지 않는다(로컬 개발 기본값) |
-| `DEMO_TRANSFER_PIN` | 이체 확인 단계에서 안내할 데모 이체 비밀번호. 로그인한 계정이 `DEMO_LOGIN`의 계정일 때만 노출된다 |
-| `REVIEWER_PASSWORD` / `REVIEWER_TRANSFER_PIN` | `seed_bank.py`가 만드는 공개 계정의 비밀번호·이체 PIN (미설정 시 로컬 기본값) |
 | `ADMIN_PASSWORD` | 관리자 계정 비밀번호. 라이브에서는 공개하지 않는 값으로 설정한다. ⚠️ 이미 존재하는 사용자의 비밀번호는 시드가 덮어쓰지 않으므로, 최초 1회는 마이페이지>보안에서 직접 변경해야 한다 |
 
 ---

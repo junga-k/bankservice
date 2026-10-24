@@ -858,7 +858,7 @@ if "conversation" in st.session_state:
 # 자동 복구). 로컬 개발에는 DEMO_PUBLIC 이 없으므로 아무 제한이 걸리지 않는다.
 #
 # 비로그인(익명)은 별도 풀을 더 낮게 쓴다. 로그인 없이도 쓸 수 있게 열었으므로, 익명
-# 트래픽이 공용 하루치를 다 태우면 reviewer 로 로그인해 둘러보는 채용담당자까지 함께
+# 트래픽이 공용 하루치를 다 태우면 로그인해 둘러보는 사용자까지 함께
 # 막힌다 — 두 풀을 독립시켜 그 전파를 끊는다.
 _DEMO_PUBLIC = os.environ.get("DEMO_PUBLIC", "").strip().lower() in ("1", "true", "yes")
 _SITE_URL = os.environ.get("SITE_URL", "https://bankservice-six.vercel.app")
@@ -1392,11 +1392,10 @@ def _my_accounts(token: str) -> list[dict]:
 
 
 def _my_limits(token: str) -> dict:
-    """이체 정책·정기점검 상태·데모 PIN 힌트를 백엔드에서 한 번에 받아온다.
+    """이체 정책·정기점검 상태를 백엔드에서 한 번에 받아온다.
 
-    판단을 전부 서버에 맡기는 이유가 둘이다 —
-    ① 점검 여부: 이 컨테이너 시계는 UTC라 KST 23:50~00:10을 여기서 계산하면 9시간 어긋난다.
-    ② 데모 PIN 힌트: "로그인한 계정이 공개 데모 계정인가"는 백엔드만 안다(DEMO_LOGIN).
+    점검 여부를 서버에 맡기는 이유: 이 컨테이너 시계는 UTC라 KST 23:50~00:10을 여기서
+    계산하면 9시간 어긋난다.
     """
     try:
         r = requests.get(f"{_BACKEND_URL}/api/me/limits",
@@ -1434,16 +1433,6 @@ def _clear_transfer_widget_keys() -> None:
     for _k in ("tf_from_sel", "tf_when", "tf_delay", "tf_sched_d", "tf_sched_t",
                "tf_confirm_chk", "tf_pw", "tf_modal_open"):
         st.session_state.pop(_k, None)
-
-
-# 공개 데모의 이체 비밀번호 힌트는 **백엔드가 판단해서 내려준다**(/api/me/limits 의 demo_pin).
-# 사이트 로그인 화면이 아니라 이체 확인 모달에서만 노출하는 것은 그대로 — 로그인 비밀번호와
-# PIN 을 한 화면에 나란히 두면 인증 수단을 구분하지 않는 것으로 읽힌다.
-#
-# 예전에는 여기서 DEMO_TRANSFER_PIN 환경변수만 보고 **계정과 무관하게** 띄웠다. 그래서
-# admin 으로 로그인해도 reviewer 의 PIN 을 안내했고, 그대로 입력한 사용자가 비밀번호를
-# 연속으로 틀렸다(2026-10-05 라이브에서 발견). 로그인한 계정이 공개 데모 계정인지는
-# DEMO_LOGIN 을 가진 백엔드만 알 수 있어서 판단을 그쪽으로 옮겼다.
 
 
 def _fee_text(fee: int) -> str:
@@ -1503,8 +1492,7 @@ def _transfer_result_text(res: dict, pending: dict, from_account: str,
 @st.dialog("이체 확인")
 def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, amt: int,
                              conv: dict, token: str,
-                             sched_at: float | None, delay_min: int,
-                             demo_pin: str = "") -> None:
+                             sched_at: float | None, delay_min: int) -> None:
     """최종 확인 모달 — 체크박스 + 이체 비밀번호 + 실행.
 
     실패 시 st.rerun() 하지 않는다. 다이얼로그는 rerun 하면 닫히므로, 에러를 모달 안에서
@@ -1524,8 +1512,6 @@ def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, a
     _ok = st.checkbox("받는 분(예금주명)과 금액을 확인했습니다", key="tf_confirm_chk")
     _pw = st.text_input("이체 비밀번호 (숫자 6자리)", type="password", key="tf_pw",
                         max_chars=6, placeholder="이체 비밀번호 6자리를 입력하세요")
-    if demo_pin:
-        st.caption(f"데모 이체 비밀번호: {demo_pin}")
 
     # 두 버튼을 **먼저 그리고** 나서 분기한다. 예전에는 '이체하기' 블록 안에서 return 하는
     # 경로(검증 실패·이체 실패)가 '닫기' 렌더보다 앞서서, 실패한 순간 닫기 버튼이 사라졌다
@@ -1662,8 +1648,6 @@ if _pending:
         _limits = _my_limits(auth_token)
         _maint = _limits.get("maintenance") or {}
         _maint_on = bool(_maint.get("active"))
-        # 로그인한 계정이 공개 데모 계정일 때만 값이 채워져 온다(백엔드가 판단).
-        st.session_state["_demo_pin"] = _limits.get("demo_pin") or ""
         _when_opts = ["즉시 이체", "지연 이체 (취소 가능)", "예약 이체 (지정 시각)"]
         if _maint_on:
             _alert(
@@ -1744,8 +1728,7 @@ if _pending:
     # 모달은 chat_message 컨테이너 밖에서 연다(다이얼로그는 화면 최상위에 렌더된다).
     if st.session_state.get("tf_modal_open"):
         _transfer_confirm_dialog(_pending, _from, _from_bank, _amt, conv, auth_token,
-                                 _sched_at, _delay_min,
-                                 st.session_state.get("_demo_pin", ""))
+                                 _sched_at, _delay_min)
 
 
 # ── 이체 완료 후: 내 계좌 거래내역으로 이동하는 액션(사이트에 postMessage) ──
