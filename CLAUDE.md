@@ -108,7 +108,8 @@ Kafka·Elasticsearch·Phoenix 3개를 매번 따로 띄우는 대신 `./start_in
 ### 프런트엔드 (`site/`)
 - 정적 SPA(`index.html` + `js/main.js` + `css/style.css`). 섹션 토글 방식, 인증은 localStorage(JWT). Backoffice(관리자) 탭에 대시보드·이체모니터링·이용통계·성능관리 등.
 - **로그인 게이트는 `navigate()` 한 군데 + `requireLogin()` 헬퍼로 모인다.** 홈·AI은행원·상품안내·고객센터는 로그인 없이 열리고, 내 계좌·마이페이지·1:1문의·이벤트응모·백오피스만 막는다. 안내 모양은 막히는 범위로 가른다 — 섹션 전체면 화면 안 안내문(`*-guest` 패널), 섹션 안의 탭·버튼이면 팝업(`showModal()` 재사용). 두 가지가 한 화면에 겹치지 않게 유지할 것.
-- `[이전]`에 **`history.back()`을 쓰면 안 된다** — `navigate()`가 `history.replaceState`만 써서 스택이 없고 사이트를 벗어난다. 직전 위치를 `prevSectionView`/`prevTabOf`로 직접 기억한다(탭까지 기억해야 1:1 문의처럼 탭 단위로 막히는 곳에서 탭 표시가 어긋나지 않는다). 되돌리는 중의 이동은 `gateReverting` 플래그로 기록에서 제외하고, **같은 섹션 안에서 탭만 되돌릴 때는 `navigate()`를 다시 타지 않는다**(막힌 탭이 활성인 채로 부르면 게이트 → 되돌리기 → 게이트로 맴돈다).
+- **브라우저 뒤로가기·앞으로가기**(2026-10-25): 메뉴(섹션) 이동과 백오피스 메뉴(`#backoffice/<탭>`)만 `pushState`로 기록을 쌓고, 다른 섹션 안의 탭은 쌓지 않는다. 게이트 되돌리기·권한 없어 튕김·로그인 후 복귀·첫 진입은 `replaceState`(`setHash`/`navigateReplace`). 뒤로가기는 `hashchange` → `navigate()`로 화면을 맞춘다.
+- `[이전]`에 **`history.back()`을 쓰면 안 된다** — 사이트에 막 들어온 상태면 사이트를 벗어난다. 직전 위치를 `prevSectionView`/`prevTabOf`로 직접 기억한다(탭까지 기억해야 1:1 문의처럼 탭 단위로 막히는 곳에서 탭 표시가 어긋나지 않는다). 되돌리는 중의 이동은 `gateReverting` 플래그로 기록에서 제외하고, **같은 섹션 안에서 탭만 되돌릴 때는 `navigate()`를 다시 타지 않는다**(막힌 탭이 활성인 채로 부르면 게이트 → 되돌리기 → 게이트로 맴돈다).
 - `bankBadge()`가 은행명 옆 배지 렌더 — `site/img/banks/<파일>` 로고가 있으면 로고, 없으면 색상 배지로 자동 대체.
 - 헤더 로고는 `site/img/logo-mark.svg`(아이콘만)/`site/img/logo.svg`(아이콘+워드마크) — 파비콘 등 다른 곳에서도 재사용 가능하도록 파일로 분리돼 있다(헤더 자체는 `logo-mark.svg`만 씀).
 - `#products` 카테고리는 카드가 아니라 알약형 탭바(`.cat-tabs`/`.cat-tab`, 5개: 예금/적금/주택담보대출/전세자금대출/신용대출) — 설명 문구는 탭이 아니라 클릭 시 펼쳐지는 상품 목록 패널(`#product-list-desc`)에 표시된다. 목록이 길면 `renderProductList()`가 상위 `PRODUCT_LIST_PAGE_SIZE`(8)개만 보여주고 "더보기/접기" 토글로 나머지를 펼친다(`site/js/main.js`).

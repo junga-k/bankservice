@@ -147,8 +147,9 @@ document.addEventListener("click", (e) => {
  *   - 섹션 전체가 막히면  → 화면 안 안내문(`*-guest` 패널). 화면을 채울 것이 없으므로.
  *   - 섹션 안의 탭·버튼만 → 팝업. 뒤에 계속 볼 화면이 남아 있을 때만 팝업이 의미가 있다.
  *
- * 직전 화면은 브라우저 히스토리로 되돌릴 수 없다 — navigate()가 history.replaceState만
- * 쓰므로 스택이 쌓이지 않고, history.back()은 사이트를 벗어난다. 그래서 직접 기억한다.
+ * [이전]은 history.back()을 쓰지 않고 직전 화면을 직접 기억한다 — 사이트에 막 들어온
+ * 상태라면 history.back()은 사이트를 벗어나고, 되돌리는 이동은 기록을 덮어써서(setHash
+ * replace) 스택에 막힌 화면이 남지 않게 하기 때문이다.
  * 섹션만 기억하면 부족하다: 1:1 문의는 #support 안의 탭이라 탭 표시가 이미 '문의하기'로
  * 바뀐 뒤에 팝업이 뜬다. [이전]이 탭까지 되돌리지 않으면 "문의하기가 선택됐는데 공지
  * 목록이 보이는" 어긋남이 남는다.
@@ -251,6 +252,36 @@ document.addEventListener("click", (e) => {
 });
 
 /* ── 라우팅 ──────────────────────────────────────────────────────── */
+/* 브라우저 뒤로가기·앞으로가기 지원.
+ * 메뉴 이동(섹션)과 백오피스 메뉴(탭)만 기록을 쌓는다(pushState). 다른 섹션 안의 탭은
+ * 같은 화면 안에서 오가는 것이라 쌓지 않는다 — 쌓으면 홈으로 돌아가는 데 뒤로가기를
+ * 탭 누른 횟수만큼 눌러야 한다.
+ * 기록을 덮어쓰는(replaceState) 경우: 로그인 게이트의 되돌리기(gateReverting), 권한 없는
+ * 화면에서 튕길 때, 로그인 후 원래 자리로 복귀할 때, 첫 진입. 그래야 앞으로가기로 막힌
+ * 화면에 다시 들어가거나, 로그인한 채 뒤로가기로 로그인 화면에 돌아가지 않는다.
+ * 뒤로가기는 해시만 바꾸므로 아래 hashchange 리스너 → navigate()가 화면을 맞춘다. */
+let navReplace = false;
+
+function setHash(hash) {
+  if (location.hash === hash) return;
+  if (navReplace || gateReverting) history.replaceState(null, "", hash);
+  else history.pushState(null, "", hash);
+}
+
+function navigateReplace(name) {
+  navReplace = true;
+  try { navigate(name); } finally { navReplace = false; }
+}
+
+function boHash(tab) {
+  return tab && tab !== "dashboard" ? `#backoffice/${tab}` : "#backoffice";
+}
+
+function boTabFromHash() {
+  const m = location.hash.match(/^#backoffice\/([\w-]+)/);
+  return m ? m[1] : "dashboard";
+}
+
 function navigate(name) {
   if (!SECTIONS.includes(name)) name = "home";
   noteSectionChange(name);
@@ -290,18 +321,26 @@ function navigate(name) {
       goView(prevSectionView);
       return;
     }
-    if (auth.role !== "admin") { navigate("home"); return; }   // 로그인했지만 관리자가 아닌 경우
-    ensureBoTabLoaded("dashboard");
-    const activeTab = document.querySelector(".bo-tab.active");
-    setBoAutoRefresh(activeTab ? activeTab.dataset.boTab : "dashboard");
+    if (auth.role !== "admin") { navigateReplace("home"); return; }   // 로그인했지만 관리자가 아닌 경우
+    // 주소의 백오피스 메뉴(#backoffice/members 등)를 화면에 반영한다 — 뒤로가기로 온 경우 포함
+    const wantTab = boTabFromHash();
+    const activeTab = document.querySelector(".bo-tab.active")?.dataset.boTab || "dashboard";
+    const tab = location.hash.startsWith("#backoffice") ? wantTab : activeTab;
+    if (tab !== activeTab) boGoTab(tab, { fromHistory: true });
+    ensureBoTabLoaded(tab);
+    setBoAutoRefresh(tab);
+    setHash(boHash(tab));
+    window.scrollTo(0, 0);
+    if (window.updateScrollHint) window.updateScrollHint();
+    return;
   }
   if (name === "support") {
     const active = document.querySelector(".support-tab.active");
     ensureSupportTabLoaded(active ? active.dataset.supportTab : "notices");
   }
 
-  // 해시 동기화 (뒤로가기 지원)
-  if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+  // 해시 동기화 (뒤로가기 지원 — setHash 주석 참고)
+  setHash("#" + name);
   window.scrollTo(0, 0);
   if (window.updateScrollHint) window.updateScrollHint();
 }
@@ -2253,11 +2292,11 @@ async function handleLogin() {
     const back = returnAfterLogin;
     returnAfterLogin = null;
     if (back) {
-      navigate(back.section);
+      navigateReplace(back.section);   // 로그인 화면 기록을 덮어써서 뒤로가기로 되돌아가지 않게
       const t = TABBED_SECTIONS[back.section];
       if (t && back.tab) t.go(back.tab);
     } else {
-      navigate("home");
+      navigateReplace("home");
     }
   } catch (err) {
     statusEl.className = "tf-status err";
@@ -3251,8 +3290,10 @@ document.addEventListener("click", (e) => {
   else if (list === "support-inquiries") loadInquiries(page);
 });
 
-function boGoTab(name) {
+function boGoTab(name, { fromHistory = false } = {}) {
   if (!BO_TABS.includes(name)) name = "dashboard";
+  // 백오피스 메뉴는 각각 별도 페이지에 가까워 뒤로가기 기록을 쌓는다(setHash 주석 참고)
+  if (!fromHistory && curSection === "backoffice") setHash(boHash(name));
   document.querySelectorAll(".bo-tab").forEach((b) =>
     b.classList.toggle("active", b.dataset.boTab === name)
   );
@@ -6010,9 +6051,9 @@ refreshAuthUI();
 /* 해시에 파라미터가 붙어 올 수 있어(#chat?conv=…) 섹션 이름만 떼어 쓴다 —
    예전처럼 slice(1)을 그대로 넘기면 SECTIONS 매칭에 실패해 조용히 홈으로 빠진다. */
 function sectionFromHash() {
-  return (location.hash || "#home").slice(1).split(/[?&]/)[0];
+  return (location.hash || "#home").slice(1).split(/[?&/]/)[0];
 }
-navigate(sectionFromHash());
+navigateReplace(sectionFromHash());
 // AI은행원을 누르기 전에 미리 깨워 둔다 — 홈을 둘러보는 동안 깨어나 진입 때 기다리지 않게(wakeChat 참고)
 wakeChat();
 window.addEventListener("hashchange", () => navigate(sectionFromHash()));
