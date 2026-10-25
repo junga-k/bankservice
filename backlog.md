@@ -2,7 +2,22 @@
 
 아직 처리 안 된 작업 체크리스트. 완료하면 체크하고, 상세 조사/시행착오 기록은 `session-log.md`에 남긴다(이 파일엔 "무엇을 해야 하는지"만 간결하게 유지).
 
-## ▶ 다음 작업 — 고친 2건을 다음 점검시간에 라이브로 재확인 (2026-10-07에서 이월)
+## ▶ 현재 상태 — 배포 철수, 로컬 전용 (2026-10-25)
+
+공개 배포(Vercel·Streamlit Cloud·Turso)와 reviewer 계정을 내렸다. 경위는 `session-log.md` `### 2026-10-24~25`에 있다.
+**아래 항목 중 라이브 주소(`bankservice-six.vercel.app`)나 reviewer를 전제로 한 것은 더 이상 유효하지 않다.**
+
+- [ ] (사용자) Vercel 프로젝트 `bankservice-six` 삭제
+- [ ] (사용자) GitHub → Settings → Applications에서 Vercel 연결 해제
+- [ ] (사용자) Streamlit Community Cloud 앱 삭제
+- [ ] (사용자) Turso DB 삭제
+- [ ] (권장) OpenAI·FSS 키 재발급 → 로컬 `config.json`·`.streamlit/secrets.toml` 갱신
+- [ ] 무활동 종료(9분 경고·10분 종료)를 로컬에서 실제 10분 기다려 확인 — 지금까지는 시간을 줄여 흉내 낸 테스트만 했다
+- 참고: 로컬 예약이체 실행은 서버 안의 폴러가 맡는다(GitHub Actions 크론은 삭제했다).
+
+## 고친 2건을 다음 점검시간에 라이브로 재확인 — 무효(배포 철수, 2026-10-25)
+
+로컬에서 확인하려면 같은 표를 `localhost:8000`·`localhost:8501` 기준으로 보면 된다. 3번(Streamlit Cloud 재배포)은 해당 없음.
 
 2026-10-06 라이브 확인에서 나온 버그 2건은 **고쳐서 배포까지 끝냈다**(커밋 `5d71c33`).
 단위테스트 24개와 로컬 API 직접 호출로는 검증했지만, **수정본을 라이브 점검시간대에서
