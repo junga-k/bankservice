@@ -1610,6 +1610,11 @@ body:has(#chat.active) .site-footer {
   border-radius: 10px;
   padding: 4px 0;
 }
+/* .panel 안의 스크롤 목록·표는 패널 테두리와 겹쳐 이중선이 된다(항목도 각자 카드/구분선이 있음).
+   스크롤 영역의 테두리만 뺀다(스크롤·max-height·radius 는 그대로 — 표 머리 배경 모서리용).
+   패널 밖에 단독으로 있는 것(배너 관리 표)은 이 테두리가 유일한 경계라 그대로 둔다. */
+.panel > .bo-scroll-list,
+.panel > .bo-scroll-table { border: none; }
 /* 보안 이벤트·접근 로그·이체 내역 공용 번호 페이지네이션(◀ 이전 1 … 5 6 [7] 8 9 … 155 다음 ▶) */
 .bo-pagination {
   display: flex;
