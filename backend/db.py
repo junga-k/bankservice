@@ -1106,6 +1106,40 @@ def create_favorite(user_id: int, bank_name: str, account_no: str,
         return cur.lastrowid
 
 
+# 모든 계정이 처음 갖는 자주쓰는 계좌(이체 화면 칩·마이페이지·AI은행원이 같은 목록을 본다).
+# (bank_name, account_no, holder_name, nickname)
+DEFAULT_FAVORITES = [
+    ("우리은행", "1002-333-444555", "김철수", ""),
+    ("하나은행", "218-910111-12345", "이영희", ""),
+    ("토스뱅크", "100-2345-6789", "박민수", ""),
+]
+
+
+def add_default_favorites(conn, user_id: int, now: float | None = None) -> int:
+    """DEFAULT_FAVORITES 중 아직 없는 계좌만 넣는다(숫자만 비교, 멱등). 넣은 개수 반환.
+    시드 스크립트가 이미 연 conn 안에서도 쓸 수 있게 conn 을 받는다."""
+    have = {
+        re.sub(r"[^0-9]", "", r["account_no"])
+        for r in conn.execute("SELECT account_no FROM favorites WHERE user_id = ?", (user_id,))
+    }
+    n = 0
+    for bank, account_no, holder, nickname in DEFAULT_FAVORITES:
+        if re.sub(r"[^0-9]", "", account_no) in have:
+            continue
+        conn.execute(
+            "INSERT INTO favorites(user_id, bank_name, account_no, holder_name, nickname, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, bank, account_no, holder, nickname, now or time.time()),
+        )
+        n += 1
+    return n
+
+
+def seed_default_favorites(user_id: int) -> int:
+    with get_conn() as conn:
+        return add_default_favorites(conn, user_id)
+
+
 def list_favorites(user_id: int) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(

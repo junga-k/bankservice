@@ -62,9 +62,10 @@ Kafka·Elasticsearch·Phoenix 3개를 매번 따로 띄우는 대신 `./start_in
 - 새 제공자: `PROVIDERS`에 추가 → `_stream_<provider>()` 작성 → `stream_chat()` 분기 연결. `app.py` 수정 불필요.
 
 ### `agent.py` — 은행업무 AI 에이전트 (도구호출)
-- 단일 오케스트레이터가 LangGraph `create_react_agent`로 백엔드 REST API를 **도구**로 호출한다. 도구 9개는 `_build_lc_tools()` 안의 평평한 `specs` 리스트 하나로 정의된다 — 예전 OpenAI function-calling 시절의 도메인별 그룹 상수(`ACCOUNT_TOOLS` 등)는 리팩터링 때 사라졌으니 찾지 말 것(파일 머리말 docstring에 그 서술이 아직 남아 있다).
-- **로그인은 도구 단위로 걸린다.** `search_products`/`get_faqs`/`get_notices`/`get_documents` 4개는 애초에 토큰을 넘기지 않아 비로그인에서도 동작하고, 계좌·이체·문의접수 도구는 `_login_required(what, ctx)`로 앱단에서 먼저 막는다(백엔드도 401을 내지만 중간 단계에서 먼저 실패하면 원인이 가려져서). 그 헬퍼가 `ctx["login_required"]`를 세우면 `run_agent()` 결과에 실려 나가고, `app.py`가 그걸 보고 답변 아래에 로그인 안내 박스를 띄운다.
+- 단일 오케스트레이터가 LangGraph `create_react_agent`로 백엔드 REST API를 **도구**로 호출한다. 도구 10개는 `_build_lc_tools()` 안의 평평한 `specs` 리스트 하나로 정의된다 — 예전 OpenAI function-calling 시절의 도메인별 그룹 상수(`ACCOUNT_TOOLS` 등)는 리팩터링 때 사라졌으니 찾지 말 것(파일 머리말 docstring에 그 서술이 아직 남아 있다).
+- **로그인은 도구 단위로 걸린다.** `search_products`/`get_faqs`/`get_notices`/`get_documents` 4개는 애초에 토큰을 넘기지 않아 비로그인에서도 동작하고, 계좌·즐겨찾기·이체·문의접수 도구는 `_login_required(what, ctx)`로 앱단에서 먼저 막는다(백엔드도 401을 내지만 중간 단계에서 먼저 실패하면 원인이 가려져서). 그 헬퍼가 `ctx["login_required"]`를 세우면 `run_agent()` 결과에 실려 나가고, `app.py`가 그걸 보고 답변 아래에 로그인 안내 박스를 띄운다.
 - 도구는 `BACKEND_URL`(:8000)로 HTTP 호출하며, 인증 필요한 도구는 사용자 JWT를 Bearer로 전달.
+- **자주쓰는 계좌는 DB `favorites` 하나가 원본이다**(2026-10-27). 이체 화면 칩(`loadTfFavorites`)·마이페이지 즐겨찾기·에이전트 `get_favorites`가 모두 `/api/me/favorites`를 본다. 모든 계정은 `db.DEFAULT_FAVORITES`(김철수·이영희·박민수)로 시작한다 — 가입 시 `seed_default_favorites`, 기존 계정은 `seed_bank.py`가 없는 것만 채운다. 받는 사람을 이름·별칭으로만 말하면 에이전트가 이 목록에서 계좌번호를 찾아 `propose_transfer`로 넘긴다.
 - **`propose_transfer`는 이체를 실행하지 않는다.** 예금주·수수료만 확인한 '제안'을 반환하고, 실제 실행은 `app.py`의 확인 카드에서 사용자가 버튼을 눌러야 `execute_transfer`→`POST /api/transfer`가 호출된다.
 - 상품 추천은 `search_products`가 `/api/products`(상품안내 페이지와 동일 소스, 예금/적금/주택담보대출/전세자금대출/신용대출 5종)를 조회 → 반환 목록 안의 상품만 안내하도록 지시.
 - `tool_search_products`의 카테고리 자동판별: 명시값 → 질의어 키워드("전세"/"주택담보"/"신용대출"/"적금"/"예금"/"대출") → 기본 "금리비교"(예금+적금). 대출 카테고리는 `best_rate`가 최저금리 기준이라 예금/적금(최고금리 기준)과 의미가 반대임을 도구 응답 `note`에 명시해 LLM에게 알려준다.

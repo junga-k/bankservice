@@ -776,7 +776,7 @@ function accountGoTab(name) {
   ACCOUNT_TABS.forEach((t) => {
     document.getElementById(`account-panel-${t}`).style.display = t === name ? "block" : "none";
   });
-  if (name === "transfer") loadTransferNotice();
+  if (name === "transfer") { loadTransferNotice(); loadTfFavorites(); }
 }
 
 document.addEventListener("click", (e) => {
@@ -894,12 +894,17 @@ function fillTransferFrom(accounts) {
   renderTfQuickAccounts();
 }
 
-/* 자주쓰는계좌: 내 다른 계좌 + 미리 만들어둔 데모 수신 계좌 */
-const TF_FAVORITE_ACCOUNTS = [
-  { bank_name: "우리은행", account_no: "1002-333-444555", holder_name: "김철수" },
-  { bank_name: "하나은행", account_no: "218-910111-12345", holder_name: "이영희" },
-  { bank_name: "토스뱅크", account_no: "100-2345-6789", holder_name: "박민수" },
-];
+/* 자주쓰는계좌: 내 다른 계좌 + 마이페이지 즐겨찾기(/api/me/favorites).
+ * AI은행원(get_favorites)도 같은 목록을 보므로 여기서 따로 목록을 두지 않는다. */
+let tfFavorites = [];
+
+async function loadTfFavorites() {
+  try {
+    const res = await apiFetch("/api/me/favorites");
+    if (res.ok) tfFavorites = (await res.json()).favorites || [];
+  } catch (_) { /* 목록을 못 받아도 내 계좌 칩은 보인다 */ }
+  renderTfQuickAccounts();
+}
 
 function renderTfQuickAccounts() {
   const list = document.getElementById("tf-quick-accounts-list");
@@ -908,7 +913,10 @@ function renderTfQuickAccounts() {
   const mine = tfAccounts
     .filter((a) => a.account_no !== fromNo)
     .map((a) => ({ bank_name: a.bank_name, account_no: a.account_no, holder_name: a.holder_name, mine: true }));
-  const items = [...mine, ...TF_FAVORITE_ACCOUNTS];
+  const favs = tfFavorites.map((f) => ({
+    bank_name: f.bank_name, account_no: f.account_no, holder_name: f.nickname || f.holder_name,
+  }));
+  const items = [...mine, ...favs];
   list.innerHTML = items
     .map(
       (a) => `<button type="button" class="tf-quick-acct" data-bank="${escapeHtml(a.bank_name)}" data-no="${escapeHtml(a.account_no)}">

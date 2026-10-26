@@ -43,6 +43,9 @@ SYSTEM_PROMPT = (
     "- 이체는 propose_transfer로 '제안'만 하세요. 실제 실행은 사용자가 화면에서 확인합니다.\n"
     "- 이체 시 from_account/to_account 에는 반드시 실제 계좌번호를 넣으세요. 사용자가 '신한은행 계좌'처럼 "
     "은행명만 말하면 먼저 get_accounts 로 내 계좌 목록을 조회해 해당 은행의 계좌번호를 확인한 뒤 사용하세요.\n"
+    "- 받는 사람을 계좌번호 없이 이름·별칭(예: '이영희', '월세')으로만 말하면 get_favorites 로 자주쓰는 계좌를 "
+    "조회해 holder_name·nickname 이 맞는 계좌번호로 propose_transfer 를 호출하세요. 여러 개가 맞으면 어느 계좌인지 "
+    "되묻고, 하나도 맞지 않으면 자주쓰는 계좌에 없다고 알리고 계좌번호를 물어보세요.\n"
     "- 보내는 분 계좌를 지정하지 않았어도 채팅에서 먼저 물어보지 말고 from_account를 빈 문자열로 두고 "
     "propose_transfer를 바로 호출하세요. 확인 카드 자체에 보내는 분 계좌 선택 드롭다운이 있어서(기본값은 "
     "주계좌), 사용자가 거기서 직접 바꿀 수 있습니다. get_accounts로 계좌 목록을 조회해 '어느 계좌에서 "
@@ -130,6 +133,12 @@ def tool_get_accounts(args, ctx):
     if not ctx.get("token"):
         return _login_required("내 계좌 조회", ctx)
     return _get("/api/accounts", ctx.get("token"))
+
+
+def tool_get_favorites(args, ctx):
+    if not ctx.get("token"):
+        return _login_required("자주쓰는 계좌 조회", ctx)
+    return _get("/api/me/favorites", ctx.get("token"))
 
 
 def tool_get_transactions(args, ctx):
@@ -300,6 +309,9 @@ def _build_lc_tools(ctx: dict):
     def get_accounts() -> str:
         return _dump(tool_get_accounts({}, ctx))
 
+    def get_favorites() -> str:
+        return _dump(tool_get_favorites({}, ctx))
+
     def get_transactions(account_no: str) -> str:
         return _dump(tool_get_transactions({"account_no": account_no}, ctx))
 
@@ -327,6 +339,8 @@ def _build_lc_tools(ctx: dict):
 
     specs = [
         (get_accounts, "get_accounts", "로그인 사용자의 모든 계좌와 잔액을 조회한다."),
+        (get_favorites, "get_favorites",
+         "사용자가 등록한 자주쓰는 계좌(이름·별칭·은행·계좌번호)를 조회한다."),
         (get_transactions, "get_transactions", "특정 계좌번호의 거래내역을 조회한다."),
         (lookup_recipient, "lookup_recipient", "받는 계좌의 예금주명·은행·예상 수수료를 조회한다."),
         (propose_transfer, "propose_transfer",

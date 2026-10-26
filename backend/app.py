@@ -371,6 +371,7 @@ def signup(req: SignupReq):
     except (sqlite3.IntegrityError, ValueError):
         # libsql은 UNIQUE 제약 위반 시 sqlite3.IntegrityError 대신 ValueError를 던진다
         raise HTTPException(status_code=400, detail="이미 등록된 계좌번호입니다.")
+    db.seed_default_favorites(user_id)
 
     user = db.get_user_by_username(username)
     token = auth.make_token(user)

@@ -274,8 +274,10 @@ SEED_INQUIRIES = [
 ]
 
 # 즐겨찾기: (username, bank_name, account_no, holder_name, nickname, days_ago)
+# demo 만 별칭·등록일을 다르게 둔다. 나머지 계정은 db.DEFAULT_FAVORITES 로 채운다(아래 보정).
 SEED_FAVORITES = [
     (DEMO_USER, "우리은행", "1002-333-444555", "김철수", "김철수", 7),
+    (DEMO_USER, "하나은행", "218-910111-12345", "이영희", "이영희", 6),
     (DEMO_USER, "토스뱅크", "100-2345-6789", "박민수", "박민수(월세)", 5),
 ]
 
@@ -365,6 +367,14 @@ def _seed_runtime_rows(conn, now: float, force: bool = False) -> dict:
             )
             n += 1
         counts["favorites"] = n
+    # 이미 시드된 DB 의 기존 계정도 기본 자주쓰는 계좌를 갖도록 보정(없는 것만 넣어 멱등).
+    added = 0
+    for username in (DEMO_USER, ADMIN_USER):
+        uid = _uid(conn, username)
+        if uid is not None:
+            added += db.add_default_favorites(conn, uid, now)
+    if added:
+        counts["favorites_default"] = added
 
     # ── event_entries ── seed_support.py 가 이벤트를 만든 뒤여야 채워진다
     if _empty("event_entries"):
