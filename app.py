@@ -1431,7 +1431,8 @@ def _poll_transfer_status(transfer_id: int, token: str,
 def _clear_transfer_widget_keys() -> None:
     """이체 플로우 위젯 상태를 정리 — 다음 번 새 이체에 이전 값(특히 비밀번호)이 새지 않도록."""
     for _k in ("tf_from_sel", "tf_when", "tf_delay", "tf_sched_d", "tf_sched_t",
-               "tf_confirm_chk", "tf_pw", "tf_modal_open"):
+               "tf_confirm_chk", "tf_pw", "tf_modal_open",
+               "tf_to_sel", "tf_to_manual", "tf_amount"):
         st.session_state.pop(_k, None)
 
 
@@ -1540,7 +1541,7 @@ def _transfer_confirm_dialog(pending: dict, from_account: str, from_bank: str, a
             _alert("warning", "예약 시각을 현재보다 미래로 설정해 주세요.", "past_sched_modal")
             return
 
-        _exec = dict(pending, from_account=from_account)
+        _exec = dict(pending, from_account=from_account, amount=amt)   # 금액은 카드에서 고친 값
         with st.spinner("이체를 처리하고 있어요…"):
             _res = agent.execute_transfer(_exec, token, _pw,
                                           scheduled_at=sched_at, delay_minutes=delay_min)
@@ -1616,9 +1617,9 @@ if _pending and not auth_token:
     _pending = None
 if _pending:
     _accts = _my_accounts(auth_token)
-    _amt = _pending["amount"]
     with st.chat_message("assistant"):
-        st.markdown(f"**💸 {_pending['holder_name']}님에게 {_amt:,}원({_won_kor(_amt)}) 이체할까요?**")
+        # 제목은 받는 계좌·금액을 카드에서 고친 결과로 그려야 해서 자리만 먼저 잡는다
+        _hdr = st.empty()
 
         # 보내는 분 계좌 선택(계좌 2개 이상일 때)
         _from = _pending["from_account"]
@@ -1634,12 +1635,62 @@ if _pending:
                                  format_func=lambda x: _labels.get(x, x), key="tf_from_sel")
 
         _from_bank = next((a["bank_name"] for a in _accts if a["account_no"] == _from), "")
-        st.markdown(
-            f"- **보내는 분 계좌**: {_from_bank} {_from}\n"
-            f"- **받는계좌**: {_pending['bank_name']} {_pending['to_account']} · 예금주 **{_pending['holder_name']}**\n"
-            f"- 수수료: {_fee_text(_pending['fee'])}"
-        )
-        if _pending.get("is_new_payee"):
+
+        # 받는 계좌: AI가 고른 계좌 / 다른 자주쓰는 계좌 / 직접 입력 중에서 바꿀 수 있다.
+        # 바꾸면 예금주·수수료를 다시 조회해 _pending 을 갈아끼운다(모달·실행이 _pending 을 쓴다).
+        _ctx = {"token": auth_token}
+        _ai = _pending.setdefault("ai_pick", {k: _pending[k] for k in
+                                              ("to_account", "bank_name", "holder_name")})
+        _to_opts = {_ai["to_account"]: f"{_ai['holder_name']} · {_ai['bank_name']} {_ai['to_account']}"}
+        for _f in agent.tool_get_favorites({}, _ctx).get("favorites", []):
+            if agent._digits(_f["account_no"]) not in {agent._digits(k) for k in _to_opts}:
+                _to_opts[_f["account_no"]] = (f"{_f['nickname'] or _f['holder_name']} · "
+                                              f"{_f['bank_name']} {_f['account_no']}")
+        _MANUAL = "__manual__"
+        _to_opts[_MANUAL] = "직접 입력"
+        _to_sel = st.selectbox("받는 계좌", list(_to_opts), format_func=_to_opts.get, key="tf_to_sel")
+
+        def _apply_recipient(account_no: str) -> bool:
+            _look = agent.tool_lookup_recipient({"account_no": account_no, "from_account": _from}, _ctx)
+            if "error" in _look:
+                _alert("error", f"받는 계좌를 확인할 수 없어요: {_look['error']}", "to_lookup_err")
+                return False
+            _pending.update(to_account=_look["account_no"], bank_name=_look["bank_name"],
+                            holder_name=_look["holder_name"], fee=_look.get("fee", 0),
+                            is_new_payee=_look.get("is_new_payee", False))
+            return True
+
+        if _to_sel == _MANUAL:
+            _ci, _cb = st.columns([3, 1], vertical_alignment="bottom")
+            _manual_no = _ci.text_input("받는 분 계좌번호", key="tf_to_manual",
+                                        placeholder="계좌번호를 입력하세요 (- 없이 입력 가능)")
+            if _cb.button("예금주 확인", key="tf_to_lookup", width="stretch") and _manual_no.strip():
+                if _apply_recipient(_manual_no):
+                    _pending["manual_ok"] = agent._digits(_manual_no)
+            # 입력칸 값과 마지막으로 확인한 계좌가 같아야 확인된 것으로 본다(확인 후 고쳐 쓴 경우 막기)
+            _to_ok = bool(_manual_no.strip()) and _pending.get("manual_ok") == agent._digits(_manual_no)
+        else:
+            _pending.pop("manual_ok", None)
+            _to_ok = True
+            if agent._digits(_to_sel) != agent._digits(_pending["to_account"]):
+                _to_ok = _apply_recipient(_to_sel)
+
+        # 금액: AI가 정한 값이 기본, 카드에서 고칠 수 있다
+        _amt = int(st.number_input("이체 금액 (원)", min_value=1, step=10000,
+                                   value=int(_pending["amount"]), key="tf_amount"))
+        st.caption(_won_kor(_amt))
+
+        if _to_ok:
+            _hdr.markdown(f"**💸 {_pending['holder_name']}님에게 {_amt:,}원({_won_kor(_amt)}) 이체할까요?**")
+            st.markdown(
+                f"- **보내는 분 계좌**: {_from_bank} {_from}\n"
+                f"- **받는계좌**: {_pending['bank_name']} {_pending['to_account']} · 예금주 **{_pending['holder_name']}**\n"
+                f"- 수수료: {_fee_text(_pending['fee'])}"
+            )
+        else:
+            _hdr.markdown(f"**💸 {_amt:,}원({_won_kor(_amt)}) 이체할까요?**")
+            st.caption("받는 분 계좌번호를 입력하고 [예금주 확인]을 눌러 주세요.")
+        if _to_ok and _pending.get("is_new_payee"):
             _alert("warning", "⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.", "new_payee_card")
         st.caption("AI가 이체를 위해 정리한 정보입니다. 정확한지 확인 후 진행해 주세요.")
 
@@ -1716,7 +1767,7 @@ if _pending:
         # 칸당 약 300px 라 "이체 확인"(5자)이 줄바꿈될 여지가 없다(2026-09-23 줄바꿈 버그).
         _c1, _c2, _ = st.columns([2, 2, 6], gap="small")
         if _c1.button("이체 확인", type="primary", key="tf_open_modal",
-                      width="stretch"):
+                      width="stretch", disabled=not _to_ok):
             st.session_state["tf_modal_open"] = True
         if _c2.button("취소", key="tf_cancel_confirm", width="stretch"):
             st.session_state.pop("pending_transfer", None)
@@ -1937,6 +1988,9 @@ if prompt:
             st.session_state["_login_prompt"] = True
         if result["kind"] == "transfer_proposal":
             st.session_state.pending_transfer = result["proposal"]
+            # 이전 제안에서 고른 받는 계좌·금액이 새 제안 카드에 남지 않게 한다
+            for _k in ("tf_to_sel", "tf_to_manual", "tf_amount"):
+                st.session_state.pop(_k, None)
         storage.save_conversation(conv)
         st.rerun()
 
