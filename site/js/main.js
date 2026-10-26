@@ -1260,6 +1260,8 @@ async function runTfLookup(to, from) {
     // 받는 은행 자동 맞춤
     const toBank = document.getElementById("tf-to-bank");
     if ([...toBank.options].some((o) => o.value === data.bank_name)) toBank.value = data.bank_name;
+    // 숨은 <select> 값만 바꾸면 커스텀 셀렉트 표시는 그대로라 다시 그린다
+    csRender(toBank.closest(".cs"));
     const newPayee = data.is_new_payee
       ? `<div class="tf-newpayee">⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.</div>` : "";
     holderEl.className = "tf-holder ok";
@@ -1294,7 +1296,9 @@ document.addEventListener("click", (e) => {
   if (!chip) return;
   const bank = chip.dataset.bank;
   const no = chip.dataset.no;
-  document.getElementById("tf-to-bank").value = bank;
+  const toBank = document.getElementById("tf-to-bank");
+  toBank.value = bank;
+  csRender(toBank.closest(".cs"));
   document.getElementById("tf-to").value = no;
   const from = document.getElementById("tf-from").value;
   runTfLookup(no, from);
