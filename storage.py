@@ -1,8 +1,11 @@
 """대화 영구 저장 모듈 (로컬 JSON).
 
 대화 하나당 파일 하나: conversations/<id>.json
-구조: {"id", "title", "created_at", "updated_at", "messages": [...]}
+구조: {"id", "title", "created_at", "updated_at", "owner", "guest", "messages": [...]}
 messages: [{"role": "user"|"assistant", "content": str}, ...]
+owner: 로그인 사용자 아이디(username). 목록·열기·삭제는 owner 가 같은 대화만 허용한다 —
+       대화에는 이체 받는 사람·금액·잔액이 남으므로 다른 사용자에게 보이면 안 된다.
+       owner 가 없는 예전 대화는 누구에게도 보이지 않는다.
 
 나중에 SQLite 등으로 바꾸려면 이 파일의 함수들만 교체하면 된다
 (app.py 는 아래 공개 함수들만 사용한다).
@@ -11,6 +14,7 @@ messages: [{"role": "user"|"assistant", "content": str}, ...]
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 from pathlib import Path
@@ -65,7 +69,8 @@ def save_conversation(conv: dict) -> None:
         try:
             with open(path, encoding="utf-8") as f:
                 existing = json.load(f)
-            if existing.get("messages") == conv["messages"]:
+            if (existing.get("messages") == conv["messages"]
+                    and existing.get("owner") == conv.get("owner")):
                 return  # 내용 변경 없음 — updated_at 그대로 두고 재저장도 생략
         except (json.JSONDecodeError, KeyError):
             pass  # 기존 파일이 손상됐으면 그냥 새로 저장
@@ -77,6 +82,10 @@ def save_conversation(conv: dict) -> None:
 
 
 def load_conversation(conv_id: str) -> dict | None:
+    # id 는 URL(?conv=)로도 들어온다. uuid4().hex 형식만 받아야 ../config 같은 값으로
+    # 대화 폴더 밖 파일(config.json 등)을 읽지 못한다.
+    if not re.fullmatch(r"[0-9a-f]{32}", conv_id or ""):
+        return None
     p = _path(conv_id)
     if not p.exists():
         return None
@@ -84,15 +93,16 @@ def load_conversation(conv_id: str) -> dict | None:
         return json.load(f)
 
 
-def list_conversations(query: str = "", include_guest: bool = False) -> list[dict]:
-    """최신순 대화 메타 목록 [{"id", "title", "updated_at"}, ...].
+def list_conversations(owner: str | None, query: str = "",
+                       include_guest: bool = False) -> list[dict]:
+    """owner 의 대화만 최신순 메타 목록 [{"id", "title", "updated_at"}, ...]으로 반환한다.
 
     query가 있으면 제목 또는 메시지 본문에 포함된 대화만 반환한다.
-
+    owner 가 없으면(비로그인·사용자 확인 실패) 빈 목록이다.
     conv["guest"] 가 참인 대화(비로그인 방문자의 대화)는 기본적으로 제외한다.
-    이 목록은 디렉터리 전체를 훑고 대화 파일에는 사용자 식별 정보가 없어서, 익명 대화가
-    섞이면 그대로 모든 사람의 목록에 뜬다. 표식이 없는 기존 파일은 비게스트로 간주한다.
     """
+    if not owner:
+        return []
     _ensure_dir()
     q = query.strip().lower()
     items = []
@@ -100,6 +110,8 @@ def list_conversations(query: str = "", include_guest: bool = False) -> list[dic
         try:
             with open(p, encoding="utf-8") as f:
                 conv = json.load(f)
+            if conv.get("owner") != owner:
+                continue
             if conv.get("guest") and not include_guest:
                 continue
             if q:
@@ -122,7 +134,8 @@ def list_conversations(query: str = "", include_guest: bool = False) -> list[dic
     return items
 
 
-def delete_conversation(conv_id: str) -> None:
-    p = _path(conv_id)
-    if p.exists():
-        p.unlink()
+def delete_conversation(conv_id: str, owner: str | None) -> None:
+    """owner 의 대화일 때만 지운다."""
+    conv = load_conversation(conv_id)
+    if conv is not None and owner and conv.get("owner") == owner:
+        _path(conv_id).unlink()

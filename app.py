@@ -844,12 +844,6 @@ if _SITE_EMBEDDED:
 elif "auth_token" not in st.session_state:
     st.session_state.auth_token = None
 
-# 비로그인 방문자의 대화에 표식을 남긴다 → 사이드바 '이전 대화' 목록에서 제외된다
-# (storage.list_conversations). 대화 파일에 사용자 식별이 없어서, 익명 대화가 목록에
-# 섞이면 다음 방문자에게 제목과 본문이 그대로 보인다.
-# 매 실행 다시 찍으므로 로그인 상태가 바뀌면 표식도 따라 바뀐다.
-if "conversation" in st.session_state:
-    st.session_state.conversation["guest"] = not st.session_state.auth_token
 
 
 # ── 공개 데모 남용 방지 ───────────────────────────────────────────────
@@ -933,26 +927,51 @@ if _DEMO_PUBLIC and not _SITE_EMBEDDED:
     st.stop()
 
 
-def _fetch_user_name(token: str) -> str | None:
-    """토큰으로 로그인 사용자 이름 조회(홈 인사말용)."""
+def _fetch_me(token: str) -> dict:
+    """토큰으로 로그인 사용자 조회(인사말 이름 + 대화 주인 아이디).
+    아이디는 토큰을 직접 풀지 않고 백엔드가 서명을 검증한 결과만 쓴다 — 조작한 토큰으로
+    남의 대화를 열 수 없게."""
     try:
         r = requests.get(f"{_BACKEND_URL}/api/me",
                          headers={"Authorization": f"Bearer {token}"}, timeout=_BACKEND_TIMEOUT)
         if r.ok:
-            return (r.json().get("name") or "").strip() or None
+            return r.json()
     except Exception:
         pass
-    return None
+    return {}
 
 
-# 토큰이 바뀔 때만 이름을 조회해 캐시(매 실행 호출 방지)
+# 토큰이 바뀔 때만 조회해 캐시(매 실행 호출 방지)
 _tok = st.session_state.auth_token
-if _tok and st.session_state.get("_auth_name_for") != _tok:
-    st.session_state.auth_name = _fetch_user_name(_tok)
+if _tok and (st.session_state.get("_auth_name_for") != _tok
+             or "auth_user" not in st.session_state):
+    _me_info = _fetch_me(_tok)
+    st.session_state.auth_name = (_me_info.get("name") or "").strip() or None
+    st.session_state.auth_user = _me_info.get("username") or None
     st.session_state._auth_name_for = _tok
 elif not _tok:
     st.session_state.auth_name = None
+    st.session_state.auth_user = None
     st.session_state._auth_name_for = None
+_me = st.session_state.get("auth_user")
+
+# ── 대화 주인 ─────────────────────────────────────────────────────────
+# 대화에는 이체 받는 사람·금액·잔액이 남는다. 그래서 대화마다 주인(아이디)을 적고, 목록·열기·
+# 삭제는 주인만 할 수 있게 한다(storage). 여기서는 지금 화면의 대화가 내 것인지 매 실행 맞춘다.
+# - 다른 사람 대화(?conv= 로 넘어온 경우 포함)거나, 로그아웃 뒤 남은 내 대화면 새 대화로 바꾼다.
+# - 주인 없는 비로그인 대화는 로그인한 사람이 넘겨받는다(대화 중 로그인 → ?conv= 로 이어가기).
+#   주인 없는 예전(비게스트) 대화는 누구 것인지 알 수 없으므로 넘겨받지 않는다.
+_cv = st.session_state.conversation
+if _cv.get("owner") and _cv["owner"] != _me:
+    st.session_state.conversation = _cv = storage.new_conversation()
+elif not _cv.get("owner") and _me:
+    if _cv.get("messages") and not _cv.get("guest"):
+        st.session_state.conversation = _cv = storage.new_conversation()
+    _cv["owner"] = _me
+    _cv["guest"] = False
+    storage.save_conversation(_cv)   # 넘겨받은 대화는 바로 내 목록에 보이게(빈 새 대화면 저장 안 됨)
+# 비로그인 방문자의 대화 표식(목록에서 제외). 매 실행 다시 찍어 로그인 상태를 따라간다.
+_cv["guest"] = not _tok
 
 
 def _log_search_products(doc_names: list[str]) -> None:
@@ -1039,9 +1058,8 @@ with st.sidebar:
         st.session_state.conversation = storage.new_conversation()
         st.rerun()
 
-    # 대화 검색과 '이전 대화' 목록은 로그인 사용자에게만 보여준다.
-    # 목록은 conversations/ 디렉터리 전체를 훑고(제목뿐 아니라 본문까지 검색된다) 대화
-    # 파일에는 사용자 식별 정보가 없다 — 익명 방문자에게 열어주면 남의 대화가 그대로 보인다.
+    # 대화 검색과 '이전 대화' 목록은 로그인 사용자에게만, 그것도 내 대화만 보여준다
+    # (storage.list_conversations 가 owner 로 거른다 — 제목뿐 아니라 본문까지 검색되므로).
     if not _tok:
         st.caption("이전 대화")
         st.caption("로그인하면 대화 내역을 보관하고 이어서 볼 수 있습니다.")
@@ -1054,7 +1072,7 @@ with st.sidebar:
         st.caption("이전 대화")
         current_id = st.session_state.conversation["id"]
         _query = (st.session_state.get("sidebar_search") or "").strip()
-        _convos = storage.list_conversations(query=_query)
+        _convos = storage.list_conversations(_me, query=_query)
         # 대화가 많으면 독립 스크롤 영역으로 → 목록이 늘어나도 더 많이 탐색 가능.
         # (적을 때는 자연 높이로 두어 빈 상자가 생기지 않게 함)
         if _query and not _convos:
@@ -1075,11 +1093,11 @@ with st.sidebar:
                 ):
                     storage.save_conversation(st.session_state.conversation)
                     loaded = storage.load_conversation(meta["id"])
-                    if loaded:
+                    if loaded and loaded.get("owner") == _me:
                         st.session_state.conversation = loaded
                         st.rerun()
                 if cols[1].button("", icon=":material/delete:", key=f"del_{meta['id']}", width="stretch"):
-                    storage.delete_conversation(meta["id"])
+                    storage.delete_conversation(meta["id"], _me)
                     if is_current:
                         st.session_state.conversation = storage.new_conversation()
                     st.rerun()
