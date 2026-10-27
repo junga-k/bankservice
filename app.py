@@ -20,44 +20,8 @@ import streamlit.components.v1 as _components
 # backend/app.py 와 같은 이유로 ZoneInfo 가 아니라 고정 오프셋을 쓴다(tzdata 의존 회피).
 KST = _dtmod.timezone(_dtmod.timedelta(hours=9))
 
-# ── 은행 홈페이지 URL 매핑 ────────────────────────────────────────────
-_BANK_URLS: dict[str, str] = {
-    "KB국민은행":  "https://obank.kbstar.com/quics?page=C016528",
-    "국민은행":    "https://obank.kbstar.com/quics?page=C016528",
-    "우리은행":    "https://spot.wooribank.com/pot/Dream?withyou=PODEP0001",
-    "NH농협은행":  "https://wmall.nonghyup.com/servlet/SFBCW0000R.view",
-    "농협은행":    "https://wmall.nonghyup.com/servlet/SFBCW0000R.view",
-    "토스뱅크":   "https://www.tossbank.com/product-service/savings",
-    "제주은행":    "https://www.jejubank.co.kr/hmpg/prdGdnc/sid.do",
-    "SC제일은행":  "https://www.standardchartered.co.kr/np/kr/pl/se/SavingList.jsp",
-    "신한은행":    "https://www.shinhan.com",
-    "하나은행":    "https://www.kebhana.com",
-    "카카오뱅크":  "https://www.kakaobank.com",
-    "IBK기업은행": "https://www.ibk.co.kr",
-    "기업은행":    "https://www.ibk.co.kr",
-    "케이뱅크":   "https://www.kbanknow.com",
-    "부산은행":    "https://www.busanbank.co.kr",
-    "대구은행":    "https://www.dgb.co.kr",
-    "전북은행":    "https://www.jbbank.co.kr",
-    "경남은행":    "https://www.knbank.co.kr",
-    "광주은행":    "https://www.kjbank.com",
-}
+from bank_links import inject_bank_links as _inject_bank_links
 
-
-def _inject_bank_links(text: str) -> str:
-    """어시스턴트 응답에서 기존 링크(상품명 등)는 일반 텍스트로 풀고, 은행명에만 홈페이지 ↗ 링크를 단다."""
-    # '상품 페이지' 링크 줄 제거
-    result = _re.sub(r'\n[ \t]*[-*○◦•]?\s*\[상품\s*페이지\]\([^)]*\)', '', text)
-    # 기존 마크다운 링크는 텍스트만 남기고 링크 제거 → 상품명 등에 걸린 링크 제거
-    result = _re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', result)
-    # 은행명에만 홈페이지 링크 주입(긴 이름부터 처리해 부분일치 방지)
-    for bank, url in sorted(_BANK_URLS.items(), key=lambda x: -len(x[0])):
-        result = _re.sub(
-            rf'(?<!\w){_re.escape(bank)}(?!\w)',
-            lambda m, u=url: f'[{m.group(0)} ↗]({u})',
-            result,
-        )
-    return result
 
 
 import requests

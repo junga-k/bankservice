@@ -90,9 +90,9 @@ _BANK_PRODUCT_URLS: dict[str, dict[str, str]] = {
         "신용대출": "https://www.kbanknow.com/ib20/mnu/FPMMLC0001M",
     },
     "토스뱅크": {
-        "예금": "https://www.tossbank.com/products/deposit",
-        "적금": "https://www.tossbank.com/products/saving",
-        "신용대출": "https://www.tossbank.com/products/loan",
+        "예금": "https://www.tossbank.com/",
+        "적금": "https://www.tossbank.com/",
+        "신용대출": "https://www.tossbank.com/",
     },
     "SC제일은행": {
         "예금": "https://www.standardchartered.co.kr/np/kr/pl/de/deMain.jsp",
