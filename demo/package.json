@@ -1,0 +1,16 @@
+{
+  "name": "matchbank-demo-recording",
+  "private": true,
+  "description": "매치뱅크 시연영상 자동 녹화(Playwright + 가짜 커서·자막)",
+  "scripts": {
+    "setup": "./setup.sh",
+    "record:A": "PLAYWRIGHT_BROWSERS_PATH=./pw-browsers node record.js A",
+    "record:B": "PLAYWRIGHT_BROWSERS_PATH=./pw-browsers node record.js B",
+    "record:C": "PLAYWRIGHT_BROWSERS_PATH=./pw-browsers node record.js C",
+    "build": "./build.sh"
+  },
+  "dependencies": {
+    "ffmpeg-static": "5.2.0",
+    "playwright": "1.49.1"
+  }
+}

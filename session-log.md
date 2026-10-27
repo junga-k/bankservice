@@ -2286,3 +2286,14 @@ CLAUDE.md 에 "KST 는 고정 오프셋으로" 규칙까지 적어놨지만 적�
 - **발견만 하고 고치지 않음**: `search_products` 는 금리로 최고금리(우대 포함)만 넘긴다. 그래서 "기본금리 높은 순" 질문에 정확히 답할 수 없다. 사용자 결정으로 시연 대본을 "금리가 높은 상품"으로 바꿨다.
 - **시연영상 계획**: 다음 세션에서 녹화한다. 계획은 `backlog.md` "시연영상 녹화"에 옮겨 두었다.
   - Playwright `recordVideo` + 주입한 가짜 커서·자막(녹화하면서 같이 찍힘) + `ffmpeg-static` 으로 mp4 변환. 추가 MCP 불필요.
+
+### 2026-10-27 (밤) — 시연영상 녹화 · `demo/` 녹화 도구 보관
+- **결과물**: `~/Desktop/매치뱅크_시연.mp4`(7분 25초, 1440×900, 22MB, 무음). 비로그인 → demo → admin 전체 투어. 장면별 자막은 사용자가 문구를 확정했다(1~28, 마이페이지 M1~M7, "AI은행원" 표기·마침표 없음).
+- **결정**(사용자): 👎 피드백은 실제로 제출한다. 저장 위치는 바탕화면. 녹화 후 DB와 대화를 녹화 전 상태로 되돌린다(완료: 이체 18건·피드백 4건, 대화 목록 동일).
+- **방식**: 별도 Playwright 스크립트(`recordVideo`, 맥에 설치된 Chrome)로 녹화하고, 가짜 커서와 자막을 주입해 같이 찍는다. 세그먼트 A·B·C를 따로 찍어 ffmpeg로 이어 붙인다. 추가 MCP나 Higgsfield는 쓰지 않았다.
+- **시행착오**:
+  - `npx playwright install ffmpeg` 가 다운로드 후 잠금을 쥔 채 멈추고 깨진 바이너리를 남겼다. `ffmpeg-static` 바이너리를 Playwright ffmpeg 자리에 넣어 해결했다(`demo/setup.sh`).
+  - 하단 자막이 AI은행원 입력창을 가렸다. 채팅 화면만 자막을 위쪽으로 옮겼다.
+  - B 첫 녹화가 2시간 4분짜리가 됐다. `freezedetect` 로 찾아보니 상품안내 탭 장면에서 화면이 멈춰 있었다. 탭 클릭은 단독으로 정상이었고, 원인은 `requestAnimationFrame` 기반 스크롤 `page.evaluate`(타임아웃 없음)였다. 타이머 + 20초 상한 + 장면별 시간 로그로 바꿨다.
+  - B 는 A 의 이체가 거래내역에 보여야 해서, DB 를 되돌리고 A·B 를 함께 다시 찍었다.
+- **보관**: 다시 찍을 때 쓰도록 `demo/`(`captions.json`·`record.js`·`lib.js`·`setup.sh`·`build.sh`·`README.md`)에 넣었다. 설치물과 녹화 결과(`node_modules`·`pw-browsers`·`out`)는 `.gitignore` 대상이다. 순서와 함정은 `demo/README.md` 에 있다.
