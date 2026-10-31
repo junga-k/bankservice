@@ -36,8 +36,10 @@ if (container && isDesktopWidth && !prefersReducedMotion && hasWebGL) {
    이 스크립트는 로드 직후 실행되는데, SPA 라 그 시점엔 #home 섹션이 아직 표시되기 전이라
    clientWidth/clientHeight 가 0 이다. 그대로 renderer.setSize(0, 0) 을 하면 캔버스가
    0x0 으로 생성돼, 사용자가 창을 리사이즈하기 전까지 3D 히어로가 아예 보이지 않는다
-   (2026-08-26 라이브 배포에서 확인 — 첫 화면 좌측이 빈 배경으로 보이던 원인). */
-function waitForSize(el, timeoutMs = 10000) {
+   (2026-08-26 라이브 배포에서 확인 — 첫 화면 좌측이 빈 배경으로 보이던 원인).
+   timeoutMs 가 없으면 무기한 기다린다 — 다른 섹션(#account 등)으로 들어와 10초 넘게 지나서
+   홈에 오면 예전 10초 제한에 걸려 두 원이 끝내 안 그려졌다(2026-10-31 시연영상에서 발견). */
+function waitForSize(el, timeoutMs = null) {
   return new Promise((resolve) => {
     if (el.clientWidth > 0 && el.clientHeight > 0) { resolve(true); return; }
     let settled = false;
@@ -51,7 +53,7 @@ function waitForSize(el, timeoutMs = 10000) {
     const observer = new ResizeObserver(() => {
       if (el.clientWidth > 0 && el.clientHeight > 0) finish(true);
     });
-    const timer = setTimeout(() => finish(false), timeoutMs);
+    const timer = timeoutMs ? setTimeout(() => finish(false), timeoutMs) : null;
     observer.observe(el);
   });
 }

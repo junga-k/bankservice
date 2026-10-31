@@ -167,7 +167,9 @@ h1, h2, h3, h4, h5, h6 { margin: 0; font-weight: 700; text-wrap: balance; }
 
 /* ── 본문 영역 ───────────────────────────────────────────────────── */
 main { min-height: calc(100vh - var(--header-h)); }
-.section { display: none; }
+/* 주소의 #home·#account 등이 섹션 id 라서, 새로고침하면 브라우저가 그 앵커로 헤더 높이만큼
+   내려가 섹션 윗부분이 고정 헤더에 가린다. 앵커 위치를 헤더만큼 올려 맨 위(0)에 맞춘다 */
+.section { display: none; scroll-margin-top: var(--header-h); }
 .section.active { display: block; }
 
 .container {
@@ -1610,6 +1612,10 @@ body:has(#chat.active) .site-footer {
   border-radius: 10px;
   padding: 4px 0;
 }
+/* 내 계좌 거래내역·고객센터 서식 목록은 360px 에서 마지막 줄이 반쯤 잘려 보였다 —
+   행 높이(거래 67px·서식 82px)의 정수배 + 위아래 여백 8px 로 맞춰 줄 경계에서 끊기게 한다 */
+#acct-transactions { max-height: calc(67px * 6 + 8px); }
+#document-list { max-height: calc(82px * 5 + 8px); }
 /* .panel 안의 스크롤 목록·표는 패널 테두리와 겹쳐 이중선이 된다(항목도 각자 카드/구분선이 있음).
    스크롤 영역의 테두리만 뺀다(스크롤·max-height·radius 는 그대로 — 표 머리 배경 모서리용).
    패널 밖에 단독으로 있는 것(배너 관리 표)은 이 테두리가 유일한 경계라 그대로 둔다. */

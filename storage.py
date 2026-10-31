@@ -70,7 +70,8 @@ def save_conversation(conv: dict) -> None:
             with open(path, encoding="utf-8") as f:
                 existing = json.load(f)
             if (existing.get("messages") == conv["messages"]
-                    and existing.get("owner") == conv.get("owner")):
+                    and existing.get("owner") == conv.get("owner")
+                    and existing.get("resume_after_login") == conv.get("resume_after_login")):
                 return  # 내용 변경 없음 — updated_at 그대로 두고 재저장도 생략
         except (json.JSONDecodeError, KeyError):
             pass  # 기존 파일이 손상됐으면 그냥 새로 저장

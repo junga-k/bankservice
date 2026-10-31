@@ -1410,11 +1410,19 @@ def _poll_transfer_status(transfer_id: int, token: str,
     return tr
 
 
+# 받는 분 은행 목록 — 사이트 이체 화면(site/js/main.js TF_BANKS)과 같은 목록·순서
+_TF_BANKS = [
+    "신한은행", "국민은행", "우리은행", "하나은행", "NH농협은행",
+    "IBK기업은행", "카카오뱅크", "토스뱅크", "케이뱅크", "SC제일은행",
+    "부산은행", "대구은행", "경남은행", "광주은행", "전북은행", "제주은행",
+]
+
+
 def _clear_transfer_widget_keys() -> None:
     """이체 플로우 위젯 상태를 정리 — 다음 번 새 이체에 이전 값(특히 비밀번호)이 새지 않도록."""
     for _k in ("tf_from_sel", "tf_when", "tf_delay", "tf_sched_d", "tf_sched_t",
                "tf_confirm_chk", "tf_pw", "tf_modal_open",
-               "tf_to_sel", "tf_to_manual", "tf_amount"):
+               "tf_fav", "tf_to_bank", "tf_to_no", "tf_amount"):
         st.session_state.pop(_k, None)
 
 
@@ -1618,44 +1626,75 @@ if _pending:
 
         _from_bank = next((a["bank_name"] for a in _accts if a["account_no"] == _from), "")
 
-        # 받는 계좌: AI가 고른 계좌 / 다른 자주쓰는 계좌 / 직접 입력 중에서 바꿀 수 있다.
-        # 바꾸면 예금주·수수료를 다시 조회해 _pending 을 갈아끼운다(모달·실행이 _pending 을 쓴다).
+        # 받는 계좌: 자주쓰는 계좌 칩(내 계좌 > 이체 화면과 같은 목록·모양) + 은행 선택·계좌번호 직접 입력.
+        # 칩을 누르면 은행·계좌번호가 채워지고 바로 예금주를 확인한다. 직접 고치면 [예금주 확인]을 다시 눌러야
+        # 한다(사이트와 같은 규칙). 확인되면 예금주·수수료로 _pending 을 갈아끼운다(모달·실행이 _pending 을 쓴다).
+        # 값 채우기·확인은 위젯 콜백에서 한다 — 콜백은 위젯이 그려지기 전에 돌아서 다른 위젯 값을 바꿀 수 있다.
         _ctx = {"token": auth_token}
-        _ai = _pending.setdefault("ai_pick", {k: _pending[k] for k in
-                                              ("to_account", "bank_name", "holder_name")})
-        _to_opts = {_ai["to_account"]: f"{_ai['holder_name']} · {_ai['bank_name']} {_ai['to_account']}"}
+        _chips = {}   # account_no -> (표시 이름, 은행)
+        for _a in _accts:
+            if agent._digits(_a["account_no"]) != agent._digits(_from):
+                _chips[_a["account_no"]] = (f"{_a['holder_name']} (내계좌)", _a["bank_name"])
         for _f in agent.tool_get_favorites({}, _ctx).get("favorites", []):
-            if agent._digits(_f["account_no"]) not in {agent._digits(k) for k in _to_opts}:
-                _to_opts[_f["account_no"]] = (f"{_f['nickname'] or _f['holder_name']} · "
-                                              f"{_f['bank_name']} {_f['account_no']}")
-        _MANUAL = "__manual__"
-        _to_opts[_MANUAL] = "직접 입력"
-        _to_sel = st.selectbox("받는 계좌", list(_to_opts), format_func=_to_opts.get, key="tf_to_sel")
+            if agent._digits(_f["account_no"]) not in {agent._digits(k) for k in _chips}:
+                _chips[_f["account_no"]] = (_f["nickname"] or _f["holder_name"], _f["bank_name"])
 
-        def _apply_recipient(account_no: str) -> bool:
+        def _chip_of(account_no: str):
+            return next((k for k in _chips if agent._digits(k) == agent._digits(account_no)), None)
+
+        def _apply_recipient(account_no: str) -> None:
             _look = agent.tool_lookup_recipient({"account_no": account_no, "from_account": _from}, _ctx)
             if "error" in _look:
-                _alert("error", f"받는 계좌를 확인할 수 없어요: {_look['error']}", "to_lookup_err")
-                return False
+                _pending["to_err"] = _look["error"]
+                _pending.pop("to_ok", None)
+                return
+            _pending.pop("to_err", None)
             _pending.update(to_account=_look["account_no"], bank_name=_look["bank_name"],
                             holder_name=_look["holder_name"], fee=_look.get("fee", 0),
                             is_new_payee=_look.get("is_new_payee", False))
-            return True
+            _pending["to_ok"] = agent._digits(_look["account_no"])
+            if _look["bank_name"] in _TF_BANKS:   # 사이트처럼 조회된 은행으로 맞춘다
+                st.session_state["tf_to_bank"] = _look["bank_name"]
+            st.session_state["tf_fav"] = _chip_of(_look["account_no"])
 
-        if _to_sel == _MANUAL:
-            _ci, _cb = st.columns([3, 1], vertical_alignment="bottom")
-            _manual_no = _ci.text_input("받는 분 계좌번호", key="tf_to_manual",
-                                        placeholder="계좌번호를 입력하세요 (- 없이 입력 가능)")
-            if _cb.button("예금주 확인", key="tf_to_lookup", width="stretch") and _manual_no.strip():
-                if _apply_recipient(_manual_no):
-                    _pending["manual_ok"] = agent._digits(_manual_no)
-            # 입력칸 값과 마지막으로 확인한 계좌가 같아야 확인된 것으로 본다(확인 후 고쳐 쓴 경우 막기)
-            _to_ok = bool(_manual_no.strip()) and _pending.get("manual_ok") == agent._digits(_manual_no)
-        else:
-            _pending.pop("manual_ok", None)
-            _to_ok = True
-            if agent._digits(_to_sel) != agent._digits(_pending["to_account"]):
-                _to_ok = _apply_recipient(_to_sel)
+        def _on_fav() -> None:
+            _k = st.session_state.get("tf_fav")
+            if not _k:
+                return
+            st.session_state["tf_to_bank"] = _chips[_k][1] if _chips[_k][1] in _TF_BANKS else None
+            st.session_state["tf_to_no"] = _k
+            _apply_recipient(_k)
+
+        def _on_edit() -> None:   # 은행·계좌번호를 직접 고치면 확인을 다시 받는다
+            st.session_state["tf_fav"] = None
+            _pending.pop("to_ok", None)
+            _pending.pop("to_err", None)
+
+        def _on_lookup() -> None:
+            if st.session_state.get("tf_to_no", "").strip():
+                _apply_recipient(st.session_state["tf_to_no"])
+
+        # 처음 그릴 때는 AI가 고른(이미 예금주 확인된) 계좌로 채운다
+        if "tf_to_no" not in st.session_state:
+            st.session_state["tf_to_no"] = _pending["to_account"]
+            st.session_state["tf_to_bank"] = _pending["bank_name"] if _pending["bank_name"] in _TF_BANKS else None
+            st.session_state["tf_fav"] = _chip_of(_pending["to_account"])
+            _pending["to_ok"] = agent._digits(_pending["to_account"])
+
+        if _chips:
+            st.pills("자주쓰는 계좌", list(_chips), key="tf_fav", on_change=_on_fav,
+                     format_func=lambda k: f"{_chips[k][0]} · {_chips[k][1]}")
+        _cb, _cn, _cl = st.columns([2, 3, 1.3], vertical_alignment="bottom")
+        _cb.selectbox("받는 분 은행", _TF_BANKS, index=None, placeholder="은행 선택",
+                      key="tf_to_bank", on_change=_on_edit)
+        _to_no = _cn.text_input("받는 분 계좌번호", key="tf_to_no", on_change=_on_edit,
+                                placeholder="계좌번호를 입력하세요 (- 없이 입력 가능)")
+        _cl.button("예금주 확인", key="tf_to_lookup", width="stretch", on_click=_on_lookup)
+        if _pending.get("to_err"):
+            _alert("error", f"받는 계좌를 확인할 수 없어요: {_pending['to_err']}", "to_lookup_err")
+        # 입력칸 값과 마지막으로 확인한 계좌가 같아야 확인된 것으로 본다(확인 후 고쳐 쓴 경우 막기)
+        _to_ok = (bool(_to_no.strip()) and bool(st.session_state.get("tf_to_bank"))
+                  and _pending.get("to_ok") == agent._digits(_to_no))
 
         # 금액: AI가 정한 값이 기본, 카드에서 고칠 수 있다
         _amt = int(st.number_input("이체 금액 (원)", min_value=1, step=10000,
@@ -1671,7 +1710,7 @@ if _pending:
             )
         else:
             _hdr.markdown(f"**💸 {_amt:,}원({_won_kor(_amt)}) 이체할까요?**")
-            st.caption("받는 분 계좌번호를 입력하고 [예금주 확인]을 눌러 주세요.")
+            st.caption("받는 분 은행과 계좌번호를 입력하고 [예금주 확인]을 눌러 주세요.")
         if _to_ok and _pending.get("is_new_payee"):
             _alert("warning", "⚠️ 처음 보내는 계좌입니다. 예금주명을 꼭 확인하세요.", "new_payee_card")
         st.caption("AI가 이체를 위해 정리한 정보입니다. 정확한지 확인 후 진행해 주세요.")
@@ -1932,7 +1971,12 @@ if model not in _models:
 # accept_file=True라 chat_input은 문자열이 아니라 ChatInputValue(text, files)를 반환한다.
 _retry_prompt = st.session_state.pop("_retry_prompt", None)
 _chip_prompt = st.session_state.pop("_chip_prompt", None)
-prompt = (_chat_input.text if _chat_input else None) or _retry_prompt or _chip_prompt
+# 로그인이 필요해 멈췄던 요청(conv["resume_after_login"])은 로그인하고 같은 대화로 돌아오면
+# 다시 입력하지 않아도 이어서 처리한다. 예전에는 같은 문장을 다시 보내야 해서 대화에 두 번 남았다.
+_resume_prompt = None
+if auth_token and conv.get("resume_after_login") and not (_chat_input or _retry_prompt or _chip_prompt):
+    _resume_prompt = conv.pop("resume_after_login")
+prompt = (_chat_input.text if _chat_input else None) or _retry_prompt or _chip_prompt or _resume_prompt
 uploaded_files = _chat_input.files if _chat_input else []
 
 if prompt:
@@ -1949,29 +1993,42 @@ if prompt:
 
     # ── 은행업무 에이전트 경로 (OpenAI) ──────────────────────────────
     if agent_enabled:
-        if not _retry_prompt:
+        if not (_retry_prompt or _resume_prompt):
             with st.chat_message("user"):
                 st.markdown(prompt)
-        with st.chat_message("assistant"):
+        # 이어서 처리할 때는 원래 질문이 대화 맨 끝(로그인 안내 답변 앞)에 있으므로, 에이전트에게만
+        # 질문을 한 번 더 붙여 넘긴다(저장되는 대화에는 다시 넣지 않는다).
+        _agent_msgs = conv["messages"] + ([{"role": "user", "content": prompt}] if _resume_prompt else [])
+        _ans = st.chat_message("assistant")
+        with _ans:
             _thinking_ph = st.empty()
             _thinking_ph.markdown(_thinking_indicator_html("요청을 처리하고 있어요…"), unsafe_allow_html=True)
             try:
                 result = agent.run_agent(
-                    conv["messages"], openai_key=openai_key, model=model,
+                    _agent_msgs, openai_key=openai_key, model=model,
                     token=auth_token, system_prompt=system_prompt.strip() or None,
                 )
             except Exception as e:
                 result = {"kind": "message", "text": f"처리 중 오류가 발생했습니다: {e}"}
             _thinking_ph.empty()
-            st.markdown(result["text"])
-        conv["messages"].append({"role": "assistant", "content": result["text"]})
+        # 로그인 후 이어서 만든 이체 제안은 글로 다시 풀어 쓰지 않고 바로 확인 카드를 보여 준다
+        # (받는 분·은행·계좌·금액이 카드에 그대로 나와 같은 내용이 두 번 보였다)
+        _quiet = bool(_resume_prompt) and result["kind"] == "transfer_proposal"
+        if not _quiet:
+            with _ans:
+                st.markdown(result["text"])
+            conv["messages"].append({"role": "assistant", "content": result["text"]})
         # 로그인이 필요한 업무가 막혔으면 답변 아래에 로그인 버튼을 띄운다(아래 로그인 안내 블록).
+        # 그 요청은 기억해 두었다가 로그인하고 돌아오면 이어서 처리한다(위 _resume_prompt).
         if result.get("login_required"):
             st.session_state["_login_prompt"] = True
+            conv["resume_after_login"] = prompt
+        else:
+            conv.pop("resume_after_login", None)
         if result["kind"] == "transfer_proposal":
             st.session_state.pending_transfer = result["proposal"]
             # 이전 제안에서 고른 받는 계좌·금액이 새 제안 카드에 남지 않게 한다
-            for _k in ("tf_to_sel", "tf_to_manual", "tf_amount"):
+            for _k in ("tf_fav", "tf_to_bank", "tf_to_no", "tf_amount"):
                 st.session_state.pop(_k, None)
         storage.save_conversation(conv)
         st.rerun()
